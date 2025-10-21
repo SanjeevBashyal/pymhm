@@ -1,9 +1,9 @@
 #/***************************************************************************
-# Py-mHM
+# pymhm
 #
-# Python package for mHM
+# Python package for mesoscale Hydrological Model
 #							 -------------------
-#		begin				: 2025-10-21
+#		begin				: 2025-10-22
 #		git sha				: $Format:%H$
 #		copyright			: (C) 2025 by Sanjeev Bashyal
 #		email				: sanjeev.bashyal01@gmail.com

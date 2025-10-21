@@ -9,25 +9,25 @@
 """
 
 __author__ = 'sanjeev.bashyal01@gmail.com'
-__date__ = '2025-10-21'
+__date__ = '2025-10-22'
 __copyright__ = 'Copyright 2025, Sanjeev Bashyal'
 
 import unittest
 
 from qgis.PyQt.QtGui import QDialogButtonBox, QDialog
 
-from pymhm_dialog import Py-mHMDialog
+from pymhm_dialog import pymhmDialog
 
 from utilities import get_qgis_app
 QGIS_APP = get_qgis_app()
 
 
-class Py-mHMDialogTest(unittest.TestCase):
+class pymhmDialogTest(unittest.TestCase):
     """Test dialog works."""
 
     def setUp(self):
         """Runs before each test."""
-        self.dialog = Py-mHMDialog(None)
+        self.dialog = pymhmDialog(None)
 
     def tearDown(self):
         """Runs after each test."""
@@ -49,7 +49,7 @@ class Py-mHMDialogTest(unittest.TestCase):
         self.assertEqual(result, QDialog.Rejected)
 
 if __name__ == "__main__":
-    suite = unittest.makeSuite(Py-mHMDialogTest)
+    suite = unittest.makeSuite(pymhmDialogTest)
     runner = unittest.TextTestRunner(verbosity=2)
     runner.run(suite)
 

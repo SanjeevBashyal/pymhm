@@ -3,14 +3,14 @@
 # This file should be included when you package your plugin.# Mandatory items:
 
 [general]
-name=Py-mHM
+name=PymHM
 qgisMinimumVersion=3.0
-description=Python package for mHM
+description=Python package for mesoscale Hydrological Model
 version=0.1
 author=Sanjeev Bashyal
 email=sanjeev.bashyal01@gmail.com
 
-about=Python module for pymHM
+about=Python package for mesoscale hydrological model
 
 tracker=https://github.com/SanjeevBashyal/pymhm/issues
 repository=https://github.com/SanjeevBashyal/pymhm

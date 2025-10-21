@@ -9,7 +9,7 @@
 """
 
 __author__ = 'sanjeev.bashyal01@gmail.com'
-__date__ = '2025-10-21'
+__date__ = '2025-10-22'
 __copyright__ = 'Copyright 2025, Sanjeev Bashyal'
 
 import unittest
@@ -18,7 +18,7 @@ from qgis.PyQt.QtGui import QIcon
 
 
 
-class Py-mHMDialogTest(unittest.TestCase):
+class pymhmDialogTest(unittest.TestCase):
     """Test rerources work."""
 
     def setUp(self):
@@ -31,12 +31,12 @@ class Py-mHMDialogTest(unittest.TestCase):
 
     def test_icon_png(self):
         """Test we can click OK."""
-        path = ':/plugins/Py-mHM/icon.png'
+        path = ':/plugins/pymhm/icon.png'
         icon = QIcon(path)
         self.assertFalse(icon.isNull())
 
 if __name__ == "__main__":
-    suite = unittest.makeSuite(Py-mHMResourcesTest)
+    suite = unittest.makeSuite(pymhmResourcesTest)
     runner = unittest.TextTestRunner(verbosity=2)
     runner.run(suite)
 

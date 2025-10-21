@@ -1,6 +1,6 @@
 <ui version="4.0" >
- <class>Py-mHMDialogBase</class>
- <widget class="QDialog" name="Py-mHMDialogBase" >
+ <class>pymhmDialogBase</class>
+ <widget class="QDialog" name="pymhmDialogBase" >
   <property name="geometry" >
    <rect>
     <x>0</x>
@@ -10,7 +10,7 @@
    </rect>
   </property>
   <property name="windowTitle" >
-   <string>Py-mHM</string>
+   <string>PymHM</string>
   </property>
   <widget class="QDialogButtonBox" name="button_box" >
    <property name="geometry" >
@@ -34,7 +34,7 @@
   <connection>
    <sender>button_box</sender>
    <signal>accepted()</signal>
-   <receiver>Py-mHMDialogBase</receiver>
+   <receiver>pymhmDialogBase</receiver>
    <slot>accept()</slot>
    <hints>
     <hint type="source_label" >
@@ -50,7 +50,7 @@
   <connection>
    <sender>button_box</sender>
    <signal>rejected()</signal>
-   <receiver>Py-mHMDialogBase</receiver>
+   <receiver>pymhmDialogBase</receiver>
    <slot>reject()</slot>
    <hints>
     <hint type="source_label" >
