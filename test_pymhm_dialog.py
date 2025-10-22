@@ -47,7 +47,7 @@ class pymhmDialogTest(unittest.TestCase):
 
 if __name__ == "__main__":
     # Initialize QGIS application before running tests
-    from utilities import get_qgis_app
+    from pymhm.test.utilities import get_qgis_app
     QGIS_APP = get_qgis_app()
     
     # Use the modern TestLoader instead of deprecated makeSuite

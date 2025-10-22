@@ -197,4 +197,6 @@ class pymhm:
         if result:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
-            pass
+            # For now, just show a message
+            from qgis.PyQt.QtWidgets import QMessageBox
+            QMessageBox.information(None, "PymHM", "PymHM plugin executed successfully!")
