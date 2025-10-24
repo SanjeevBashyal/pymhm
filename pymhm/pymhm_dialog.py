@@ -21,25 +21,262 @@
  *                                                                         *
  ***************************************************************************/
 """
-
 import os
 
-from qgis.PyQt import uic
-from qgis.PyQt.QtWidgets import QDialog
-from .ui_pymhm_dialog_base import Ui_pymhmDialog
+# QGIS and PyQt imports
+from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QMessageBox
+from qgis.core import (
+    QgsProject,
+    QgsVectorLayer,
+    QgsRasterLayer,
+    QgsApplication
+)
+import processing
 
-# This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
-# FORM_CLASS, _ = uic.loadUiType(os.path.join(
-#     os.path.dirname(__file__), 'pymhm_dialog_base.ui'))
+# UI class from the compiled .ui file
+from .ui_pymhm_dialog_base import Ui_pymhmDialog
 
 
 class pymhmDialog(QDialog, Ui_pymhmDialog):
     def __init__(self, parent=None):
         """Constructor."""
         super(pymhmDialog, self).__init__(parent)
-        # Set up the user interface from Designer through FORM_CLASS.
-        # After self.setupUi() you can access any designer object by doing
-        # self.<objectname>, and you can use autoconnect slots - see
-        # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
-        # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+
+        # --- Instance attributes for managing file paths ---
+        self.project_folder = None
+        self.filled_dem_path = None
+        self.flow_dir_path = None
+        self.flow_acc_path = None
+        self.snapped_points_path = None
+        self.watershed_raster_path = None
+        self.watershed_vector_path = None
+
+        # --- Connect signals and slots ---
+        self.connect_signals()
+
+    def connect_signals(self):
+        """Connect all UI element signals to appropriate slots."""
+        # Project folder selection
+        self.pushButton_BrowseProjectFolder.clicked.connect(self.select_project_folder)
+
+        # Sync TabWidget with StackedWidget
+        self.tabWidget.currentChanged.connect(self.on_tab_changed)
+
+        # Geometry processing buttons
+        self.pushButton_fillDem.clicked.connect(self.fill_dem)
+        self.pushButton_createNetwork.clicked.connect(self.create_network)
+        self.pushButton_snapPoints.clicked.connect(self.snap_points)
+        self.pushButton_delineate.clicked.connect(self.delineate_watershed)
+
+    # --- Helper and Utility Methods ---
+
+    def log_message(self, message):
+        """Appends a message to the log text browser."""
+        self.LogText.append(message)
+        QgsApplication.processEvents() # Update UI to show message immediately
+
+    def check_prerequisites(self, needs_pour_points=False):
+        """Check if project folder and necessary layers are set."""
+        if not self.project_folder:
+            self.log_message("ERROR: Please select a project folder first.")
+            QMessageBox.critical(self, "Missing Input", "Please select a project folder before proceeding.")
+            return False
+
+        if not self.mMapLayerComboBox_dem.currentLayer():
+            self.log_message("ERROR: DEM Raster Layer is not selected.")
+            QMessageBox.critical(self, "Missing Input", "Please select a DEM Raster Layer.")
+            return False
+
+        if needs_pour_points and not self.mMapLayerComboBox_pour_points.currentLayer():
+            self.log_message("ERROR: Pour Points Layer is not selected.")
+            QMessageBox.critical(self, "Missing Input", "Please select a Pour Points Layer.")
+            return False
+            
+        return True
+
+    def run_processing_algorithm(self, name, params):
+        """A wrapper to run a processing algorithm and handle errors."""
+        self.log_message(f"Running algorithm: {name}...")
+        try:
+            result = processing.run(name, params)
+            self.log_message(f"Algorithm '{name}' finished successfully.")
+            return result
+        except Exception as e:
+            self.log_message(f"ERROR: Algorithm '{name}' failed.")
+            self.log_message(f"Details: {str(e)}")
+            QMessageBox.critical(self, "Processing Error", f"Algorithm '{name}' failed.\nCheck the log for details.")
+            return None
+
+    def load_layer(self, path, name, is_raster=True):
+        """Loads a raster or vector layer into the QGIS project."""
+        if not os.path.exists(path):
+            self.log_message(f"ERROR: Output file not found at {path}")
+            return
+        
+        if is_raster:
+            layer = QgsRasterLayer(path, name)
+        else:
+            layer = QgsVectorLayer(path, name, "ogr")
+
+        if not layer.isValid():
+            self.log_message(f"ERROR: Failed to load layer: {name}")
+            return
+        
+        QgsProject.instance().addMapLayer(layer)
+        self.log_message(f"Layer '{name}' added to project.")
+
+    # --- Slots for UI signals ---
+
+    def select_project_folder(self):
+        """Opens a dialog to select the project working directory."""
+        folder = QFileDialog.getExistingDirectory(self, "Select Project Folder")
+        if folder:
+            self.project_folder = folder
+            self.lineEdit_ProjectFolder.setText(self.project_folder)
+            self.log_message(f"Project folder set to: {self.project_folder}")
+
+    def on_tab_changed(self, index):
+        """Switches the stacked widget page when the tab is changed."""
+        self.stackedWidget.setCurrentIndex(index)
+        self.log_message(f"Switched to '{self.tabWidget.tabText(index)}' tab.")
+
+    # --- Geometry Processing Methods ---
+
+    def fill_dem(self):
+        """Step 1: Fill Sinks in DEM using SAGA's Wang & Liu algorithm."""
+        self.log_message("\n--- Starting Geometry Step 1: Fill DEM ---")
+        if not self.check_prerequisites():
+            return
+
+        dem_layer = self.mMapLayerComboBox_dem.currentLayer()
+        self.log_message(f"Input DEM: {dem_layer.name()}")
+        
+        self.filled_dem_path = os.path.join(self.project_folder, "1_dem_filled.sdat")
+        
+        params = {
+            'ELEV': dem_layer,
+            'MINSLOPE': 0.01,
+            'FILLED': self.filled_dem_path,
+            'FDIR': 'TEMPORARY_OUTPUT',
+            'WSHED':'TEMPORARY_OUTPUT'
+        }
+        
+        # Using SAGA's robust fill sinks algorithm
+        result = self.run_processing_algorithm("sagang:fillsinkswangliu", params)
+        if result:
+            self.load_layer(result['FILLED'], "1_DEM_Filled")
+            self.log_message("--- Step 1: Fill DEM finished successfully. ---")
+        else:
+            self.filled_dem_path = None # Reset on failure
+
+    def create_network(self):
+        """Step 2: Create Flow Direction and Flow Accumulation rasters."""
+        self.log_message("\n--- Starting Geometry Step 2: Create Network ---")
+        if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
+            self.log_message("ERROR: Filled DEM not found. Please run Step 1 first.")
+            QMessageBox.warning(self, "Dependency Error", "Please run Step 1 (Fill DEM) successfully before creating the network.")
+            return
+            
+        # --- Create Flow Direction ---
+        self.log_message("Creating Flow Direction...")
+        self.flow_dir_path = os.path.join(self.project_folder, "2_flow_direction.sdat")
+        params_dir = {
+            'ELEVATION': self.filled_dem_path,
+            'FLOW_ROUTING': self.flow_dir_path,
+            'METHOD': 0 # D8
+        }
+        result_dir = self.run_processing_algorithm("sagang:flowdirection", params_dir)
+        if not result_dir:
+            self.flow_dir_path = None
+            return # Stop if flow direction fails
+        
+        # --- Create Flow Accumulation ---
+        self.log_message("Creating Flow Accumulation...")
+        self.flow_acc_path = os.path.join(self.project_folder, "3_flow_accumulation.sdat")
+        params_acc = {
+            # Note: This algorithm uses the FLOW_DIRECTION raster as main input
+            'FLOW_DIRECTION': self.flow_dir_path,
+            'ACCUMULATION': self.flow_acc_path,
+            'METHOD': 0 # Number of cells
+        }
+        result_acc = self.run_processing_algorithm("sagang:flowaccumulationtopdown", params_acc)
+
+        if result_acc:
+            self.load_layer(result_acc['ACCUMULATION'], "3_Flow_Accumulation")
+            self.log_message("--- Step 2: Create Network finished successfully. ---")
+        else:
+            self.flow_acc_path = None # Reset on failure
+
+    def snap_points(self):
+        """Step 3: Snap Pour Points to the nearest high-accumulation cell."""
+        self.log_message("\n--- Starting Geometry Step 3: Snap Pour Points ---")
+        if not self.check_prerequisites(needs_pour_points=True):
+            return
+        if not self.flow_acc_path or not os.path.exists(self.flow_acc_path):
+            self.log_message("ERROR: Flow Accumulation raster not found. Please run Step 2 first.")
+            QMessageBox.warning(self, "Dependency Error", "Please run Step 2 (Create Network) successfully before snapping points.")
+            return
+
+        pour_points_layer = self.mMapLayerComboBox_pour_points.currentLayer()
+        self.log_message(f"Input Pour Points: {pour_points_layer.name()}")
+
+        self.snapped_points_path = os.path.join(self.project_folder, "4_pour_points_snapped.gpkg")
+        
+        params = {
+            'POINTS': pour_points_layer,
+            'ACCUMULATION': self.flow_acc_path,
+            'DISTANCE': 100,  # Search distance in map units (adjust if needed)
+            'SNAPPED': self.snapped_points_path
+        }
+        
+        result = self.run_processing_algorithm("sagang:snappourpoints", params)
+        if result:
+            self.load_layer(result['SNAPPED'], "4_Pour_Points_Snapped", is_raster=False)
+            self.log_message("--- Step 3: Snap Points finished successfully. ---")
+        else:
+            self.snapped_points_path = None
+
+    def delineate_watershed(self):
+        """Step 4: Delineate watershed using the snapped points and flow direction."""
+        self.log_message("\n--- Starting Geometry Step 4: Delineate Watershed ---")
+        if not self.snapped_points_path or not os.path.exists(self.snapped_points_path):
+            self.log_message("ERROR: Snapped pour points not found. Please run Step 3 first.")
+            QMessageBox.warning(self, "Dependency Error", "Please run Step 3 (Snap Points) successfully before delineating.")
+            return
+        if not self.flow_dir_path or not os.path.exists(self.flow_dir_path):
+            self.log_message("ERROR: Flow Direction raster not found. Please run Step 2 first.")
+            QMessageBox.warning(self, "Dependency Error", "Please run Step 2 (Create Network) successfully before delineating.")
+            return
+
+        # --- Delineate to Raster ---
+        self.log_message("Delineating watershed (raster)...")
+        self.watershed_raster_path = os.path.join(self.project_folder, "5_watershed_raster.sdat")
+        params_ws = {
+            # Important: The 'ELEVATION' parameter here actually needs the FLOW DIRECTION raster
+            'ELEVATION': self.flow_dir_path,
+            'TARGET_POINTS': self.snapped_points_path,
+            'AREA': self.watershed_raster_path,
+            'METHOD': 0 # Deterministic 8
+        }
+        result_ws = self.run_processing_algorithm("sagang:upslopearea", params_ws)
+        if not result_ws:
+            self.watershed_raster_path = None
+            return # Stop if raster delineation fails
+        
+        # --- Polygonize (Vectorize) the Raster ---
+        self.log_message("Vectorizing watershed raster...")
+        self.watershed_vector_path = os.path.join(self.project_folder, "6_watershed_final.gpkg")
+        params_poly = {
+            'INPUT': self.watershed_raster_path,
+            'BAND': 1,
+            'FIELD': 'DN', # Field name for raster values
+            'OUTPUT': self.watershed_vector_path
+        }
+        result_poly = self.run_processing_algorithm("gdal:polygonize", params_poly)
+
+        if result_poly:
+            self.load_layer(result_poly['OUTPUT'], "6_Watershed_Final", is_raster=False)
+            self.log_message("--- Step 4: Delineate Watershed finished successfully. ---")
+        else:
+            self.watershed_vector_path = None

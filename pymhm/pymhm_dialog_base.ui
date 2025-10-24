@@ -11,9 +11,9 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Hydrological Model</string>
+   <string>PymHM</string>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout_Main">
+  <layout class="QVBoxLayout" name="verticalLayout_Main" stretch="1,8,8,8,0,1,1">
    <property name="spacing">
     <number>6</number>
    </property>
@@ -30,6 +30,93 @@
     <number>9</number>
    </property>
    <item>
+    <widget class="QGroupBox" name="groupBox_ProjectFolder">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>50</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>50</height>
+      </size>
+     </property>
+     <property name="title">
+      <string>Project Setup</string>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayout_ProjectFolder">
+      <property name="leftMargin">
+       <number>9</number>
+      </property>
+      <property name="topMargin">
+       <number>3</number>
+      </property>
+      <property name="rightMargin">
+       <number>9</number>
+      </property>
+      <property name="bottomMargin">
+       <number>3</number>
+      </property>
+      <item>
+       <widget class="QLabel" name="label_ProjectFolder">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>50</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>Project Folder:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="lineEdit_ProjectFolder">
+        <property name="toolTip">
+         <string>Path to the project working directory</string>
+        </property>
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+        <property name="placeholderText">
+         <string>Select a folder to begin...</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="pushButton_BrowseProjectFolder">
+        <property name="maximumSize">
+         <size>
+          <width>40</width>
+          <height>16777215</height>
+         </size>
+        </property>
+        <property name="toolTip">
+         <string>Select Project Folder</string>
+        </property>
+        <property name="text">
+         <string>...</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="QTabWidget" name="tabWidget">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
@@ -38,7 +125,7 @@
       </sizepolicy>
      </property>
      <property name="currentIndex">
-      <number>0</number>
+      <number>5</number>
      </property>
      <widget class="QWidget" name="tab_geometry">
       <attribute name="title">
@@ -570,9 +657,9 @@
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="tab_validation">
+     <widget class="QWidget" name="tab_simulation">
       <attribute name="title">
-       <string>6. Validation</string>
+       <string>6. Simulation</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_tab_valid">
        <property name="spacing">
@@ -974,7 +1061,21 @@
     </widget>
    </item>
    <item>
-    <widget class="QDialogButtonBox" name="button_box">
+    <widget class="Line" name="lineLog">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTextBrowser" name="LogText">
+     <property name="lineWidth">
+      <number>1</number>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="Closure">
      <property name="orientation">
       <enum>Qt::Horizontal</enum>
      </property>
@@ -995,7 +1096,7 @@
  <resources/>
  <connections>
   <connection>
-   <sender>button_box</sender>
+   <sender>Closure</sender>
    <signal>accepted()</signal>
    <receiver>pymhmDialog</receiver>
    <slot>accept()</slot>
@@ -1011,7 +1112,7 @@
    </hints>
   </connection>
   <connection>
-   <sender>button_box</sender>
+   <sender>Closure</sender>
    <signal>rejected()</signal>
    <receiver>pymhmDialog</receiver>
    <slot>reject()</slot>
