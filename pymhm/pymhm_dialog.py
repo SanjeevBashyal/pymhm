@@ -26,13 +26,14 @@ import os
 
 from qgis.PyQt import uic
 from qgis.PyQt.QtWidgets import QDialog
+from .pymhm_dialog_base import Ui_pymhmDialogBase
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
-FORM_CLASS, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'pymhm_dialog_base.ui'))
+# FORM_CLASS, _ = uic.loadUiType(os.path.join(
+#     os.path.dirname(__file__), 'pymhm_dialog_base.ui'))
 
 
-class pymhmDialog(QDialog, FORM_CLASS):
+class pymhmDialog(QDialog, Ui_pymhmDialogBase):
     def __init__(self, parent=None):
         """Constructor."""
         super(pymhmDialog, self).__init__(parent)
