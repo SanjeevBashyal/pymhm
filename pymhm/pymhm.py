@@ -160,7 +160,7 @@ class pymhm:
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
-        icon_path = ':/plugins/pymhm/mhm-logo_minimal.ico'
+        icon_path = ':/plugins/pymhm/icon.png'
         self.add_action(
             icon_path,
             text=self.tr(u'PymHM'),
