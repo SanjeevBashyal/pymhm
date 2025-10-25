@@ -150,6 +150,32 @@
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_geom_row1">
          <item>
+          <widget class="QPushButton" name="pushButton_fillDem">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>24</width>
+             <height>24</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>Fill Sinks in DEM</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="Resources/resources.qrc">
+             <normaloff>:/Icons/fillSinks.png</normaloff>:/Icons/fillSinks.png</iconset>
+           </property>
+          </widget>
+         </item>
+         <item>
           <widget class="QPushButton" name="pushButton_snapPoints">
            <property name="maximumSize">
             <size>
@@ -164,8 +190,8 @@
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="resources.qrc">
-             <normaloff>:/plugins/pymhm/Resources/snap.png</normaloff>:/plugins/pymhm/Resources/snap.png</iconset>
+            <iconset resource="Resources/resources.qrc">
+             <normaloff>:/Icons/snap.png</normaloff>:/Icons/snap.png</iconset>
            </property>
           </widget>
          </item>
@@ -184,8 +210,8 @@
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="resources.qrc">
-             <normaloff>:/plugins/pymhm/Resources/riverNetwork.png</normaloff>:/plugins/pymhm/Resources/riverNetwork.png</iconset>
+            <iconset resource="Resources/resources.qrc">
+             <normaloff>:/Icons/riverNetwork.png</normaloff>:/Icons/riverNetwork.png</iconset>
            </property>
           </widget>
          </item>
@@ -932,28 +958,28 @@
          </property>
          <layout class="QGridLayout" name="gridLayout_2">
           <item row="4" column="3">
-           <widget class="QPushButton" name="pushButton_LAI">
+           <widget class="QPushButton" name="pushButton_5">
             <property name="text">
              <string>LAI</string>
             </property>
            </widget>
           </item>
           <item row="4" column="2">
-           <widget class="QPushButton" name="pushButton_gaugePosition">
+           <widget class="QPushButton" name="pushButton_4">
             <property name="text">
              <string>Gauge Position</string>
             </property>
            </widget>
           </item>
           <item row="1" column="3">
-           <widget class="QPushButton" name="pushButton_soil">
+           <widget class="QPushButton" name="pushButton_2">
             <property name="text">
              <string>Soil</string>
             </property>
            </widget>
           </item>
           <item row="0" column="0">
-           <widget class="QPushButton" name="pushButton_executeAll">
+           <widget class="QPushButton" name="pushButton_7">
             <property name="minimumSize">
              <size>
               <width>23</width>
@@ -981,34 +1007,41 @@
              <string/>
             </property>
             <property name="icon">
-             <iconset resource="resources.qrc">
-              <normaloff>:/plugins/pymhm/Resources/run.png</normaloff>:/plugins/pymhm/Resources/run.png</iconset>
+             <iconset resource="Resources/resources.qrc">
+              <normaloff>:/Icons/run.png</normaloff>:/Icons/run.png</iconset>
             </property>
            </widget>
           </item>
           <item row="3" column="2">
-           <widget class="QPushButton" name="pushButton_flowDirection">
+           <widget class="QPushButton" name="pushButton">
             <property name="text">
              <string>Flow Direction</string>
             </property>
            </widget>
           </item>
           <item row="3" column="3">
-           <widget class="QPushButton" name="pushButton_hydrogeology">
+           <widget class="QPushButton" name="pushButton_3">
             <property name="text">
              <string>Hydrogeology</string>
             </property>
            </widget>
           </item>
           <item row="0" column="3">
-           <widget class="QPushButton" name="pushButton_landUse">
+           <widget class="QPushButton" name="pushButton_executeGeometryAll">
             <property name="text">
              <string>Land Use</string>
             </property>
            </widget>
           </item>
+          <item row="1" column="1">
+           <widget class="QPushButton" name="pushButton_6">
+            <property name="text">
+             <string>DEM (Filled)</string>
+            </property>
+           </widget>
+          </item>
           <item row="3" column="1">
-           <widget class="QPushButton" name="pushButton_slope">
+           <widget class="QPushButton" name="pushButton_8">
             <property name="text">
              <string>Slope</string>
             </property>
@@ -1035,64 +1068,22 @@
              <string/>
             </property>
             <property name="icon">
-             <iconset resource="resources.qrc">
-              <normaloff>:/plugins/pymhm/Resources/watershed.png</normaloff>:/plugins/pymhm/Resources/watershed.png</iconset>
+             <iconset resource="Resources/resources.qrc">
+              <normaloff>:/Icons/watershed.png</normaloff>:/Icons/watershed.png</iconset>
             </property>
            </widget>
           </item>
           <item row="4" column="1">
-           <widget class="QPushButton" name="pushButton_aspect">
+           <widget class="QPushButton" name="pushButton_9">
             <property name="text">
              <string>Aspect</string>
             </property>
            </widget>
           </item>
           <item row="1" column="2">
-           <widget class="QPushButton" name="pushButton_flowAccumulation">
+           <widget class="QPushButton" name="pushButton_10">
             <property name="text">
              <string>Flow Accumulation</string>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="0">
-           <widget class="QPushButton" name="pushButton_writeAll">
-            <property name="maximumSize">
-             <size>
-              <width>23</width>
-              <height>23</height>
-             </size>
-            </property>
-            <property name="toolTip">
-             <string>Write All</string>
-            </property>
-            <property name="text">
-             <string/>
-            </property>
-            <property name="icon">
-             <iconset resource="resources.qrc">
-              <normaloff>:/plugins/pymhm/Resources/write.png</normaloff>:/plugins/pymhm/Resources/write.png</iconset>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QPushButton" name="pushButton_fillDem">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>16777215</width>
-              <height>16777215</height>
-             </size>
-            </property>
-            <property name="toolTip">
-             <string>Fill Sinks in DEM</string>
-            </property>
-            <property name="text">
-             <string>DEM (Filled)</string>
             </property>
            </widget>
           </item>
@@ -1234,7 +1225,7 @@
   </customwidget>
  </customwidgets>
  <resources>
-  <include location="resources.qrc"/>
+  <include location="Resources/resources.qrc"/>
  </resources>
  <connections>
   <connection>

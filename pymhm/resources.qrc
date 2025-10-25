@@ -1,5 +1,11 @@
 <RCC>
-    <qresource prefix="/plugins/pymhm" >
-        <file>icon.png</file>
-    </qresource>
+  <qresource prefix="/plugins/pymhm">
+    <file>icon.png</file>
+    <file>Resources/write.png</file>
+    <file>Resources/run.png</file>
+    <file>Resources/riverNetwork.png</file>
+    <file>Resources/watershed.png</file>
+    <file>Resources/snap.png</file>
+    <file>Resources/fillSinks.png</file>
+  </qresource>
 </RCC>

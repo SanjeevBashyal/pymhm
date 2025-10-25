@@ -8,7 +8,9 @@
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
+            "program": "${workspaceFolder}/test_pymhm.py",
+            // "module": "pymhm.test.test_pymhm_dialog",
+            "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
             "python": "c:/Program Files/QGIS 3.40.6/apps/Python312/python.exe",
             "env": {
