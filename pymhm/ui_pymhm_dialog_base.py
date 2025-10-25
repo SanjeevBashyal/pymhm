@@ -406,7 +406,7 @@ class Ui_pymhmDialog(object):
         self.verticalLayout_Main.setStretch(6, 1)
 
         self.retranslateUi(pymhmDialog)
-        self.tabWidget.setCurrentIndex(5)
+        self.tabWidget.setCurrentIndex(0)
         self.stackedWidget.setCurrentIndex(0)
         self.Closure.accepted.connect(pymhmDialog.accept) # type: ignore
         self.Closure.rejected.connect(pymhmDialog.reject) # type: ignore
