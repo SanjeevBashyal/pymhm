@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>700</width>
-    <height>600</height>
+    <height>653</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -908,6 +908,88 @@
              <string>Select the vector layer containing pour points (outlets)</string>
             </property>
            </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="label_soil_layer">
+            <property name="text">
+             <string>Soil Layer:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_soil">
+            <property name="toolTip">
+             <string>Select the soil layer</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="label_land_cover_layer">
+            <property name="text">
+             <string>Land Cover Layer:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_land_cover">
+            <property name="toolTip">
+             <string>Select the land cover layer</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="label_geology_layer">
+            <property name="text">
+             <string>Geology Layer:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_geology">
+            <property name="toolTip">
+             <string>Select the geology layer</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="label_lai_file">
+            <property name="text">
+             <string>Leaf Area Index File:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_lai">
+            <item>
+             <widget class="QLineEdit" name="lineEdit_lai_file">
+              <property name="toolTip">
+               <string>Path to the Leaf Area Index file</string>
+              </property>
+              <property name="readOnly">
+               <bool>true</bool>
+              </property>
+              <property name="placeholderText">
+               <string>Select LAI file...</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_browse_lai">
+              <property name="maximumSize">
+               <size>
+                <width>40</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="toolTip">
+               <string>Browse for LAI file</string>
+              </property>
+              <property name="text">
+               <string>...</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
           </item>
          </layout>
         </widget>

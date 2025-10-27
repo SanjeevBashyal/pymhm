@@ -22,6 +22,13 @@
         "GDAL_DATA": "C:/Program Files/QGIS 3.40.6/share/gdal",
         "PROJ_LIB": "C:/Program Files/QGIS 3.40.6/share/proj",
         "GDAL_DRIVER_PATH": "C:/Program Files/QGIS 3.40.6/bin/gdalplugins"
-    }
+    },
+    "cursorpyright.analysis.extraPaths": [
+        "C:/Program Files/QGIS 3.40.6/apps/qgis-ltr/python",
+        "C:/Program Files/QGIS 3.40.6/apps/qgis-ltr/python/plugins",
+        "C:/Program Files/QGIS 3.40.6/apps/grass/grass84/etc/python",
+        "C:/Users/Ripple/AppData/Roaming/QGIS/QGIS3/profiles/default/python",
+        "C:/Users/Ripple/AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins"
+    ]
 }
 
