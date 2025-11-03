@@ -9,6 +9,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 QSWATPlus/
+test_domain/
 build/
 develop-eggs/
 dist/

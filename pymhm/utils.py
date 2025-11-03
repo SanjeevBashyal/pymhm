@@ -77,7 +77,12 @@ class DialogUtils:
 
     def get_dem_extent_and_resolution(self):
         """Get DEM extent and pixel resolution for clipping and rasterization"""
-        dem_layer = self.mMapLayerComboBox_dem.currentLayer()
+        # Check if morphology processor has reprojected DEM layer
+        if hasattr(self, 'morphology_processor') and self.morphology_processor.dem_layer:
+            dem_layer = self.morphology_processor.dem_layer
+        else:
+            dem_layer = self.mMapLayerComboBox_dem.currentLayer()
+        
         if not dem_layer:
             return None, None, None
         

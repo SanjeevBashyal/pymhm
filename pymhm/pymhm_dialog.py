@@ -79,7 +79,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.pushButton_fillDem.clicked.connect(
             self.morphology_processor.fill_dem)
         self.pushButton_createNetwork.clicked.connect(
-            self.morphology_processor.create_network)
+            self.morphology_processor.process_channel_network)
         self.pushButton_snapPoints.clicked.connect(
             self.morphology_processor.snap_points)
         self.pushButton_delineate.clicked.connect(
@@ -94,7 +94,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.morphology_processor.process_flow_accumulation)
         self.pushButton_flowDirection.clicked.connect(
             self.morphology_processor.process_flow_direction)
-        self.pushButton_calib_action1.clicked.connect(
+        self.pushButton_gaugePosition.clicked.connect(
             self.morphology_processor.process_gauge_position)
         
         # Layer processing - delegate to processor
@@ -107,6 +107,20 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         
         # LAI file browser
         self.pushButton_browse_lai.clicked.connect(self.browse_lai_file)
+        
+        # Lookup table browsers
+        self.pushButton_browse_land_cover_lookup.clicked.connect(
+            self.browse_land_cover_lookup)
+        self.pushButton_browse_soil_lookup.clicked.connect(
+            self.browse_soil_lookup)
+        self.pushButton_browse_geology_lookup.clicked.connect(
+            self.browse_geology_lookup)
+        
+        # Initialize CRS widget with project CRS
+        from qgis.core import QgsProject
+        project_crs = QgsProject.instance().crs()
+        if project_crs.isValid():
+            self.mProjectionSelectionWidget_crs.setCrs(project_crs)
 
     # --- Project Management Methods ---
 
@@ -141,3 +155,40 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if file_path:
             self.lineEdit_lai_file.setText(file_path)
             self.log_message(f"LAI file selected: {file_path}")
+
+    def browse_land_cover_lookup(self):
+        """Browse for Land Cover lookup table or database"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Land Cover Lookup Table", "", 
+            "All Files (*);;CSV (*.csv);;Excel (*.xlsx *.xls);;Database (*.db *.sqlite)")
+        if file_path:
+            self.lineEdit_land_cover_lookup.setText(file_path)
+            self.log_message(f"Land cover lookup table selected: {file_path}")
+
+    def browse_soil_lookup(self):
+        """Browse for Soil lookup table or database"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Soil Lookup Table", "", 
+            "All Files (*);;CSV (*.csv);;Excel (*.xlsx *.xls);;Database (*.db *.sqlite)")
+        if file_path:
+            self.lineEdit_soil_lookup.setText(file_path)
+            self.log_message(f"Soil lookup table selected: {file_path}")
+
+    def browse_geology_lookup(self):
+        """Browse for Geology lookup table or database"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Geology Lookup Table", "", 
+            "All Files (*);;CSV (*.csv);;Excel (*.xlsx *.xls);;Database (*.db *.sqlite)")
+        if file_path:
+            self.lineEdit_geology_lookup.setText(file_path)
+            self.log_message(f"Geology lookup table selected: {file_path}")
+    
+    def get_lai_time_range(self):
+        """Get the selected LAI time/date for extraction"""
+        if hasattr(self, 'dateEdit') and self.dateEdit:
+            return self.dateEdit.dateTime()
+        return None
+    
+    def get_crs(self):
+        """Get the selected CRS"""
+        return self.mProjectionSelectionWidget_crs.crs()

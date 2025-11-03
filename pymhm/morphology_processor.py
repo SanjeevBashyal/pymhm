@@ -16,7 +16,8 @@ from qgis.core import (
     QgsField,
     QgsFields,
     QgsWkbTypes,
-    QgsProject
+    QgsProject,
+    QgsCoordinateReferenceSystem
 )
 from qgis.PyQt.QtCore import QVariant, NULL
 import processing
@@ -44,9 +45,14 @@ class MorphologyProcessor(DialogUtils):
         self.load_layer = dialog.load_layer
         self.get_dem_extent_and_resolution = dialog.get_dem_extent_and_resolution
         
+        # DEM layer reference (reprojected if needed)
+        self.dem_layer = None  # Will store the reprojected DEM layer if CRS differs
+        
+        # Processed layer references
+        self.land_use_layer = None  # Final land use layer with reclassified values (1, 2, or 3)
+        
         # Paths for geometry processing outputs
         self.filled_dem_path = None
-        self.flow_acc_path = None
         self.flow_dir_path = None
         self.channel_network_vector_path = None
         self.snapped_points_path = None
@@ -67,19 +73,18 @@ class MorphologyProcessor(DialogUtils):
         files_to_check = {
             # Original processing files
             'filled_dem_path': "1_dem_filled.sdat",
-            'flow_acc_path': "2_flow_accumulation.sdat",
             'flow_dir_path': "2_flow_direction.sdat",
             'channel_network_vector_path': "2_channel_network.shp",
-            'snapped_points_path': "3_pour_points_snapped.gpkg",
-            'watershed_raster_path': "4_watershed_raster.sdat",
-            'watershed_vector_path': "4_watershed_final.gpkg",
+            'snapped_points_path': "2_pour_points_snapped.shp",
+            'watershed_raster_path': "1_watershed_raster.sdat",
+            'watershed_vector_path': "1_watershed_final.shp",
 
             # New hydrological processing files
             'aspect_path': "1_dem_aspect.sdat",
             'slope_path': "1_dem_slope.sdat",
             'flow_direction_path': "2_flow_direction.sdat",
             'flow_accumulation_path': "2_flow_accumulation.sdat",
-            'gauge_position_path': "3_gauge_position.sdat"
+            'gauge_position_path': "2_gauge_position.sdat"
         }
 
         found_any = False
@@ -93,6 +98,29 @@ class MorphologyProcessor(DialogUtils):
             else:
                 setattr(self, attr, None)
 
+        # Check for final land use layer separately
+        land_use_path = os.path.join(geometry_folder, "3_land_use.tif")
+        if os.path.exists(land_use_path):
+            self.land_use_layer = land_use_path
+            self.log_message(f"Found existing file: 3_land_use.tif")
+            found_any = True
+        
+        # Check for reprojected DEM and load it into self.dem_layer (but don't add to project)
+        reprojected_dem_path = os.path.join(geometry_folder, "0_dem_reprojected.tif")
+        if os.path.exists(reprojected_dem_path):
+            reprojected_layer = QgsRasterLayer(reprojected_dem_path, "1_DEM_Reprojected")
+            if reprojected_layer.isValid():
+                self.dem_layer = reprojected_layer
+                self.log_message(f"Found existing reprojected DEM: 0_dem_reprojected.tif")
+                found_any = True
+            else:
+                self.log_message(f"WARNING: Reprojected DEM file exists but is not valid.")
+        
+        # Check for filled DEM and load it to QGIS interface
+        if self.filled_dem_path and os.path.exists(self.filled_dem_path):
+            self.log_message(f"Loading existing filled DEM to QGIS interface...")
+            self.load_layer(self.filled_dem_path, "1_DEM_Filled")
+        
         if found_any:
             self.log_message(
                 "Project state loaded. You may skip completed steps.")
@@ -102,20 +130,112 @@ class MorphologyProcessor(DialogUtils):
 
     # --- Geometry Processing Methods ---
 
+    def check_and_reproject_dem(self, dem_layer):
+        """
+        Check if DEM CRS matches input CRS, and reproject if needed.
+        Stores the reprojected layer in self.dem_layer attribute.
+        
+        Args:
+            dem_layer: The DEM raster layer
+            
+        Returns:
+            The DEM layer (original or reprojected) to use for processing
+        """
+        input_crs = self.dialog.get_crs()
+        if not input_crs.isValid():
+            self.log_message("WARNING: Input CRS is not valid. Using DEM CRS as-is.")
+            self.dem_layer = dem_layer
+            return dem_layer
+        
+        dem_crs = dem_layer.crs()
+        if not dem_crs.isValid():
+            self.log_message("WARNING: DEM CRS is not valid. Using DEM as-is.")
+            self.dem_layer = dem_layer
+            return dem_layer
+        
+        # Check if CRS matches
+        if dem_crs.authid() == input_crs.authid():
+            self.log_message(f"DEM CRS ({dem_crs.authid()}) matches input CRS. No reprojection needed.")
+            self.dem_layer = dem_layer
+            return dem_layer
+        
+        # Need to reproject - check if reprojected file already exists
+        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        reprojected_dem_path = os.path.join(geometry_folder, "0_dem_reprojected.tif")
+        
+        if os.path.exists(reprojected_dem_path):
+            self.log_message(f"Found existing reprojected DEM. Loading it...")
+            reprojected_layer = QgsRasterLayer(reprojected_dem_path, "1_DEM_Reprojected")
+            if reprojected_layer.isValid():
+                self.dem_layer = reprojected_layer
+                return reprojected_layer
+            else:
+                self.log_message("WARNING: Existing reprojected DEM is not valid. Reprojecting again...")
+        
+        # Reproject DEM
+        self.log_message(f"DEM CRS ({dem_crs.authid()}) differs from input CRS ({input_crs.authid()}). Reprojecting...")
+        
+        params_warp = {
+            'INPUT': dem_layer.source(),
+            'SOURCE_CRS': None,  # Auto-detect from input
+            'TARGET_CRS': input_crs,
+            'RESAMPLING': 0,  # Nearest neighbor
+            'NODATA': None,
+            'TARGET_RESOLUTION': None,
+            'OPTIONS': None,
+            'DATA_TYPE': 0,  # Use input data type
+            'TARGET_EXTENT': None,
+            'TARGET_EXTENT_CRS': None,
+            'MULTITHREADING': False,
+            'EXTRA': '',
+            'OUTPUT': reprojected_dem_path
+        }
+        
+        result = self.run_processing_algorithm("gdal:warpreproject", params_warp)
+        if result and os.path.exists(reprojected_dem_path):
+            reprojected_layer = QgsRasterLayer(reprojected_dem_path, "1_DEM_Reprojected")
+            if reprojected_layer.isValid():
+                self.log_message(f"DEM reprojected successfully to {input_crs.authid()}")
+                # Do not add reprojected layer to QGIS project - it's only used for processing
+                self.dem_layer = reprojected_layer
+                return reprojected_layer
+            else:
+                self.log_message("ERROR: Reprojected DEM layer is not valid. Using original DEM.")
+                self.dem_layer = dem_layer
+                return dem_layer
+        else:
+            self.log_message("ERROR: DEM reprojection failed. Using original DEM.")
+            self.dem_layer = dem_layer
+            return dem_layer
+
     def fill_dem(self):
         """Step 1: Fill Sinks in DEM using SAGA NG's Wang & Liu algorithm."""
         self.log_message("\n--- Starting Geometry Step 1: Fill DEM ---")
         if not self.check_prerequisites():
             return
 
-        dem_layer = self.dialog.mMapLayerComboBox_dem.currentLayer()
-        self.log_message(f"Input DEM: {dem_layer.name()}")
-
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
         self.filled_dem_path = os.path.join(
             geometry_folder, "1_dem_filled.sdat")
+        
+        # Check if filled DEM already exists
+        if self.filled_dem_path and os.path.exists(self.filled_dem_path):
+            self.log_message("Filled DEM already exists. Loading existing file...")
+            self.load_layer(self.filled_dem_path, "1_DEM_Filled")
+            return
+
+        original_dem_layer = self.dialog.mMapLayerComboBox_dem.currentLayer()
+        self.log_message(f"Input DEM: {original_dem_layer.name()}")
+
+        # Check and reproject DEM if needed (stores in self.dem_layer)
+        dem_layer = self.check_and_reproject_dem(original_dem_layer)
+        
+        # Ensure self.dem_layer is set
+        if not self.dem_layer:
+            self.dem_layer = dem_layer
+
         params = {
-            'ELEV': dem_layer,
+            'ELEV': self.dem_layer,  # Use reprojected DEM layer
             'MINSLOPE': 0.01,
             'FILLED': self.filled_dem_path,
             'FDIR': 'TEMPORARY_OUTPUT',
@@ -128,64 +248,57 @@ class MorphologyProcessor(DialogUtils):
         else:
             self.filled_dem_path = None
 
-    def create_network(self):
-        """Step 2: Create Flow Accumulation, Flow Direction, and Channel Network."""
-        self.log_message("\n--- Starting Geometry Step 2: Create Network ---")
+    def process_channel_network(self):
+        """Process Flow Direction and Channel Network."""
         if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
             QMessageBox.warning(
                 self.dialog, "Dependency Error", "Please run Step 1 (Fill DEM) successfully first.")
             return
 
-        # Sub-step 2a: Create Flow Accumulation and Flow Direction
-        self.log_message(
-            "Sub-step 2a: Creating Flow Accumulation and Flow Direction...")
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
-        self.flow_acc_path = os.path.join(
-            geometry_folder, "2_flow_accumulation.sdat")
-        params_acc = {
-            'DEM': self.filled_dem_path,
-            'PREPROCESSING': 1,  # Fill Sinks
-            'FLOW_ROUTING': 4,  # D8
-            'TCA': self.flow_acc_path,
-            'SCA': 'TEMPORARY_OUTPUT',
-            'FLOW_PATH_LENGTH': 'TEMPORARY_OUTPUT'
-        }
-        result_acc = self.run_processing_algorithm(
-            "sagang:flowaccumulationonestep", params_acc)
-        if not result_acc:
-            self.flow_acc_path = None
-            self.flow_dir_path = None
-            return
-        self.load_layer(self.flow_acc_path, "2_Flow_Accumulation")
+        # Ensure flow accumulation is processed first (required for channel network)
+        self.process_flow_accumulation()
 
-        # Sub-step 2b: Create vector Channel Network
-        self.log_message("Sub-step 2b: Creating vector Channel Network...")
-        self.flow_dir_path = os.path.join(
-            geometry_folder, "2_flow_direction.sdat")
+        # Check if flow accumulation exists (required dependency)
+        if not self.flow_accumulation_path or not os.path.exists(self.flow_accumulation_path):
+            QMessageBox.warning(
+                self.dialog, "Dependency Error", "Flow accumulation processing failed or file not found.")
+            return
+
+        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
         self.channel_network_vector_path = os.path.join(
             geometry_folder, "2_channel_network.shp")
-        params_chnl = {
-            'ELEVATION': self.filled_dem_path,
-            'SINKROUTE': None,
-            'CHNLNTWRK': 'TEMPORARY_OUTPUT',
-            'CHNLROUTE': self.flow_dir_path,
-            'SHAPES': self.channel_network_vector_path,
-            'INIT_GRID': self.flow_acc_path,
-            'INIT_METHOD': 2,       # Greater than
-            # Threshold for channel initiation (cell count)
-            'INIT_VALUE': 1000000.0,
-            'DIV_GRID': None,
-            'DIV_CELLS': 5.0,
-            'TRACE_WEIGHT': None,
-            'MINLEN': 10.0
-        }
-        result_chnl = self.run_processing_algorithm(
-            "sagang:channelnetwork", params_chnl)
-        if not result_chnl:
-            self.channel_network_vector_path = None
-            return
-        self.load_layer(self.channel_network_vector_path,
-                        "2_Channel_Network", is_raster=False)
+
+        # Check if Channel Network already exists, otherwise process it
+        if self.channel_network_vector_path and os.path.exists(self.channel_network_vector_path):
+            self.log_message("Channel Network already exists. Loading existing file...")
+            self.load_layer(self.channel_network_vector_path,
+                            "2_Channel_Network", is_raster=False)
+        else:
+            self.log_message("Processing Channel Network...")
+            params_chnl = {
+                'ELEVATION': self.filled_dem_path,
+                'SINKROUTE': None,
+                'CHNLNTWRK': 'TEMPORARY_OUTPUT',
+                'CHNLROUTE': 'TEMPORARY_OUTPUT',
+                'SHAPES': self.channel_network_vector_path,
+                'INIT_GRID': self.flow_accumulation_path,
+                'INIT_METHOD': 2,       # Greater than
+                # Threshold for channel initiation (cell count)
+                'INIT_VALUE': 1000000.0,
+                'DIV_GRID': None,
+                'DIV_CELLS': 5.0,
+                'TRACE_WEIGHT': None,
+                'MINLEN': 10.0
+            }
+            result_chnl = self.run_processing_algorithm(
+                "sagang:channelnetwork", params_chnl)
+            if result_chnl:
+                self.load_layer(self.channel_network_vector_path,
+                                "2_Channel_Network", is_raster=False)
+                self.log_message("Channel Network processing completed successfully.")
+            else:
+                self.log_message("Channel Network processing failed.")
+                self.channel_network_vector_path = None
 
     def snap_points(self):
         """Step 3: Snap Pour Points to the nearest high-order channel segment."""
@@ -193,22 +306,60 @@ class MorphologyProcessor(DialogUtils):
             "\n--- Starting Geometry Step 3: Snap Pour Points ---")
         if not self.check_prerequisites(needs_pour_points=True):
             return
+        
+        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        self.snapped_points_path = os.path.join(
+            geometry_folder, "2_pour_points_snapped.shp")
+        
+        # Check if snapped points already exist (from load_project_state or previous run)
+        if self.snapped_points_path and os.path.exists(self.snapped_points_path):
+            self.log_message("Snapped points already exist. Loading existing file...")
+            self.load_layer(self.snapped_points_path, "2_pour_points_snapped", is_raster=False)
+            return
+        
         if not self.channel_network_vector_path or not os.path.exists(self.channel_network_vector_path):
             QMessageBox.warning(
                 self.dialog, "Dependency Error", "Please run Step 2 (Create Network) successfully first.")
             return
 
         pour_points_layer = self.dialog.mMapLayerComboBox_pour_points.currentLayer()
+        temp_reprojected_path = None
+        
+        # Check and reproject pour points layer if needed
+        input_crs = self.dialog.get_crs()
+        if not input_crs.isValid():
+            self.log_message("WARNING: Input CRS is not valid. Using pour points layer CRS as-is.")
+        else:
+            pour_points_crs = pour_points_layer.crs()
+            if pour_points_crs.isValid():
+                if pour_points_crs.authid() != input_crs.authid():
+                    self.log_message(f"Pour points CRS ({pour_points_crs.authid()}) differs from input CRS ({input_crs.authid()}). Reprojecting...")
+                    temp_reprojected_path = os.path.join(geometry_folder, "2_pour_points_reprojected.shp")
+                    
+                    reprojected_layer = self.reproject_vector_layer(pour_points_layer, input_crs, temp_reprojected_path)
+                    if reprojected_layer:
+                        pour_points_layer = reprojected_layer
+                        self.log_message(f"Pour points reprojected successfully to {input_crs.authid()}")
+                    else:
+                        self.log_message("WARNING: Reprojection failed. Using original pour points layer.")
+                        temp_reprojected_path = None  # Don't try to delete if reprojection failed
+                else:
+                    self.log_message(f"Pour points CRS ({pour_points_crs.authid()}) matches input CRS. No reprojection needed.")
+            else:
+                self.log_message("WARNING: Pour points CRS is not valid. Using as-is.")
+        
         channel_network_layer = QgsVectorLayer(
             self.channel_network_vector_path, "Channel Network", "ogr")
         if not channel_network_layer.isValid():
             self.log_message(
                 f"ERROR: Could not load channel network layer from {self.channel_network_vector_path}")
+            # Clean up temporary file if it was created
+            if temp_reprojected_path and os.path.exists(temp_reprojected_path):
+                try:
+                    os.remove(temp_reprojected_path)
+                except:
+                    pass
             return
-
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
-        self.snapped_points_path = os.path.join(
-            geometry_folder, "3_pour_points_snapped.gpkg")
 
         # Call the new custom snapping function
         result_path = self.snap_points_to_network(
@@ -220,9 +371,17 @@ class MorphologyProcessor(DialogUtils):
             max_snap_distance=5000.0
         )
 
+        # Clean up temporary reprojected file if it was created
+        if temp_reprojected_path and os.path.exists(temp_reprojected_path):
+            try:
+                os.remove(temp_reprojected_path)
+                self.log_message("Cleaned up temporary reprojected pour points file.")
+            except Exception as e:
+                self.log_message(f"WARNING: Could not delete temporary file: {e}")
+
         if result_path:
             self.load_layer(result_path,
-                            "3_Pour_Points_Snapped", is_raster=False)
+                            "2_pour_points_snapped", is_raster=False)
         else:
             self.log_message("ERROR: Custom snap points procedure failed.")
             self.snapped_points_path = None
@@ -321,7 +480,7 @@ class MorphologyProcessor(DialogUtils):
         # Sub-step 4b: Combine all watersheds into a single vector layer
         self.log_message("Combining all watersheds into final vector layer...")
         self.watershed_vector_path = os.path.join(
-            geometry_folder, "4_watershed_final.gpkg")
+            geometry_folder, "1_watershed_final.shp")
 
         # Create a combined watershed vector layer
         self.create_combined_watershed_layer(
@@ -329,7 +488,7 @@ class MorphologyProcessor(DialogUtils):
 
         if os.path.exists(self.watershed_vector_path):
             self.load_layer(self.watershed_vector_path,
-                            "4_Watershed_Final", is_raster=False)
+                            "1_watershed_final", is_raster=False)
         else:
             self.watershed_vector_path = None
 
@@ -386,7 +545,7 @@ class MorphologyProcessor(DialogUtils):
                 return None
 
         writer = QgsVectorFileWriter(output_path, "UTF-8", output_fields,
-                                     QgsWkbTypes.Point, pour_points_layer.crs(), "GPKG")
+                                     QgsWkbTypes.Point, self.dialog.get_crs(), "ESRI Shapefile")
         if writer.hasError() != QgsVectorFileWriter.NoError:
             self.log_message(
                 f"ERROR creating output file: {writer.errorMessage()}")
@@ -604,14 +763,19 @@ class MorphologyProcessor(DialogUtils):
 
     def process_aspect(self):
         """Process Aspect from input DEM"""
-        # Get the input DEM from the combo box
-        input_dem_layer = self.dialog.mMapLayerComboBox_dem.currentLayer()
-        if not input_dem_layer:
-            QMessageBox.warning(self.dialog, "Input Error",
-                                "Please select an input DEM layer.")
-            return
-
-        input_dem_path = input_dem_layer.source()
+        # Ensure DEM is checked and reprojected if needed
+        if not self.dem_layer:
+            input_dem_layer = self.dialog.mMapLayerComboBox_dem.currentLayer()
+            if not input_dem_layer:
+                QMessageBox.warning(self.dialog, "Input Error",
+                                    "Please select an input DEM layer.")
+                return
+            self.check_and_reproject_dem(input_dem_layer)
+        
+        # Use reprojected DEM layer
+        dem_layer = self.dem_layer if self.dem_layer else self.dialog.mMapLayerComboBox_dem.currentLayer()
+        input_dem_path = dem_layer.source()
+        
         if not os.path.exists(input_dem_path):
             QMessageBox.warning(self.dialog, "Input Error",
                                 "Input DEM file not found.")
@@ -649,14 +813,19 @@ class MorphologyProcessor(DialogUtils):
 
     def process_slope(self):
         """Process Slope from input DEM"""
-        # Get the input DEM from the combo box
-        input_dem_layer = self.dialog.mMapLayerComboBox_dem.currentLayer()
-        if not input_dem_layer:
-            QMessageBox.warning(self.dialog, "Input Error",
-                                "Please select an input DEM layer.")
-            return
-
-        input_dem_path = input_dem_layer.source()
+        # Ensure DEM is checked and reprojected if needed
+        if not self.dem_layer:
+            input_dem_layer = self.dialog.mMapLayerComboBox_dem.currentLayer()
+            if not input_dem_layer:
+                QMessageBox.warning(self.dialog, "Input Error",
+                                    "Please select an input DEM layer.")
+                return
+            self.check_and_reproject_dem(input_dem_layer)
+        
+        # Use reprojected DEM layer
+        dem_layer = self.dem_layer if self.dem_layer else self.dialog.mMapLayerComboBox_dem.currentLayer()
+        input_dem_path = dem_layer.source()
+        
         if not os.path.exists(input_dem_path):
             QMessageBox.warning(self.dialog, "Input Error",
                                 "Input DEM file not found.")
@@ -693,38 +862,45 @@ class MorphologyProcessor(DialogUtils):
             self.log_message("Slope processing failed.")
 
     def process_flow_direction(self):
-        """Process Flow Direction using D8 method"""
+        """Process Flow Direction using Channel Network and Drainage Basins algorithm"""
         if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
             QMessageBox.warning(
                 self.dialog, "Dependency Error", "Please run Step 1 (Fill DEM) successfully first.")
             return
 
-        # Check if flow direction D8 already exists
+        # Check if flow direction already exists
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
         self.flow_direction_path = os.path.join(
             geometry_folder, "2_flow_direction.sdat")
         if self.flow_direction_path and os.path.exists(self.flow_direction_path):
             self.log_message(
-                "Flow Direction (D8) already exists. Loading existing file...")
+                "Flow Direction already exists. Loading existing file...")
             self.load_layer(self.flow_direction_path, "2_Flow_Direction")
             return
 
-        self.log_message("Processing Flow Direction (D8)...")
+        self.log_message("Processing Flow Direction using Channel Network and Drainage Basins...")
 
         params_flow_dir = {
-            'ELEVATION': self.filled_dem_path,
-            'FLOW': self.flow_direction_path,
-            'METHOD': 0  # D8
+            'DEM': self.filled_dem_path,
+            'DIRECTION': self.flow_direction_path,
+            'CONNECTION': 'TEMPORARY_OUTPUT',
+            'ORDER': 'TEMPORARY_OUTPUT',
+            'BASIN': 'TEMPORARY_OUTPUT',
+            'SEGMENTS': 'TEMPORARY_OUTPUT',
+            'BASINS': 'TEMPORARY_OUTPUT',
+            'NODES': 'TEMPORARY_OUTPUT',
+            'THRESHOLD': 5,
+            'SUBBASINS': False
         }
 
         result = self.run_processing_algorithm(
-            "sagang:flowdirection", params_flow_dir)
+            "sagang:channelnetworkanddrainagebasins", params_flow_dir)
         if result:
             self.load_layer(self.flow_direction_path, "2_Flow_Direction")
             self.log_message(
-                "Flow Direction (D8) processing completed successfully.")
+                "Flow Direction processing completed successfully.")
         else:
-            self.log_message("Flow Direction (D8) processing failed.")
+            self.log_message("Flow Direction processing failed.")
 
     def process_flow_accumulation(self):
         """Process Flow Accumulation using D8 method"""
@@ -746,15 +922,16 @@ class MorphologyProcessor(DialogUtils):
 
         self.log_message("Processing Flow Accumulation (D8)...")
 
-        params_flow_acc = {
-            'ELEVATION': self.filled_dem_path,
-            'FLOW': self.flow_accumulation_path,
-            'METHOD': 0,  # D8
-            'CONVERGE': 1.1
+        params_acc = {
+            'DEM': self.filled_dem_path,
+            'PREPROCESSING': 1,  # Fill Sinks
+            'FLOW_ROUTING': 4,  # D8
+            'TCA': self.flow_accumulation_path,
+            'SCA': 'TEMPORARY_OUTPUT',
+            'FLOW_PATH_LENGTH': 'TEMPORARY_OUTPUT'
         }
-
         result = self.run_processing_algorithm(
-            "sagang:flowaccumulation", params_flow_acc)
+            "sagang:flowaccumulationonestep", params_acc)
         if result:
             self.load_layer(self.flow_accumulation_path,
                             "2_Flow_Accumulation")
@@ -768,25 +945,17 @@ class MorphologyProcessor(DialogUtils):
         # Check if gauge position already exists
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
         self.gauge_position_path = os.path.join(
-            geometry_folder, "3_gauge_position.sdat")
+            geometry_folder, "2_gauge_position.sdat")
         if self.gauge_position_path and os.path.exists(self.gauge_position_path):
             self.log_message(
                 "Gauge Position already exists. Loading existing file...")
-            self.load_layer(self.gauge_position_path, "3_Gauge_Position")
-            return
-
-        # This method should be called with a pour points layer path
-        # For now, we'll use a placeholder path that should be provided by the user
-        pour_points_path = QFileDialog.getOpenFileName(
-            self.dialog, "Select Pour Points Layer", "", "GeoPackage (*.gpkg);;Shapefile (*.shp)")[0]
-
-        if not pour_points_path:
+            self.load_layer(self.gauge_position_path, "2_Gauge_Position")
             return
 
         self.log_message("Processing Gauge Position...")
 
         params_gauge = {
-            'INPUT': pour_points_path,
+            'INPUT': self.snapped_points_path,
             'FIELD': '',
             'BURN': 1,
             'USE_Z': False,
@@ -805,13 +974,53 @@ class MorphologyProcessor(DialogUtils):
 
         result = self.run_processing_algorithm("gdal:rasterize", params_gauge)
         if result:
-            self.load_layer(self.gauge_position_path, "3_Gauge_Position")
+            self.load_layer(self.gauge_position_path, "2_Gauge_Position")
             self.log_message(
                 "Gauge Position processing completed successfully.")
         else:
             self.log_message("Gauge Position processing failed.")
 
-    def process_layer_with_dem_clipping(self, layer, layer_name, output_filename):
+    def reproject_vector_layer(self, vector_layer, target_crs, output_path):
+        """
+        Reproject a vector layer to target CRS.
+        
+        Args:
+            vector_layer: QgsVectorLayer to reproject
+            target_crs: QgsCoordinateReferenceSystem target CRS
+            output_path: Path for reprojected output
+            
+        Returns:
+            QgsVectorLayer: Reprojected layer or None if failed
+        """
+        params_reproject = {
+            'INPUT': vector_layer,
+            'SOURCE_CRS': None,  # Auto-detect
+            'TARGET_CRS': target_crs,
+            'OPERATION': '',  # Use default
+            'TARGET_EXTENT': None,
+            'TARGET_EXTENT_CRS': None,
+            'CONCAT_PREFIX': '',
+            'NO_DATA': None,
+            'COPY_SUBDATASETS': False,
+            'DATA_TYPE': 0,
+            'GPKG_LAYER_NAME': '',
+            'OUTPUT': output_path
+        }
+        
+        result = self.run_processing_algorithm("native:reprojectlayer", params_reproject)
+        if result and os.path.exists(output_path):
+            reprojected_layer = QgsVectorLayer(output_path, f"{vector_layer.name()}_reprojected", "ogr")
+            if reprojected_layer.isValid():
+                self.log_message(f"Vector layer reprojected successfully to {target_crs.authid()}")
+                return reprojected_layer
+            else:
+                self.log_message("ERROR: Reprojected vector layer is not valid.")
+                return None
+        else:
+            self.log_message("ERROR: Vector layer reprojection failed.")
+            return None
+
+    def process_layer_with_dem_clipping(self, layer, layer_name, output_filename, display=True):
         """
         Process a layer (vector or raster) by rasterizing if needed and clipping to DEM extent
         
@@ -819,6 +1028,7 @@ class MorphologyProcessor(DialogUtils):
             layer: QgsMapLayer (vector or raster)
             layer_name: Name for logging
             output_filename: Output filename in geometry folder
+            display: bool, whether to load the processed layer to QGIS (default: True)
             
         Returns:
             str: Path to processed layer or None if failed
@@ -830,29 +1040,70 @@ class MorphologyProcessor(DialogUtils):
         if not self.check_prerequisites():
             return None
         
-        # Get DEM extent and resolution
+        # Get input CRS and DEM info
+        input_crs = self.dialog.get_crs()
+        
+        # Use reprojected DEM layer if available, otherwise get from combo box
+        if not self.dem_layer:
+            dem_layer = self.dialog.mMapLayerComboBox_dem.currentLayer()
+            # Check and reproject if needed
+            self.check_and_reproject_dem(dem_layer)
+        
+        # Use the reprojected DEM layer stored in self.dem_layer
+        dem_layer = self.dem_layer if self.dem_layer else self.dialog.mMapLayerComboBox_dem.currentLayer()
+        
+        # Get DEM extent and resolution from reprojected DEM
         extent_str, pixel_size_x, pixel_size_y = self.get_dem_extent_and_resolution()
         if not extent_str:
             return None
+        
+        # Get reprojected DEM extent with CRS for clipping
+        dem_extent = self.dem_layer.extent()
+        dem_crs = self.dem_layer.crs()
+        # Format: xmin,xmax,ymin,ymax [EPSG:xxxxx]
+        extent_projwin = f"{dem_extent.xMinimum()},{dem_extent.xMaximum()},{dem_extent.yMinimum()},{dem_extent.yMaximum()} [{dem_crs.authid()}]"
         
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
         output_path = os.path.join(geometry_folder, output_filename)
         
         # Check if already processed
         if os.path.exists(output_path):
-            self.log_message(f"{layer_name} already processed. Loading existing file...")
-            self.load_layer(output_path, f"Processed_{layer_name}")
+            self.log_message(f"{layer_name} already processed.")
+            if display:
+                self.load_layer(output_path, layer_name)
             return output_path
         
         self.log_message(f"Processing {layer_name}...")
         
         # Determine if layer is vector or raster
         if isinstance(layer, QgsVectorLayer):
-            self.log_message(f"Vector layer detected. Rasterizing {layer_name}...")
+            self.log_message(f"Vector layer detected. Checking CRS for {layer_name}...")
+            
+            # Check if vector layer CRS matches input CRS
+            layer_crs = layer.crs()
+            if input_crs.isValid() and layer_crs.isValid():
+                if layer_crs.authid() != input_crs.authid():
+                    self.log_message(f"{layer_name} CRS ({layer_crs.authid()}) differs from input CRS ({input_crs.authid()}). Reprojecting...")
+                    temp_reprojected_path = os.path.join(geometry_folder, f"temp_{layer_name}_reprojected.gpkg")
+                    reprojected_layer = self.reproject_vector_layer(layer, input_crs, temp_reprojected_path)
+                    if reprojected_layer:
+                        layer = reprojected_layer
+                    else:
+                        self.log_message(f"WARNING: Reprojection failed. Using original {layer_name} layer.")
+                else:
+                    self.log_message(f"{layer_name} CRS matches input CRS. No reprojection needed.")
+            
+            # Rasterize vector layer using DEM's georeferenced units
+            self.log_message(f"Rasterizing {layer_name}...")
             
             # Get the first field for rasterization (or use a default)
             fields = layer.fields()
             field_name = fields[0].name() if fields else 'id'
+            
+            # Calculate width and height from reprojected DEM pixel size
+            dem_extent = self.dem_layer.extent()
+            width = int((dem_extent.xMaximum() - dem_extent.xMinimum()) / pixel_size_x)
+            height = int((dem_extent.yMaximum() - dem_extent.yMinimum()) / pixel_size_y)
             
             params_rasterize = {
                 'INPUT': layer,
@@ -860,8 +1111,8 @@ class MorphologyProcessor(DialogUtils):
                 'BURN': 0,
                 'USE_Z': False,
                 'UNITS': 1,  # Georeferenced units
-                'WIDTH': 0,  # Will be calculated from pixel size
-                'HEIGHT': 0,  # Will be calculated from pixel size
+                'WIDTH': width,
+                'HEIGHT': height,
                 'EXTENT': extent_str,
                 'NODATA': 0,
                 'OPTIONS': None,
@@ -877,56 +1128,225 @@ class MorphologyProcessor(DialogUtils):
         elif isinstance(layer, QgsRasterLayer):
             self.log_message(f"Raster layer detected. Clipping {layer_name} to DEM extent...")
             
-            # Use DEM layer directly as mask
-            dem_layer = self.dialog.mMapLayerComboBox_dem.currentLayer()
+            # Check if raster layer CRS matches input CRS
+            layer_crs = layer.crs()
+            if input_crs.isValid() and layer_crs.isValid():
+                if layer_crs.authid() != input_crs.authid():
+                    self.log_message(f"{layer_name} CRS ({layer_crs.authid()}) differs from input CRS ({input_crs.authid()}). Reprojecting...")
+                    temp_reprojected_path = os.path.join(geometry_folder, f"temp_{layer_name}_reprojected.tif")
+                    
+                    params_warp = {
+                        'INPUT': layer.source(),
+                        'SOURCE_CRS': None,
+                        'TARGET_CRS': input_crs,
+                        'RESAMPLING': 0,  # Nearest neighbor
+                        'NODATA': None,
+                        'TARGET_RESOLUTION': None,
+                        'OPTIONS': None,
+                        'DATA_TYPE': 0,
+                        'TARGET_EXTENT': None,
+                        'TARGET_EXTENT_CRS': None,
+                        'MULTITHREADING': False,
+                        'EXTRA': '',
+                        'OUTPUT': temp_reprojected_path
+                    }
+                    
+                    warp_result = self.run_processing_algorithm("gdal:warpreproject", params_warp)
+                    if warp_result and os.path.exists(temp_reprojected_path):
+                        layer = QgsRasterLayer(temp_reprojected_path, f"{layer_name}_reprojected")
+                        self.log_message(f"{layer_name} reprojected successfully.")
+                    else:
+                        self.log_message(f"WARNING: Reprojection failed. Using original {layer_name} layer.")
+                else:
+                    self.log_message(f"{layer_name} CRS matches input CRS. No reprojection needed.")
             
+            # Clip raster to DEM extent using reprojected DEM extent
             params_clip = {
                 'INPUT': layer,
-                'MASK': dem_layer,
-                'SOURCE_CRS': None,
-                'TARGET_CRS': None,
-                'TARGET_EXTENT': extent_str,
+                'PROJWIN': extent_projwin,  # Extent from reprojected DEM with CRS
+                'OVERCRS': False,
                 'NODATA': None,
-                'ALPHA_BAND': False,
-                'CROP_TO_CUTLINE': True,
-                'KEEP_RESOLUTION': False,
-                'SET_RESOLUTION': False,
-                'X_RESOLUTION': None,
-                'Y_RESOLUTION': None,
-                'MULTITHREADING': False,
                 'OPTIONS': None,
                 'DATA_TYPE': 0,
                 'EXTRA': '',
                 'OUTPUT': output_path
             }
             
-            result = self.run_processing_algorithm("gdal:cliprasterbymasklayer", params_clip)
+            result = self.run_processing_algorithm("gdal:cliprasterbyextent", params_clip)
         
         else:
             self.log_message(f"ERROR: Unsupported layer type for {layer_name}")
             return None
         
         if result:
-            self.load_layer(output_path, f"Processed_{layer_name}")
+            if display:
+                self.load_layer(output_path, layer_name)
             self.log_message(f"{layer_name} processing completed successfully.")
             return output_path
         else:
             self.log_message(f"{layer_name} processing failed.")
             return None
 
+    def load_land_cover_lookup_table(self):
+        """
+        Load land cover lookup table from file or use default mapping.
+        
+        Returns:
+            dict: Mapping of grid values to type_int (1=Forest, 2=Impervious, 3=Pervious)
+        """
+        lookup_file = self.dialog.lineEdit_land_cover_lookup.text()
+        
+        # Default lookup table
+        default_lookup = {
+            1: 3,   # Waterbody -> Pervious
+            2: 2,   # Glacier -> Impervious
+            3: 3,   # Snow -> Pervious
+            4: 1,   # Forest -> Forest
+            5: 3,   # Riverbed -> Pervious
+            6: 2,   # Built-up area -> Impervious
+            7: 3,   # Cropland -> Pervious
+            8: 3,   # Bare soil -> Pervious
+            9: 2,   # Bare rock -> Impervious
+            10: 3,  # Grassland -> Pervious
+            11: 3   # Other wooded land -> Pervious
+        }
+        
+        if not lookup_file or not os.path.exists(lookup_file):
+            self.log_message("No lookup table provided or file not found. Using default mapping.")
+            return default_lookup
+        
+        # Try to read lookup table from file (CSV format expected)
+        try:
+            import csv
+            lookup_mapping = {}
+            with open(lookup_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    try:
+                        grid_value = int(row.get('Grid value', 0))
+                        type_str = row.get('Type', '').strip()
+                        
+                        # Map type string to type_int
+                        if type_str == 'Forest':
+                            type_int = 1
+                        elif type_str == 'Impervious':
+                            type_int = 2
+                        elif type_str == 'Pervious':
+                            type_int = 3
+                        else:
+                            self.log_message(f"WARNING: Unknown type '{type_str}' in lookup table. Skipping.")
+                            continue
+                        
+                        lookup_mapping[grid_value] = type_int
+                    except (ValueError, KeyError) as e:
+                        self.log_message(f"WARNING: Error parsing lookup table row: {e}")
+                        continue
+            
+            if lookup_mapping:
+                self.log_message(f"Loaded {len(lookup_mapping)} entries from lookup table.")
+                return lookup_mapping
+            else:
+                self.log_message("Lookup table is empty. Using default mapping.")
+                return default_lookup
+        except Exception as e:
+            self.log_message(f"ERROR reading lookup table: {e}. Using default mapping.")
+            return default_lookup
+
+    def reclassify_land_use_raster(self, input_raster_path, output_path, lookup_mapping):
+        """
+        Reclassify land use raster values based on lookup table.
+        
+        Args:
+            input_raster_path: Path to clipped land use raster
+            output_path: Path for reclassified output
+            lookup_mapping: Dictionary mapping grid values to type_int (1, 2, or 3)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        self.log_message("Reclassifying land use raster based on lookup table...")
+        
+        # Build reclassification table
+        # Format: [min1, max1, value1, min2, max2, value2, ...]
+        reclass_table = []
+        for grid_value, type_int in sorted(lookup_mapping.items()):
+            reclass_table.extend([str(grid_value-0.5), str(grid_value+0.5), str(type_int)])
+        
+        self.log_message(f"Reclassification table: {reclass_table}")
+        
+        params_reclass = {
+            'INPUT_RASTER': input_raster_path,
+            'RASTER_BAND': 1,
+            'TABLE': reclass_table,
+            'NO_DATA': -9999,
+            'RANGE_BOUNDARIES': 0,  # min <= value <= max
+            'NODATA_FOR_MISSING': False,
+            'DATA_TYPE': 3,  # Int16 (since values are 1, 2, or 3)
+            'CREATE_OPTIONS': None,
+            'OUTPUT': output_path
+        }
+        
+        result = self.run_processing_algorithm("native:reclassifybytable", params_reclass)
+        
+        if result and os.path.exists(output_path):
+            self.log_message("Land use reclassification completed successfully.")
+            return True
+        else:
+            self.log_message("ERROR: Land use reclassification failed.")
+            return False
+
     def process_land_use(self):
-        """Process Land Use layer"""
+        """Process Land Use layer with clipping and reclassification"""
         layer = self.dialog.mMapLayerComboBox_land_cover.currentLayer()
+        if not layer:
+            QMessageBox.warning(self.dialog, "Input Error", "Please select a Land Cover layer.")
+            return
+        
+        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        clipped_path = os.path.join(geometry_folder, "3_land_use_clipped.tif")
+        final_path = os.path.join(geometry_folder, "3_land_use.tif")
+        
+        # Check if final land use layer already exists
+        if os.path.exists(final_path):
+            self.log_message("Final land use layer already exists. Loading existing file...")
+            self.land_use_layer = final_path
+            self.load_layer(final_path, "3_Land_Use")
+            return
+        
+        # Step 1: Clip land use layer to DEM extent (display=False for intermediate layer)
+        self.log_message("Clipping land use layer to DEM extent...")
         result = self.process_layer_with_dem_clipping(
-            layer, "Land Use", "land_use_processed.tif")
-        if result:
-            self.log_message("Land Use layer processed and clipped to DEM extent.")
+            layer, "3_Land_Use_Clip", "3_land_use_clipped.tif", display=False)
+        
+        if not result:
+            self.log_message("ERROR: Land use clipping failed.")
+            return
+        
+        # Step 2: Load lookup table
+        lookup_mapping = self.load_land_cover_lookup_table()
+        
+        # Step 3: Reclassify clipped raster
+        success = self.reclassify_land_use_raster(result, final_path, lookup_mapping)
+        
+        if success:
+            self.land_use_layer = final_path
+            self.load_layer(final_path, "3_Land_Use")
+            self.log_message("Land Use layer processed, clipped, and reclassified successfully.")
+            
+            # Clean up intermediate clipped file
+            try:
+                if os.path.exists(clipped_path):
+                    os.remove(clipped_path)
+            except:
+                pass
+        else:
+            self.log_message("ERROR: Land use reclassification failed.")
 
     def process_soil(self):
         """Process Soil layer"""
         layer = self.dialog.mMapLayerComboBox_soil.currentLayer()
         result = self.process_layer_with_dem_clipping(
-            layer, "Soil", "soil_processed.tif")
+            layer, "3_Soil", "3_soil.tif")
         if result:
             self.log_message("Soil layer processed and clipped to DEM extent.")
 
