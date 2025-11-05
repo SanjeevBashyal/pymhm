@@ -36,6 +36,7 @@ from .ui_pymhm_dialog_base import Ui_pymhmDialog
 # Import utility mixin and processors
 from .utils import DialogUtils
 from .morphology_processor import MorphologyProcessor
+from .simulation_processor import SimulationProcessor
 
 
 class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
@@ -64,6 +65,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         # --- Initialize processors ---
         self.morphology_processor = MorphologyProcessor(self)
+        self.simulation_processor = SimulationProcessor(self)
 
         # --- Connect signals and slots ---
         self.connect_signals()
@@ -76,6 +78,8 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.tabWidget.currentChanged.connect(self.on_tab_changed)
         
         # Morphology/Geometry processing - delegate to processor
+        self.pushButton_convertDEMtoASC.clicked.connect(
+            self.morphology_processor.convert_dem_to_asc)
         self.pushButton_fillDem.clicked.connect(
             self.morphology_processor.fill_dem)
         self.pushButton_createNetwork.clicked.connect(
@@ -115,6 +119,12 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.browse_soil_lookup)
         self.pushButton_browse_geology_lookup.clicked.connect(
             self.browse_geology_lookup)
+        
+        # Simulation processing - delegate to processor
+        self.pushButton_createNML.clicked.connect(
+            self.simulation_processor.create_nml_files)
+        self.pushButton_RUN.clicked.connect(
+            self.simulation_processor.run_mhm)
         
         # Initialize CRS widget with project CRS
         from qgis.core import QgsProject
