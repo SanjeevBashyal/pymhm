@@ -109,6 +109,22 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.pushButton_hydrogeology.clicked.connect(
             self.morphology_processor.process_geology)
         
+        # Mask all layers
+        self.pushButton_maskAll.clicked.connect(
+            self.morphology_processor.mask_all_layers)
+        
+        # Write all layers (convert to ASCII)
+        self.pushButton_writeAll.clicked.connect(
+            self.morphology_processor.write_all_layers)
+        
+        # Reset geometry
+        self.pushButton_resetGeometry.clicked.connect(
+            self.morphology_processor.resetGeometry)
+        
+        # Execute all processing
+        self.pushButton_executeAll.clicked.connect(
+            self.morphology_processor.execute_all_processing)
+        
         # LAI file browser
         self.pushButton_browse_lai.clicked.connect(self.browse_lai_file)
         
@@ -119,6 +135,10 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.browse_soil_lookup)
         self.pushButton_browse_geology_lookup.clicked.connect(
             self.browse_geology_lookup)
+        
+        # Meteorology folder browser
+        self.pushButton_browse_meteo_folder.clicked.connect(
+            self.browse_meteo_folder)
         
         # Simulation processing - delegate to processor
         self.pushButton_createNML.clicked.connect(
@@ -192,6 +212,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if file_path:
             self.lineEdit_geology_lookup.setText(file_path)
             self.log_message(f"Geology lookup table selected: {file_path}")
+    
+    def browse_meteo_folder(self):
+        """Browse for Meteorology data folder"""
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select Meteorology Data Folder")
+        if folder:
+            self.lineEdit_meteo_folder.setText(folder)
+            self.log_message(f"Meteorology data folder selected: {folder}")
     
     def get_lai_time_range(self):
         """Get the selected LAI time/date for extraction"""

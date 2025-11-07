@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>700</width>
-    <height>666</height>
+    <height>693</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -206,6 +206,42 @@
           </widget>
          </item>
          <item>
+          <widget class="QPushButton" name="pushButton_createLatLon">
+           <property name="maximumSize">
+            <size>
+             <width>24</width>
+             <height>24</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>Create LatLon.nc file</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="resources.qrc">
+             <normaloff>:/plugins/pymhm/Resources/latlon.png</normaloff>:/plugins/pymhm/Resources/latlon.png</iconset>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton_resetGeometry">
+           <property name="maximumSize">
+            <size>
+             <width>24</width>
+             <height>24</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>Reset</string>
+           </property>
+           <property name="text">
+            <string>R</string>
+           </property>
+          </widget>
+         </item>
+         <item>
           <spacer name="horizontalSpacer_geom_1">
            <property name="orientation">
             <enum>Qt::Horizontal</enum>
@@ -342,6 +378,9 @@
           </spacer>
          </item>
         </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_meteo_folder"/>
        </item>
       </layout>
      </widget>
@@ -917,13 +956,13 @@
              <widget class="QLabel" name="label_L0">
               <property name="minimumSize">
                <size>
-                <width>30</width>
+                <width>20</width>
                 <height>0</height>
                </size>
               </property>
               <property name="maximumSize">
                <size>
-                <width>30</width>
+                <width>20</width>
                 <height>16777215</height>
                </size>
               </property>
@@ -940,9 +979,15 @@
             </item>
             <item>
              <widget class="QComboBox" name="comboBox_L0">
-              <property name="maximumSize">
+              <property name="minimumSize">
                <size>
                 <width>40</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>50</width>
                 <height>16777215</height>
                </size>
               </property>
@@ -1011,13 +1056,13 @@
              <widget class="QLabel" name="label_L2">
               <property name="minimumSize">
                <size>
-                <width>30</width>
+                <width>20</width>
                 <height>0</height>
                </size>
               </property>
               <property name="maximumSize">
                <size>
-                <width>30</width>
+                <width>20</width>
                 <height>16777215</height>
                </size>
               </property>
@@ -1030,13 +1075,26 @@
              </widget>
             </item>
             <item>
-             <widget class="QLineEdit" name="lineEdit_L2"/>
+             <widget class="QLineEdit" name="lineEdit_L2">
+              <property name="minimumSize">
+               <size>
+                <width>0</width>
+                <height>0</height>
+               </size>
+              </property>
+             </widget>
             </item>
             <item>
              <widget class="QComboBox" name="comboBox_L2">
-              <property name="maximumSize">
+              <property name="minimumSize">
                <size>
                 <width>40</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>50</width>
                 <height>16777215</height>
                </size>
               </property>
@@ -1059,6 +1117,20 @@
           </item>
           <item row="6" column="1">
            <layout class="QHBoxLayout" name="horizontalLayout_lai">
+            <item>
+             <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_LAI_Class"/>
+            </item>
+           </layout>
+          </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="label_geology_layer">
+            <property name="text">
+             <string>Geology Layer:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="2">
+           <layout class="QHBoxLayout" name="horizontalLayout_lai_time">
             <item>
              <widget class="QLineEdit" name="lineEdit_lai_file">
               <property name="toolTip">
@@ -1087,27 +1159,6 @@
                <string>...</string>
               </property>
              </widget>
-            </item>
-           </layout>
-          </item>
-          <item row="5" column="0">
-           <widget class="QLabel" name="label_geology_layer">
-            <property name="text">
-             <string>Geology Layer:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout_lai_time">
-            <item>
-             <widget class="QLabel" name="label_lai_time">
-              <property name="text">
-               <string>Time:</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QDateEdit" name="dateEdit"/>
             </item>
            </layout>
           </item>
@@ -1213,14 +1264,20 @@
              <widget class="QLabel" name="label_L1">
               <property name="minimumSize">
                <size>
-                <width>30</width>
+                <width>20</width>
                 <height>0</height>
                </size>
               </property>
               <property name="maximumSize">
                <size>
-                <width>30</width>
+                <width>20</width>
                 <height>16777215</height>
+               </size>
+              </property>
+              <property name="sizeIncrement">
+               <size>
+                <width>0</width>
+                <height>0</height>
                </size>
               </property>
               <property name="text">
@@ -1236,9 +1293,15 @@
             </item>
             <item>
              <widget class="QComboBox" name="comboBox_L1">
-              <property name="maximumSize">
+              <property name="minimumSize">
                <size>
                 <width>40</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>50</width>
                 <height>16777215</height>
                </size>
               </property>
@@ -1543,6 +1606,59 @@
      <widget class="QWidget" name="page_meteo">
       <layout class="QVBoxLayout" name="verticalLayout_page_meteo">
        <item>
+        <widget class="QGroupBox" name="groupBox">
+         <property name="title">
+          <string>GroupBox</string>
+         </property>
+         <layout class="QGridLayout" name="gridLayout_3">
+          <item row="0" column="0">
+           <layout class="QVBoxLayout" name="verticalLayout">
+            <item>
+             <layout class="QHBoxLayout" name="horizontalLayout">
+              <item>
+               <widget class="QLabel" name="label_meteo_folder">
+                <property name="text">
+                 <string>Meteorology Data Folder:</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLineEdit" name="lineEdit_meteo_folder">
+                <property name="toolTip">
+                 <string>Path to folder containing meteorological data</string>
+                </property>
+                <property name="readOnly">
+                 <bool>true</bool>
+                </property>
+                <property name="placeholderText">
+                 <string>Select meteorology data folder...</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="pushButton_browse_meteo_folder">
+                <property name="maximumSize">
+                 <size>
+                  <width>40</width>
+                  <height>16777215</height>
+                 </size>
+                </property>
+                <property name="toolTip">
+                 <string>Browse for meteorology data folder</string>
+                </property>
+                <property name="text">
+                 <string>...</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
         <widget class="QLabel" name="label_placeholder_meteo">
          <property name="text">
           <string>Meteorology settings and inputs will go here.</string>
@@ -1629,7 +1745,7 @@
               <rect>
                <x>0</x>
                <y>0</y>
-               <width>639</width>
+               <width>589</width>
                <height>634</height>
               </rect>
              </property>
@@ -2137,7 +2253,7 @@
               <rect>
                <x>0</x>
                <y>0</y>
-               <width>639</width>
+               <width>319</width>
                <height>582</height>
               </rect>
              </property>
@@ -2639,7 +2755,7 @@
               <rect>
                <x>0</x>
                <y>0</y>
-               <width>639</width>
+               <width>385</width>
                <height>686</height>
               </rect>
              </property>

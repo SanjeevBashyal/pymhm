@@ -1,5 +1,6 @@
 <RCC>
   <qresource prefix="/plugins/pymhm">
+    <file>Resources/latlon.png</file>
     <file>Resources/mask.png</file>
     <file>icon.png</file>
     <file>Resources/write.png</file>
