@@ -77,6 +77,12 @@ class MorphologyProcessor(DialogUtils):
         
         # Flag to skip loading layers (used in execute_all_processing)
         self.skip_loading = False
+        
+        # Lat/Lon header information (L0, L1, L11, L2)
+        self.L0 = None  # Dictionary with ncols, nrows, xllcorner, yllcorner, cellsize, NODATA_value
+        self.L1 = None
+        self.L11 = None
+        self.L2 = None
 
     def load_layer(self, path, name, is_raster=True):
         """
@@ -2617,6 +2623,400 @@ class MorphologyProcessor(DialogUtils):
         
         self.log_message("Masking process completed.")
     
+    def write_header_file(self, L_info, output_path):
+        """
+        Helper function to write header.txt file for a given L level.
+        
+        Args:
+            L_info: Dictionary with keys: ncols, nrows, xllcorner, yllcorner, cellsize, NODATA_value
+            output_path: Directory path where header.txt should be created
+        """
+        header_file = os.path.join(output_path, "header.txt")
+        
+        try:
+            with open(header_file, 'w', encoding='utf-8') as f:
+                f.write(f"ncols\t{L_info['ncols']}\n")
+                f.write(f"nrows\t{L_info['nrows']}\n")
+                f.write(f"xllcorner\t{L_info['xllcorner']}\n")
+                f.write(f"yllcorner\t{L_info['yllcorner']}\n")
+                f.write(f"cellsize\t{L_info['cellsize']}\n")
+                f.write(f"NODATA_value\t{L_info['NODATA_value']}\n")
+                f.write("\n")
+            
+            self.log_message(f"Header file written: {header_file}")
+            return True
+        except Exception as e:
+            self.log_message(f"ERROR: Failed to write header file {header_file}: {e}")
+            return False
+    
+    def process_lat_lon(self):
+        """
+        Process lat/lon information by reading dem_masked_layer and creating header files
+        for L0, L1, L11, and L2 levels. This prepares data for latlon.nc file creation.
+        """
+        self.log_message("\n--- Processing Lat/Lon Headers ---")
+        
+        # Check prerequisites
+        if not self.check_prerequisites():
+            return
+        
+        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        dem_masked_path = os.path.join(geometry_folder, "1_dem_filled_masked.tif")
+        
+        if not os.path.exists(dem_masked_path):
+            QMessageBox.warning(
+                self.dialog, "Dependency Error",
+                "Please run 'Mask All Layers' successfully first to create masked DEM.")
+            return
+        
+        # Read L0, L1, L2 values and units from UI
+        try:
+            l0_value = float(self.dialog.lineEdit_L0.text())
+            l0_unit = self.dialog.comboBox_L0.currentText()
+            l1_value = float(self.dialog.lineEdit_L1.text())
+            l1_unit = self.dialog.comboBox_L1.currentText()
+            l2_value = float(self.dialog.lineEdit_L2.text())
+            l2_unit = self.dialog.comboBox_L2.currentText()
+        except (ValueError, AttributeError) as e:
+            QMessageBox.warning(
+                self.dialog, "Input Error",
+                f"Please enter valid numeric values for L0, L1, and L2.\nError: {e}")
+            return
+        
+        if not l0_unit or not l1_unit or not l2_unit:
+            QMessageBox.warning(
+                self.dialog, "Input Error",
+                "Please select units (m or °) for L0, L1, and L2.")
+            return
+        
+        # Read the masked DEM layer
+        dem_masked_layer = QgsRasterLayer(dem_masked_path, "DEM_Masked")
+        if not dem_masked_layer.isValid():
+            self.log_message("ERROR: Cannot read masked DEM layer.")
+            QMessageBox.critical(
+                self.dialog, "Error",
+                "Cannot read masked DEM layer.")
+            return
+        
+        # Get extent and dimensions from masked DEM
+        raster_extent = dem_masked_layer.extent()
+        width = dem_masked_layer.width()  # Number of columns
+        height = dem_masked_layer.height()  # Number of rows
+        
+        # Calculate cell size (assuming square cells)
+        cell_size_x = (raster_extent.xMaximum() - raster_extent.xMinimum()) / width
+        cell_size_y = (raster_extent.yMaximum() - raster_extent.yMinimum()) / height
+        cell_size = (cell_size_x + cell_size_y) / 2.0  # Average cell size
+        
+        # Get corner coordinates
+        xllcorner = raster_extent.xMinimum()
+        yllcorner = raster_extent.yMinimum()
+        
+        # L0: Use values from masked DEM
+        self.L0 = {
+            'ncols': width,
+            'nrows': height,
+            'xllcorner': xllcorner,
+            'yllcorner': yllcorner,
+            'cellsize': cell_size,
+            'NODATA_value': -9999
+        }
+        
+        self.log_message(f"L0 information extracted from masked DEM:")
+        self.log_message(f"  ncols: {self.L0['ncols']}, nrows: {self.L0['nrows']}")
+        self.log_message(f"  xllcorner: {self.L0['xllcorner']}, yllcorner: {self.L0['yllcorner']}")
+        self.log_message(f"  cellsize: {self.L0['cellsize']:.2f}")
+        
+        # Convert L1 cell size to meters if needed
+        l1_cellsize = l1_value
+        if l1_unit == "°":
+            # Convert degrees to meters (approximate: 1 degree ≈ 111,000 meters)
+            center_lat = (raster_extent.yMinimum() + raster_extent.yMaximum()) / 2.0
+            l1_cellsize = l1_value * 111000
+            self.log_message(f"L1 cell size converted from {l1_value}° to {l1_cellsize:.2f} m")
+        
+        # L1: Calculate new ncols and nrows based on L1 cell size
+        # Keep same xllcorner and yllcorner
+        x_range = raster_extent.xMaximum() - raster_extent.xMinimum()
+        y_range = raster_extent.yMaximum() - raster_extent.yMinimum()
+        
+        l1_ncols = int(round(x_range / l1_cellsize))
+        l1_nrows = int(round(y_range / l1_cellsize))
+        
+        self.L1 = {
+            'ncols': l1_ncols,
+            'nrows': l1_nrows,
+            'xllcorner': xllcorner,
+            'yllcorner': yllcorner,
+            'cellsize': l1_cellsize,
+            'NODATA_value': -9999
+        }
+        
+        self.log_message(f"L1 information calculated:")
+        self.log_message(f"  ncols: {self.L1['ncols']}, nrows: {self.L1['nrows']}")
+        self.log_message(f"  xllcorner: {self.L1['xllcorner']}, yllcorner: {self.L1['yllcorner']}")
+        self.log_message(f"  cellsize: {self.L1['cellsize']:.2f}")
+        
+        # L11: Exactly same as L1
+        self.L11 = {
+            'ncols': l1_ncols,
+            'nrows': l1_nrows,
+            'xllcorner': xllcorner,
+            'yllcorner': yllcorner,
+            'cellsize': l1_cellsize,
+            'NODATA_value': -9999
+        }
+        
+        self.log_message(f"L11 information (same as L1):")
+        self.log_message(f"  ncols: {self.L11['ncols']}, nrows: {self.L11['nrows']}")
+        self.log_message(f"  cellsize: {self.L11['cellsize']:.2f}")
+        
+        # Convert L2 cell size to meters if needed
+        l2_cellsize = l2_value
+        if l2_unit == "°":
+            # Convert degrees to meters
+            l2_cellsize = l2_value * 111000
+            self.log_message(f"L2 cell size converted from {l2_value}° to {l2_cellsize:.2f} m")
+        
+        # L2: Calculate new ncols and nrows based on L2 cell size
+        l2_ncols = int(round(x_range / l2_cellsize))
+        l2_nrows = int(round(y_range / l2_cellsize))
+        
+        self.L2 = {
+            'ncols': l2_ncols,
+            'nrows': l2_nrows,
+            'xllcorner': xllcorner,
+            'yllcorner': yllcorner,
+            'cellsize': l2_cellsize,
+            'NODATA_value': -9999
+        }
+        
+        self.log_message(f"L2 information calculated:")
+        self.log_message(f"  ncols: {self.L2['ncols']}, nrows: {self.L2['nrows']}")
+        self.log_message(f"  xllcorner: {self.L2['xllcorner']}, yllcorner: {self.L2['yllcorner']}")
+        self.log_message(f"  cellsize: {self.L2['cellsize']:.2f}")
+        
+        # Create header files in input/latlon folder structure
+        input_folder = os.path.join(self.dialog.project_folder, "input")
+        latlon_folder = os.path.join(input_folder, "latlon")
+        os.makedirs(latlon_folder, exist_ok=True)
+        
+        # Create NetCDF file
+        self.log_message("\nCreating latlon.nc file...")
+        self.create_latlon_nc_file(latlon_folder)
+        
+        self.log_message("Lat/Lon header processing completed successfully.")
+        QMessageBox.information(
+            self.dialog, "Success",
+            "Lat/Lon headers and NetCDF file created successfully in input/latlon folder.")
+    
+    def create_latlon_nc_file(self, latlon_folder):
+        """
+        Create latlon.nc NetCDF file with L0, L1, and L11 information.
+        Includes xc/yc coordinates (1D arrays in UTM meters) and lat/lon values (2D arrays) for each level.
+        """
+        try:
+            import numpy as np
+            import xarray as xr
+            from pyproj import Transformer
+            import time
+            
+            # Get input CRS for coordinate transformation
+            input_crs = self.dialog.get_crs()
+            if not input_crs.isValid():
+                self.log_message("ERROR: Invalid input CRS. Cannot create latlon.nc file.")
+                return False
+            
+            # Get CRS string for pyproj
+            crs_string = None
+            if input_crs.postgisSrid():
+                crs_string = f"EPSG:{input_crs.postgisSrid()}"
+            else:
+                crs_string = input_crs.authid()
+            
+            if not crs_string:
+                self.log_message("ERROR: Could not determine CRS string. Cannot create latlon.nc file.")
+                return False
+            
+            # Create transformer from input CRS to WGS84 (EPSG:4326)
+            transformer = Transformer.from_crs(crs_string, "EPSG:4326", always_xy=True)
+            
+            # Helper function to calculate xc/yc arrays (1D) for a given level
+            def calculate_coordinate_arrays(L_info):
+                """
+                Calculate xc and yc 1D arrays for grid cell centers in UTM meters.
+                xc represents column centers, yc represents row centers.
+                """
+                ncols = L_info['ncols']
+                nrows = L_info['nrows']
+                xllcorner = L_info['xllcorner']
+                yllcorner = L_info['yllcorner']
+                cellsize = L_info['cellsize']
+                
+                # Calculate xc (column centers) - 1D array
+                # xc = xllcorner + (column_index + 0.5) * cellsize
+                xc = np.array([xllcorner + (i + 0.5) * cellsize for i in range(ncols)], dtype=np.float32)
+                
+                # Calculate yc (row centers) - 1D array
+                # yc = yllcorner + (row_index + 0.5) * cellsize
+                # Note: yllcorner is bottom-left, so we go from bottom to top
+                yc = np.array([yllcorner + (i + 0.5) * cellsize for i in range(nrows)], dtype=np.float32)
+                
+                return xc, yc
+            
+            # Helper function to calculate lat/lon 2D arrays
+            def calculate_latlon_arrays(L_info, xc, yc):
+                """
+                Calculate lat and lon 2D arrays from xc/yc coordinates.
+                Creates a meshgrid and transforms UTM coordinates to lat/lon.
+                """
+                ncols = L_info['ncols']
+                nrows = L_info['nrows']
+                
+                # Create meshgrid of xc and yc
+                x_grid, y_grid = np.meshgrid(xc, yc)
+                
+                # Transform to lat/lon (transformer expects x, y and returns lon, lat)
+                lon_array, lat_array = transformer.transform(x_grid.flatten(), y_grid.flatten())
+                
+                # Reshape to 2D (nrows, ncols)
+                lon_2d = np.array(lon_array, dtype=np.float64).reshape(nrows, ncols)
+                lat_2d = np.array(lat_array, dtype=np.float64).reshape(nrows, ncols)
+                
+                return lat_2d, lon_2d
+            
+            # Calculate coordinates for each level
+            self.log_message("Calculating coordinate arrays for L0...")
+            xc_l0, yc_l0 = calculate_coordinate_arrays(self.L0)
+            lat_l0, lon_l0 = calculate_latlon_arrays(self.L0, xc_l0, yc_l0)
+            
+            self.log_message("Calculating coordinate arrays for L1...")
+            xc_l1, yc_l1 = calculate_coordinate_arrays(self.L1)
+            lat_l1, lon_l1 = calculate_latlon_arrays(self.L1, xc_l1, yc_l1)
+            
+            self.log_message("Calculating coordinate arrays for L11...")
+            xc_l11, yc_l11 = calculate_coordinate_arrays(self.L11)
+            lat_l11, lon_l11 = calculate_latlon_arrays(self.L11, xc_l11, yc_l11)
+            
+            # Create xarray Dataset
+            self.log_message("Creating NetCDF dataset...")
+            
+            # Create dimensions and coordinate variables
+            ds = xr.Dataset(
+                {
+                    # L0 variables
+                    'xc_l0': (['xc_l0'], xc_l0),
+                    'yc_l0': (['yc_l0'], yc_l0),
+                    'lon_l0': (['yc_l0', 'xc_l0'], lon_l0),
+                    'lat_l0': (['yc_l0', 'xc_l0'], lat_l0),
+                    
+                    # L1 variables
+                    'xc': (['xc'], xc_l1),
+                    'yc': (['yc'], yc_l1),
+                    'lon': (['yc', 'xc'], lon_l1),
+                    'lat': (['yc', 'xc'], lat_l1),
+                    
+                    # L11 variables (same as L1)
+                    'xc_l11': (['xc_l11'], xc_l11),
+                    'yc_l11': (['yc_l11'], yc_l11),
+                    'lon_l11': (['yc_l11', 'xc_l11'], lon_l11),
+                    'lat_l11': (['yc_l11', 'xc_l11'], lat_l11),
+                },
+                attrs={
+                    'description': 'lat lon file',
+                    'projection': crs_string.lower(),
+                    'history': f'Created {time.ctime()}'
+                }
+            )
+            
+            # Set variable attributes
+            # L0 attributes
+            ds['xc_l0'].attrs['axis'] = 'X'
+            ds['yc_l0'].attrs['axis'] = 'Y'
+            ds['lon_l0'].attrs['units'] = 'degrees_east'
+            ds['lon_l0'].attrs['long_name'] = 'longitude at level 0'
+            ds['lat_l0'].attrs['units'] = 'degrees_north'
+            ds['lat_l0'].attrs['long_name'] = 'latitude at level 0'
+            
+            # L1 attributes
+            ds['xc'].attrs['axis'] = 'X'
+            ds['yc'].attrs['axis'] = 'Y'
+            ds['lon'].attrs['units'] = 'degrees_east'
+            ds['lon'].attrs['long_name'] = 'longitude at level 1'
+            ds['lat'].attrs['units'] = 'degrees_north'
+            ds['lat'].attrs['long_name'] = 'latitude at level 1'
+            
+            # L11 attributes
+            ds['xc_l11'].attrs['axis'] = 'X'
+            ds['yc_l11'].attrs['axis'] = 'Y'
+            ds['lon_l11'].attrs['units'] = 'degrees_east'
+            ds['lon_l11'].attrs['long_name'] = 'longitude at level 11'
+            ds['lat_l11'].attrs['units'] = 'degrees_north'
+            ds['lat_l11'].attrs['long_name'] = 'latitude at level 11'
+            
+            # Set encoding for compression
+            encoding = {
+                'lon_l0': {
+                    'zlib': True,
+                    'complevel': 9,
+                    '_FillValue': -9999.0,
+                    'chunksizes': (self.L0['nrows'], self.L0['ncols'])
+                },
+                'lat_l0': {
+                    'zlib': True,
+                    'complevel': 9,
+                    '_FillValue': -9999.0,
+                    'chunksizes': (self.L0['nrows'], self.L0['ncols'])
+                },
+                'lon': {
+                    'zlib': True,
+                    'complevel': 9,
+                    '_FillValue': -9999.0,
+                    'chunksizes': (self.L1['nrows'], self.L1['ncols'])
+                },
+                'lat': {
+                    'zlib': True,
+                    'complevel': 9,
+                    '_FillValue': -9999.0,
+                    'chunksizes': (self.L1['nrows'], self.L1['ncols'])
+                },
+                'lon_l11': {
+                    'zlib': True,
+                    'complevel': 9,
+                    '_FillValue': -9999.0,
+                    'chunksizes': (self.L11['nrows'], self.L11['ncols'])
+                },
+                'lat_l11': {
+                    'zlib': True,
+                    'complevel': 9,
+                    '_FillValue': -9999.0,
+                    'chunksizes': (self.L11['nrows'], self.L11['ncols'])
+                },
+            }
+            
+            # Save to NetCDF file
+            output_file = os.path.join(latlon_folder, "latlon_1.nc")
+            ds.to_netcdf(output_file, encoding=encoding)
+            
+            self.log_message(f"NetCDF file created successfully: {output_file}")
+            return True
+            
+        except ImportError as e:
+            self.log_message(f"ERROR: Required library not available: {e}")
+            QMessageBox.warning(
+                self.dialog, "Missing Dependency",
+                f"Required library not available: {e}\n"
+                "Please install: pip install xarray netCDF4 pyproj numpy")
+            return False
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            self.log_message(f"ERROR creating latlon.nc file: {e}\n{error_details}")
+            QMessageBox.critical(
+                self.dialog, "Error",
+                f"Error creating latlon.nc file:\n{str(e)}")
+            return False
+    
     def write_all_layers(self):
         """
         Convert all masked layers to ASCII format using gdal:translate.
@@ -3235,7 +3635,8 @@ class MorphologyProcessor(DialogUtils):
         11. snap
         12. upslope area
         13. mask all layers
-        14. write all layers (convert to ASCII)
+        14. process lat/lon headers
+        15. write all layers (convert to ASCII)
         """
         self.log_message("\n=== Starting Execute All Processing ===")
         
@@ -3250,84 +3651,88 @@ class MorphologyProcessor(DialogUtils):
         
         try:
             # Step 1: Fill DEM
-            self.log_message("\n--- Step 1/14: Fill DEM ---")
+            self.log_message("\n--- Step 1/15: Fill DEM ---")
             self.fill_dem()
             if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
                 self.log_message("ERROR: Fill DEM failed. Aborting Execute All.")
                 return
             
             # Step 2: Slope
-            self.log_message("\n--- Step 2/14: Process Slope ---")
+            self.log_message("\n--- Step 2/15: Process Slope ---")
             self.process_slope()
             
             # Step 3: Aspect
-            self.log_message("\n--- Step 3/14: Process Aspect ---")
+            self.log_message("\n--- Step 3/15: Process Aspect ---")
             self.process_aspect()
             
             # Step 4: Land Cover
-            self.log_message("\n--- Step 4/14: Process Land Cover ---")
+            self.log_message("\n--- Step 4/15: Process Land Cover ---")
             self.process_land_use()
             
             # Step 5: Soil
-            self.log_message("\n--- Step 5/14: Process Soil ---")
+            self.log_message("\n--- Step 5/15: Process Soil ---")
             self.process_soil()
             
             # Step 6: Geology
-            self.log_message("\n--- Step 6/14: Process Geology ---")
+            self.log_message("\n--- Step 6/15: Process Geology ---")
             self.process_geology()
             
             # Step 7: Flow Accumulation
-            self.log_message("\n--- Step 7/14: Process Flow Accumulation ---")
+            self.log_message("\n--- Step 7/15: Process Flow Accumulation ---")
             self.process_flow_accumulation()
             if not self.flow_accumulation_path or not os.path.exists(self.flow_accumulation_path):
                 self.log_message("ERROR: Flow Accumulation failed. Aborting Execute All.")
                 return
             
             # Step 8: Flow Direction
-            self.log_message("\n--- Step 8/14: Process Flow Direction ---")
+            self.log_message("\n--- Step 8/15: Process Flow Direction ---")
             self.process_flow_direction()
             if not self.flow_direction_path or not os.path.exists(self.flow_direction_path):
                 self.log_message("ERROR: Flow Direction failed. Aborting Execute All.")
                 return
             
             # Step 9: ID Gauges (Gauge Position) - Note: requires snap points, will be processed after step 11
-            self.log_message("\n--- Step 9/14: Process ID Gauges (deferred until after snap points) ---")
+            self.log_message("\n--- Step 9/15: Process ID Gauges (deferred until after snap points) ---")
             # This will be processed after snap points in step 11
             
             # Step 10: Channel Network
-            self.log_message("\n--- Step 10/14: Process Channel Network ---")
+            self.log_message("\n--- Step 10/15: Process Channel Network ---")
             self.process_channel_network()
             if not self.channel_network_vector_path or not os.path.exists(self.channel_network_vector_path):
                 self.log_message("ERROR: Channel Network failed. Aborting Execute All.")
                 return
             
             # Step 11: Snap Points
-            self.log_message("\n--- Step 11/14: Snap Points ---")
+            self.log_message("\n--- Step 11/15: Snap Points ---")
             if not self.check_prerequisites(needs_pour_points=True):
                 self.log_message("WARNING: Pour points not available. Skipping Snap Points step.")
             else:
                 self.snap_points()
                 # Now process ID Gauges (Step 9) after snap points are created
                 if self.snapped_points_path and os.path.exists(self.snapped_points_path):
-                    self.log_message("\n--- Processing Step 9/14: ID Gauges (now that snap points are available) ---")
+                    self.log_message("\n--- Processing Step 9/15: ID Gauges (now that snap points are available) ---")
                     self.process_gauge_position()
             
             # Step 12: Upslope Area (Delineate Watershed)
-            self.log_message("\n--- Step 12/14: Delineate Watershed (Upslope Area) ---")
+            self.log_message("\n--- Step 12/15: Delineate Watershed (Upslope Area) ---")
             if not self.snapped_points_path or not os.path.exists(self.snapped_points_path):
                 self.log_message("WARNING: Snapped points not available. Skipping Upslope Area step.")
             else:
                 self.delineate_watershed()
             
             # Step 13: Mask All Layers
-            self.log_message("\n--- Step 13/14: Mask All Layers ---")
+            self.log_message("\n--- Step 13/15: Mask All Layers ---")
             if not self.merged_watershed_path or not os.path.exists(self.merged_watershed_path):
                 self.log_message("WARNING: Merged watershed not available. Skipping Mask All Layers step.")
             else:
                 self.mask_all_layers()
             
-            # Step 14: Write All Layers (Convert to ASCII)
-            self.log_message("\n--- Step 14/14: Write All Layers (Convert to ASCII) ---")
+            # Step 14: Process Lat/Lon Headers
+            self.log_message("\n--- Step 14/15: Process Lat/Lon Headers ---")
+            self.process_lat_lon()
+            
+            # Step 15: Write All Layers (Convert to ASCII)
+            self.log_message("\n--- Step 15/15: Write All Layers (Convert to ASCII) ---")
             self.write_all_layers()
             
             self.log_message("\n=== Execute All Processing Completed Successfully ===")
