@@ -63,6 +63,7 @@ class MorphologyProcessor(DialogUtils):
         self.snapped_points_path = None
         self.watershed_raster_path = None
         self.watershed_vector_path = None
+        self.merged_watershed_path = None
 
         # Hydrological processing paths
         self.aspect_path = None
@@ -101,29 +102,44 @@ class MorphologyProcessor(DialogUtils):
 
         files_to_check = {
             # Original processing files
-            'filled_dem_path': "1_dem_filled.sdat",
-            'flow_dir_path': "2_flow_direction.sdat",
+            'filled_dem_path': ("1_dem_filled.tif", "1_dem_filled.sdat"),
+            'flow_dir_path': ("2_flow_direction.tif", "2_flow_direction.sdat"),
             'channel_network_vector_path': "2_channel_network.shp",
             'snapped_points_path': "2_pour_points_snapped.shp",
-            'watershed_raster_path': "1_watershed_raster.sdat",
+            'watershed_raster_path': ("4_watershed_raster.tif", "1_watershed_raster.sdat"),
             'watershed_vector_path': "1_watershed_final.shp",
+            'merged_watershed_path': (
+                os.path.join("Watersheds", "4_watershed_merged_vector.shp"),
+                "4_watershed_merged_vector.shp"
+            ),
 
             # New hydrological processing files
-            'aspect_path': "1_dem_aspect.sdat",
-            'slope_path': "1_dem_slope.sdat",
+            'aspect_path': ("1_dem_aspect.tif", "1_dem_aspect.sdat"),
+            'slope_path': ("1_dem_slope.tif", "1_dem_slope.sdat"),
             'flow_direction_path': "2_flow_direction.tif",
             'flow_accumulation_path': "2_flow_accumulation.tif",
-            'flow_accumulation_area_path': "2_flow_accumulation_area.sdat",
+            'flow_accumulation_area_path': ("2_flow_accumulation_area.tif", "2_flow_accumulation_area.sdat"),
             'gauge_position_path': "2_gauge_position.tif"
         }
 
         found_any = False
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
-        for attr, filename in files_to_check.items():
-            expected_path = os.path.join(geometry_folder, filename)
-            if os.path.exists(expected_path):
-                setattr(self, attr, expected_path)
-                self.log_message(f"Found existing file: {filename}")
+        for attr, filenames in files_to_check.items():
+            if isinstance(filenames, str):
+                filenames = (filenames,)
+
+            matched_path = None
+            matched_filename = None
+            for filename in filenames:
+                expected_path = os.path.join(geometry_folder, filename)
+                if os.path.exists(expected_path):
+                    matched_path = expected_path
+                    matched_filename = filename
+                    break
+
+            if matched_path:
+                setattr(self, attr, matched_path)
+                self.log_message(f"Found existing file: {matched_filename}")
                 found_any = True
             else:
                 setattr(self, attr, None)
@@ -389,15 +405,369 @@ class MorphologyProcessor(DialogUtils):
         else:
             self.log_message("ERROR: Failed to convert DEM to ASC format.")
 
+    def _get_python_morphology_deps(self):
+        """
+        Load the Python morphology stack used in the workshop notebook.
+
+        Imports are lazy so the plugin can still open even if a user's QGIS
+        Python environment has not installed the optional morphology packages.
+        """
+        if hasattr(self, "_python_morphology_deps"):
+            return self._python_morphology_deps
+
+        missing = []
+        deps = {}
+
+        try:
+            import numpy as np
+            deps["np"] = np
+        except ImportError:
+            missing.append("numpy")
+
+        try:
+            import pyflwdir as pfd
+            deps["pfd"] = pfd
+        except ImportError:
+            missing.append("pyflwdir")
+
+        try:
+            from affine import Affine
+            deps["Affine"] = Affine
+        except ImportError:
+            missing.append("affine")
+
+        try:
+            from osgeo import gdal, osr
+            deps["gdal"] = gdal
+            deps["osr"] = osr
+        except ImportError:
+            missing.append("GDAL Python bindings (osgeo)")
+
+        if missing:
+            message = (
+                "Python morphology processing requires these packages in the "
+                f"QGIS Python environment: {', '.join(missing)}."
+            )
+            self.log_message(f"ERROR: {message}")
+            QMessageBox.critical(
+                self.dialog, "Missing Python Dependencies", message)
+            return None
+
+        self._python_morphology_deps = deps
+        return deps
+
+    def _read_raster_array(self, raster_path, as_float=False):
+        """Read a single-band raster into a NumPy array with GDAL metadata."""
+        deps = self._get_python_morphology_deps()
+        if not deps:
+            return None
+
+        gdal = deps["gdal"]
+        ds = gdal.Open(raster_path)
+        if ds is None:
+            self.log_message(f"ERROR: Could not open raster: {raster_path}")
+            return None
+
+        band = ds.GetRasterBand(1)
+        array = band.ReadAsArray()
+        if as_float:
+            array = array.astype(deps["np"].float32)
+
+        metadata = {
+            "array": array,
+            "nodata": band.GetNoDataValue(),
+            "geotransform": ds.GetGeoTransform(),
+            "projection": ds.GetProjection(),
+            "rows": ds.RasterYSize,
+            "cols": ds.RasterXSize,
+        }
+
+        band = None
+        ds = None
+        return metadata
+
+    def _write_raster_array(self, output_path, array, reference, nodata=None, gdal_type=None):
+        """Write a NumPy array as a single-band GeoTIFF using reference metadata."""
+        deps = self._get_python_morphology_deps()
+        if not deps:
+            return False
+
+        gdal = deps["gdal"]
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        if os.path.exists(output_path):
+            try:
+                os.remove(output_path)
+            except Exception as e:
+                self.log_message(f"ERROR: Could not remove existing raster {output_path}: {e}")
+                return False
+
+        if gdal_type is None:
+            gdal_type = gdal.GDT_Float32
+
+        driver = gdal.GetDriverByName("GTiff")
+        ds = driver.Create(
+            output_path,
+            int(reference["cols"]),
+            int(reference["rows"]),
+            1,
+            gdal_type,
+            options=["COMPRESS=LZW"]
+        )
+        if ds is None:
+            self.log_message(f"ERROR: Could not create raster: {output_path}")
+            return False
+
+        ds.SetGeoTransform(reference["geotransform"])
+        if reference.get("projection"):
+            ds.SetProjection(reference["projection"])
+
+        band = ds.GetRasterBand(1)
+        if nodata is not None:
+            band.SetNoDataValue(float(nodata))
+        band.WriteArray(array)
+        band.FlushCache()
+        band = None
+        ds = None
+        return os.path.exists(output_path)
+
+    def _projection_is_geographic(self, projection, osr):
+        """Return True when GDAL projection WKT describes a geographic CRS."""
+        if not projection:
+            return False
+        spatial_ref = osr.SpatialReference()
+        if spatial_ref.ImportFromWkt(projection) != 0:
+            return False
+        return bool(spatial_ref.IsGeographic())
+
+    def _reference_cell_area_m2(self, reference, deps):
+        """Approximate raster cell area in square metres for channel thresholds."""
+        geotransform = reference["geotransform"]
+        pixel_width = abs(float(geotransform[1]))
+        pixel_height = abs(float(geotransform[5]))
+
+        if self._projection_is_geographic(reference.get("projection"), deps["osr"]):
+            center_lat = geotransform[3] + geotransform[5] * reference["rows"] / 2.0
+            lat_m = pixel_height * 110574.0
+            lon_m = pixel_width * 111320.0 * math.cos(math.radians(center_lat))
+            return max(abs(lat_m * lon_m), 1.0)
+
+        return max(pixel_width * pixel_height, 1.0)
+
+    def _normalise_dem_array(self, array, nodata):
+        """Prepare DEM data for pyflwdir using a finite -9999 nodata value."""
+        deps = self._get_python_morphology_deps()
+        if not deps:
+            return None, None, None
+
+        np = deps["np"]
+        pyflwdir_nodata = -9999.0
+        dem = array.astype(np.float32, copy=True)
+        invalid_mask = ~np.isfinite(dem)
+
+        if nodata is not None and np.isfinite(nodata):
+            invalid_mask |= np.isclose(dem, nodata)
+
+        dem[invalid_mask] = pyflwdir_nodata
+        return dem, invalid_mask, pyflwdir_nodata
+
+    def _build_flwdir_from_filled_dem(self):
+        """Build a pyflwdir object from the filled DEM."""
+        if not self._ensure_filled_dem():
+            return None
+
+        deps = self._get_python_morphology_deps()
+        if not deps:
+            return None
+
+        reference = self._read_raster_array(self.filled_dem_path, as_float=True)
+        if not reference:
+            return None
+
+        dem, invalid_mask, nodata = self._normalise_dem_array(
+            reference["array"], reference["nodata"])
+        if dem is None:
+            return None
+
+        transform = deps["Affine"].from_gdal(*reference["geotransform"])
+        latlon = self._projection_is_geographic(
+            reference.get("projection"), deps["osr"])
+        flwdir = deps["pfd"].from_dem(
+            dem, nodata=nodata, transform=transform, latlon=latlon)
+
+        return {
+            "deps": deps,
+            "flwdir": flwdir,
+            "reference": reference,
+            "invalid_mask": invalid_mask,
+            "nodata": nodata,
+        }
+
+    def _remove_vector_dataset(self, path):
+        """Remove a shapefile and its sidecar files if they exist."""
+        base, _ = os.path.splitext(path)
+        for extension in (".shp", ".shx", ".dbf", ".prj", ".cpg", ".qpj", ".fix"):
+            sidecar = base + extension
+            if os.path.exists(sidecar):
+                try:
+                    os.remove(sidecar)
+                except Exception as e:
+                    self.log_message(f"WARNING: Could not remove {sidecar}: {e}")
+
+    def _copy_nonzero_polygons(self, input_path, output_path, field_name="DN"):
+        """Copy polygonized basin features with non-zero IDs to a clean shapefile."""
+        source_layer = QgsVectorLayer(input_path, "Watershed_Raw", "ogr")
+        if not source_layer.isValid():
+            self.log_message(f"ERROR: Could not load polygonized watershed: {input_path}")
+            return False
+
+        self._remove_vector_dataset(output_path)
+        writer = QgsVectorFileWriter(
+            output_path,
+            "UTF-8",
+            source_layer.fields(),
+            source_layer.wkbType(),
+            source_layer.crs(),
+            "ESRI Shapefile"
+        )
+        if writer.hasError() != QgsVectorFileWriter.NoError:
+            self.log_message(f"ERROR creating watershed vector: {writer.errorMessage()}")
+            return False
+
+        copied = 0
+        for feature in source_layer.getFeatures():
+            value = feature.attribute(field_name)
+            try:
+                keep_feature = value not in (None, NULL) and float(value) != 0.0
+            except (TypeError, ValueError):
+                keep_feature = False
+
+            if keep_feature:
+                writer.addFeature(feature)
+                copied += 1
+
+        del writer
+        if copied == 0:
+            self.log_message("WARNING: Polygonized watershed had no non-zero basin polygons.")
+            return False
+
+        return os.path.exists(output_path)
+
+    def _slope_scale_for_dem(self, dem_layer):
+        """Match the notebook's gdaldem scale choice for geographic DEMs."""
+        crs = dem_layer.crs()
+        if crs.isValid() and crs.isGeographic():
+            return 111200.0
+        return 1.0
+
+    def _geometry_path(self, filename):
+        """Return an output path in the project Geometry folder."""
+        return os.path.join(self.dialog.project_folder, "Geometry", filename)
+
+    def _restore_existing_path(self, attr_name, *filenames):
+        """Restore an output path attribute if a known file already exists."""
+        current_path = getattr(self, attr_name, None)
+        if current_path and os.path.exists(current_path):
+            return current_path
+
+        for filename in filenames:
+            path = self._geometry_path(filename)
+            if os.path.exists(path):
+                setattr(self, attr_name, path)
+                return path
+
+        return None
+
+    def _ensure_filled_dem(self):
+        """Create the filled DEM if it has not been generated yet."""
+        if self._restore_existing_path(
+                "filled_dem_path", "1_dem_filled.tif", "1_dem_filled.sdat"):
+            return True
+
+        self.log_message("Filled DEM is missing. Running Fill DEM first...")
+        self.fill_dem()
+        return bool(self.filled_dem_path and os.path.exists(self.filled_dem_path))
+
+    def _ensure_flow_accumulation(self):
+        """Create flow accumulation if it has not been generated yet."""
+        if self._restore_existing_path("flow_accumulation_path", "2_flow_accumulation.tif"):
+            self._restore_existing_path(
+                "flow_accumulation_area_path",
+                "2_flow_accumulation_area.tif",
+                "2_flow_accumulation_area.sdat"
+            )
+            return True
+
+        if not self._ensure_filled_dem():
+            return False
+
+        self.log_message("Flow accumulation is missing. Running Flow Accumulation first...")
+        self.process_flow_accumulation()
+        return bool(self.flow_accumulation_path and os.path.exists(self.flow_accumulation_path))
+
+    def _ensure_flow_direction(self):
+        """Create flow direction if it has not been generated yet."""
+        if self._restore_existing_path("flow_direction_path", "2_flow_direction.tif"):
+            return True
+
+        if not self._ensure_filled_dem():
+            return False
+
+        self.log_message("Flow direction is missing. Running Flow Direction first...")
+        self.process_flow_direction()
+        return bool(self.flow_direction_path and os.path.exists(self.flow_direction_path))
+
+    def _ensure_channel_network(self):
+        """Create the channel network if it has not been generated yet."""
+        if self._restore_existing_path("channel_network_vector_path", "2_channel_network.shp"):
+            return True
+
+        if not self._ensure_flow_accumulation():
+            return False
+
+        self.log_message("Channel network is missing. Running Create Network first...")
+        self.process_channel_network()
+        return bool(self.channel_network_vector_path and os.path.exists(self.channel_network_vector_path))
+
+    def _ensure_snapped_points(self):
+        """Snap pour points if the snapped output is not available."""
+        if self._restore_existing_path("snapped_points_path", "2_pour_points_snapped.shp"):
+            return True
+
+        if not self.check_prerequisites(needs_pour_points=True):
+            return False
+
+        if not self._ensure_channel_network():
+            return False
+
+        self.log_message("Snapped pour points are missing. Running Snap Points first...")
+        self.snap_points()
+        return bool(self.snapped_points_path and os.path.exists(self.snapped_points_path))
+
+    def _ensure_merged_watershed(self):
+        """Create the merged watershed vector if it has not been generated yet."""
+        if self._restore_existing_path(
+                "merged_watershed_path",
+                os.path.join("Watersheds", "4_watershed_merged_vector.shp"),
+                "4_watershed_merged_vector.shp"):
+            return True
+
+        if not self._ensure_snapped_points():
+            return False
+
+        self.log_message("Merged watershed is missing. Running Watershed Delineation first...")
+        self.delineate_watershed()
+        return bool(self.merged_watershed_path and os.path.exists(self.merged_watershed_path))
+
     def fill_dem(self):
-        """Step 1: Fill Sinks in DEM using SAGA NG's Wang & Liu algorithm."""
+        """Step 1: Fill sinks in the DEM using pyflwdir, as in the workshop notebook."""
         self.log_message("\n--- Starting Geometry Step 1: Fill DEM ---")
         if not self.check_prerequisites():
             return
 
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
         self.filled_dem_path = os.path.join(
-            geometry_folder, "1_dem_filled.sdat")
+            geometry_folder, "1_dem_filled.tif")
 
         # Check if filled DEM already exists
         if self.filled_dem_path and os.path.exists(self.filled_dem_path):
@@ -416,34 +786,61 @@ class MorphologyProcessor(DialogUtils):
         if not self.dem_layer:
             self.dem_layer = dem_layer
 
-        params = {
-            'ELEV': self.dem_layer,  # Use reprojected DEM layer
-            'MINSLOPE': 0.01,
-            'FILLED': self.filled_dem_path,
-            'FDIR': 'TEMPORARY_OUTPUT',
-            'WSHED': 'TEMPORARY_OUTPUT'
-        }
-        result = self.run_processing_algorithm(
-            "sagang:fillsinkswangliu", params)
-        if result:
-            self.load_layer(result['FILLED'], "1_DEM_Filled")
+        deps = self._get_python_morphology_deps()
+        if not deps:
+            self.filled_dem_path = None
+            return
+
+        dem_source = self.dem_layer.source()
+        reference = self._read_raster_array(dem_source, as_float=True)
+        if not reference:
+            self.filled_dem_path = None
+            return
+
+        dem, invalid_mask, pyflwdir_nodata = self._normalise_dem_array(
+            reference["array"], reference["nodata"])
+        if dem is None:
+            self.filled_dem_path = None
+            return
+
+        self.log_message("Filling DEM depressions with pyflwdir.dem.fill_depressions...")
+        try:
+            filled_dem, filled_mask = deps["pfd"].dem.fill_depressions(
+                dem, nodata=pyflwdir_nodata)
+        except Exception as e:
+            self.log_message(f"ERROR: pyflwdir DEM filling failed: {e}")
+            QMessageBox.critical(
+                self.dialog, "Processing Error",
+                f"pyflwdir DEM filling failed.\n{e}")
+            self.filled_dem_path = None
+            return
+
+        filled_dem = filled_dem.astype(deps["np"].float32)
+        filled_dem[invalid_mask] = pyflwdir_nodata
+
+        if self._write_raster_array(
+                self.filled_dem_path,
+                filled_dem,
+                reference,
+                nodata=pyflwdir_nodata,
+                gdal_type=deps["gdal"].GDT_Float32):
+            filled_cells = int(deps["np"].count_nonzero(
+                filled_mask)) if filled_mask is not None else 0
+            self.load_layer(self.filled_dem_path, "1_DEM_Filled")
+            self.log_message(
+                f"DEM filled successfully with pyflwdir ({filled_cells} adjusted cells).")
         else:
+            self.log_message("ERROR: Failed to write filled DEM raster.")
             self.filled_dem_path = None
 
     def process_channel_network(self):
-        """Process Flow Direction and Channel Network."""
-        if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
-            QMessageBox.warning(
-                self.dialog, "Dependency Error", "Please run Step 1 (Fill DEM) successfully first.")
+        """Create a stream network vector from pyflwdir flow accumulation."""
+        if not self._ensure_filled_dem():
             return
 
-        # Ensure flow accumulation is processed first (required for channel network)
-        self.process_flow_accumulation()
-
-        # Check if flow accumulation area exists (required dependency for channel network)
-        if not self.flow_accumulation_area_path or not os.path.exists(self.flow_accumulation_area_path):
-            QMessageBox.warning(
-                self.dialog, "Dependency Error", "Flow accumulation area processing failed or file not found.")
+        # Keep the UI workflow consistent with the notebook: filled DEM,
+        # flow accumulation, then stream extraction.
+        if not self._ensure_flow_accumulation():
             return
 
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
@@ -457,29 +854,105 @@ class MorphologyProcessor(DialogUtils):
             self.load_layer(self.channel_network_vector_path,
                             "2_Channel_Network", is_raster=False)
         else:
-            self.log_message("Processing Channel Network...")
-            params_chnl = {
-                'ELEVATION': self.filled_dem_path,
-                'SINKROUTE': None,
-                'CHNLNTWRK': 'TEMPORARY_OUTPUT',
-                'CHNLROUTE': 'TEMPORARY_OUTPUT',
-                'SHAPES': self.channel_network_vector_path,
-                'INIT_GRID': self.flow_accumulation_area_path,
-                'INIT_METHOD': 2,       # Greater than
-                # Threshold for channel initiation (area-based, e.g., m²)
-                'INIT_VALUE': 10000000.0,
-                'DIV_GRID': None,
-                'DIV_CELLS': 5.0,
-                'TRACE_WEIGHT': None,
-                'MINLEN': 10.0
-            }
-            result_chnl = self.run_processing_algorithm(
-                "sagang:channelnetwork", params_chnl)
-            if result_chnl:
+            self.log_message("Processing Channel Network with pyflwdir...")
+
+            context = self._build_flwdir_from_filled_dem()
+            if not context:
+                self.log_message("Channel Network processing failed.")
+                self.channel_network_vector_path = None
+                return
+
+            deps = context["deps"]
+            np = deps["np"]
+            flwdir = context["flwdir"]
+            reference = context["reference"]
+            invalid_mask = context["invalid_mask"]
+
+            flow_accumulation = flwdir.upstream_area(unit="cell")
+            flow_accumulation[invalid_mask] = 0
+
+            cell_area_m2 = self._reference_cell_area_m2(reference, deps)
+            channel_area_threshold_m2 = 10000000.0
+            threshold_cells = max(
+                1, int(round(channel_area_threshold_m2 / cell_area_m2)))
+
+            valid_accumulation = flow_accumulation[flow_accumulation > 0]
+            if valid_accumulation.size == 0:
+                self.log_message("ERROR: No valid flow accumulation cells found.")
+                self.channel_network_vector_path = None
+                return
+
+            max_accumulation = int(np.nanmax(valid_accumulation))
+            if threshold_cells > max_accumulation:
+                threshold_cells = max(1, int(np.nanpercentile(valid_accumulation, 95)))
+                self.log_message(
+                    "Channel threshold exceeded the basin accumulation. "
+                    f"Using 95th percentile threshold: {threshold_cells} cells.")
+
+            stream_mask = flow_accumulation >= threshold_cells
+            stream_order = flwdir.stream_order("strahler", mask=stream_mask)
+            features = flwdir.streams(
+                mask=stream_mask,
+                strord=stream_order,
+                uparea=flow_accumulation
+            )
+
+            if not features:
+                self.log_message("ERROR: pyflwdir did not produce any stream features.")
+                self.channel_network_vector_path = None
+                return
+
+            fields = QgsFields()
+            fields.append(QgsField("Order", QVariant.Int))
+            fields.append(QgsField("UpArea", QVariant.Double))
+            fields.append(QgsField("idx", QVariant.Int))
+            fields.append(QgsField("idx_ds", QVariant.Int))
+            fields.append(QgsField("pit", QVariant.Int))
+
+            filled_dem_layer = QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
+            output_crs = filled_dem_layer.crs() if filled_dem_layer.isValid() else self.dialog.get_crs()
+
+            self._remove_vector_dataset(self.channel_network_vector_path)
+            writer = QgsVectorFileWriter(
+                self.channel_network_vector_path,
+                "UTF-8",
+                fields,
+                QgsWkbTypes.LineString,
+                output_crs,
+                "ESRI Shapefile"
+            )
+            if writer.hasError() != QgsVectorFileWriter.NoError:
+                self.log_message(f"ERROR creating channel network: {writer.errorMessage()}")
+                self.channel_network_vector_path = None
+                return
+
+            written = 0
+            for pyflwdir_feature in features:
+                coordinates = pyflwdir_feature.get("geometry", {}).get("coordinates", [])
+                if len(coordinates) < 2:
+                    continue
+
+                properties = pyflwdir_feature.get("properties", {})
+                qgs_feature = QgsFeature(fields)
+                qgs_feature.setGeometry(QgsGeometry.fromPolylineXY([
+                    QgsPointXY(float(x), float(y)) for x, y in coordinates
+                ]))
+                qgs_feature.setAttribute("Order", int(properties.get("strord", 1)))
+                qgs_feature.setAttribute("UpArea", float(properties.get("uparea", 0.0)))
+                qgs_feature.setAttribute("idx", int(properties.get("idx", -1)))
+                qgs_feature.setAttribute("idx_ds", int(properties.get("idx_ds", -1)))
+                qgs_feature.setAttribute("pit", int(bool(properties.get("pit", False))))
+                writer.addFeature(qgs_feature)
+                written += 1
+
+            del writer
+
+            if written > 0 and os.path.exists(self.channel_network_vector_path):
                 self.load_layer(self.channel_network_vector_path,
                                 "2_Channel_Network", is_raster=False)
                 self.log_message(
-                    "Channel Network processing completed successfully.")
+                    f"Channel Network processing completed with {written} stream segments "
+                    f"(threshold: {threshold_cells} cells).")
             else:
                 self.log_message("Channel Network processing failed.")
                 self.channel_network_vector_path = None
@@ -504,9 +977,8 @@ class MorphologyProcessor(DialogUtils):
             return
 
         if not self.channel_network_vector_path or not os.path.exists(self.channel_network_vector_path):
-            QMessageBox.warning(
-                self.dialog, "Dependency Error", "Please run Step 2 (Create Network) successfully first.")
-            return
+            if not self._ensure_channel_network():
+                return
 
         pour_points_layer = self.dialog.mMapLayerComboBox_pour_points.currentLayer()
         temp_reprojected_path = None
@@ -560,7 +1032,7 @@ class MorphologyProcessor(DialogUtils):
             pour_points_layer=pour_points_layer,
             channel_network_layer=channel_network_layer,
             output_path=self.snapped_points_path,
-            order_field_name='Order',  # SAGA Channel Network tool typically uses 'ORDER'
+            order_field_name='Order',
             high_order_distance=1000.0,
             max_snap_distance=5000.0
         )
@@ -583,22 +1055,32 @@ class MorphologyProcessor(DialogUtils):
             self.snapped_points_path = None
 
     def delineate_watershed(self):
-        """Step 4: Delineate watershed using the snapped points and flow direction."""
+        """Step 4: Delineate upstream basins for snapped points with pyflwdir."""
         self.log_message(
             "\n--- Starting Geometry Step 4: Delineate Watershed ---")
-        if not self.snapped_points_path or not os.path.exists(self.snapped_points_path):
-            QMessageBox.warning(
-                self.dialog, "Dependency Error", "Please run Step 3 (Snap Points) successfully first.")
-            return
-        if not self.flow_direction_path or not os.path.exists(self.flow_direction_path):
-            QMessageBox.warning(
-                self.dialog, "Dependency Error", "Please run Step 2 (Create Network) successfully first.")
+        if not self.check_prerequisites(needs_pour_points=True):
             return
 
-        # Sub-step 4a: Delineate watersheds for each snapped point
-        self.log_message("Delineating watersheds for each snapped point...")
+        self.log_message("Preparing snapped pour points before watershed delineation...")
+        if not self._ensure_snapped_points():
+            return
 
-        # Load the snapped points layer
+        if not self._ensure_flow_direction():
+            return
+
+        context = self._build_flwdir_from_filled_dem()
+        if not context:
+            self.log_message("Watershed delineation failed.")
+            return
+
+        deps = context["deps"]
+        np = deps["np"]
+        gdal = deps["gdal"]
+        flwdir = context["flwdir"]
+        reference = context["reference"]
+
+        self.log_message("Delineating watersheds for each snapped point with pyflwdir...")
+
         snapped_points_layer = QgsVectorLayer(
             self.snapped_points_path, "Snapped Points", "ogr")
         if not snapped_points_layer.isValid():
@@ -606,80 +1088,84 @@ class MorphologyProcessor(DialogUtils):
                 self.dialog, "Error", "Could not load snapped points layer.")
             return
 
-        # Get all features from snapped points
         features = list(snapped_points_layer.getFeatures())
         if not features:
             QMessageBox.warning(self.dialog, "Error",
                                 "No snapped points found.")
             return
 
-        # Create a list to store all watershed outputs
-        watershed_outputs = []
-
-        # Loop over each snapped point
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        watershed_output_folder = os.path.join(geometry_folder, "Watersheds")
+        os.makedirs(watershed_output_folder, exist_ok=True)
+        self.log_message(f"Watershed outputs folder: {watershed_output_folder}")
+
+        watershed_outputs = []
+        field_names = snapped_points_layer.fields().names()
+
         for i, feature in enumerate(features):
-            # Get the geometry and attributes
             geom = feature.geometry()
+            if geom.isEmpty():
+                self.log_message(f"Warning: Skipping empty snapped point feature {feature.id()}.")
+                continue
+
             point = geom.asPoint()
-
-            # Get the Name attribute (use index if Name is not available)
-            name_attr = feature.attribute("Name")
+            name_attr = feature.attribute("Name") if "Name" in field_names else None
             if not name_attr or name_attr == NULL:
-                name_attr = f"Watershed_{i+1}"
+                name_attr = f"Watershed_{i + 1}"
 
-            # Clean the name for filename (remove invalid characters)
             clean_name = "".join(c for c in str(
                 name_attr) if c.isalnum() or c in (' ', '-', '_')).rstrip()
-            clean_name = clean_name.replace(' ', '_')
+            clean_name = clean_name.replace(' ', '_') or f"Watershed_{i + 1}"
 
             self.log_message(f"Processing watershed for point: {name_attr}")
 
-            # Create output path for this watershed
             watershed_raster_path = os.path.join(
-                geometry_folder, f"4_watershed_{clean_name}.sdat")
+                watershed_output_folder, f"4_watershed_{clean_name}.tif")
+            watershed_vector_raw_path = os.path.join(
+                watershed_output_folder, f"4_watershed_{clean_name}_raw.shp")
+            watershed_vector_path = os.path.join(
+                watershed_output_folder, f"4_watershed_{clean_name}.shp")
 
-            # Set up parameters for this specific point
-            params_ws = {
-                'TARGET': None,
-                'TARGET_PT_X': point.x(),
-                'TARGET_PT_Y': point.y(),
-                'ELEVATION': self.filled_dem_path,
-                'SINKROUTE': None,
-                'AREA': watershed_raster_path,
-                'METHOD': 0,
-                'CONVERGE': 1.1,
-                'MFD_CONTOUR': False
+            basin_id = i + 1
+            try:
+                basin_map = flwdir.basins(
+                    xy=([point.x()], [point.y()]),
+                    ids=[basin_id]
+                )
+            except Exception as e:
+                self.log_message(f"Failed to delineate watershed for {name_attr}: {e}")
+                continue
+
+            watershed_raster = np.where(basin_map == basin_id, basin_id, 0).astype(np.int32)
+            wrote_raster = self._write_raster_array(
+                watershed_raster_path,
+                watershed_raster,
+                reference,
+                nodata=0,
+                gdal_type=gdal.GDT_Int32)
+            if not wrote_raster:
+                self.log_message(f"Failed to write watershed raster for point: {name_attr}")
+                continue
+
+            self.log_message(f"Polygonizing watershed raster for: {name_attr}")
+            self._remove_vector_dataset(watershed_vector_raw_path)
+            params_poly = {
+                'INPUT': watershed_raster_path,
+                'BAND': 1,
+                'FIELD': 'DN',
+                'EIGHT_CONNECTEDNESS': False,
+                'EXTRA': '',
+                'OUTPUT': watershed_vector_raw_path
             }
 
-            # Run watershed delineation for this point
-            result_ws = self.run_processing_algorithm(
-                "sagang:upslopearea", params_ws)
+            result_poly = self.run_processing_algorithm(
+                "gdal:polygonize", params_poly)
 
-            if result_ws and os.path.exists(watershed_raster_path):
-                # Polygonize the watershed raster and save as shapefile
-                watershed_vector_path = os.path.join(
-                    geometry_folder, f"4_watershed_{clean_name}.shp")
-
-                self.log_message(
-                    f"Polygonizing watershed raster for: {name_attr}")
-
-                params_poly = {
-                    'INPUT': watershed_raster_path,
-                    'BAND': 1,
-                    'FIELD': 'DN',
-                    'EIGHT_CONNECTEDNESS': False,
-                    'EXTRA': '',
-                    'OUTPUT': watershed_vector_path
-                }
-
-                result_poly = self.run_processing_algorithm(
-                    "gdal:polygonize", params_poly)
-
-                if result_poly and os.path.exists(watershed_vector_path):
+            if result_poly and os.path.exists(watershed_vector_raw_path):
+                if self._copy_nonzero_polygons(
+                        watershed_vector_raw_path, watershed_vector_path):
                     self.log_message(
                         f"Watershed polygon saved: {watershed_vector_path}")
-
                     watershed_outputs.append({
                         'name': name_attr,
                         'clean_name': clean_name,
@@ -687,45 +1173,40 @@ class MorphologyProcessor(DialogUtils):
                         'vector_path': watershed_vector_path,
                         'point': point
                     })
+                    self.load_layer(watershed_raster_path,
+                                    f"4_Watershed_{clean_name}")
                 else:
                     self.log_message(
-                        f"Warning: Failed to polygonize watershed for: {name_attr}")
-                    # Still add to outputs even if polygonization failed
-                    watershed_outputs.append({
-                        'name': name_attr,
-                        'clean_name': clean_name,
-                        'raster_path': watershed_raster_path,
-                        'vector_path': None,
-                        'point': point
-                    })
+                        f"Warning: Failed to filter watershed polygon for: {name_attr}")
 
-                self.load_layer(watershed_raster_path,
-                                f"4_Watershed_{clean_name}")
+                self._remove_vector_dataset(watershed_vector_raw_path)
             else:
                 self.log_message(
-                    f"Failed to create watershed for point: {name_attr}")
+                    f"Warning: Failed to polygonize watershed for: {name_attr}")
 
         if not watershed_outputs:
             QMessageBox.warning(
                 self.dialog, "Error", "No watersheds were successfully created.")
             return
 
-        # Merge all polygonized watershed shapefiles into one
+        self.watershed_raster_path = watershed_outputs[0]["raster_path"]
+        self.watershed_vector_path = watershed_outputs[0]["vector_path"]
+
         self.log_message("Merging all watershed vector layers...")
         self.merged_watershed_path = os.path.join(
-            geometry_folder, "4_watershed_merged_vector.shp")
+            watershed_output_folder, "4_watershed_merged_vector.shp")
 
-        # Collect all vector layer paths that exist
-        vector_layer_paths = []
-        for watershed_info in watershed_outputs:
-            if 'vector_path' in watershed_info and watershed_info['vector_path']:
-                if os.path.exists(watershed_info['vector_path']):
-                    vector_layer_paths.append(watershed_info['vector_path'])
+        vector_layer_paths = [
+            watershed_info["vector_path"]
+            for watershed_info in watershed_outputs
+            if watershed_info.get("vector_path") and os.path.exists(watershed_info["vector_path"])
+        ]
 
         if vector_layer_paths:
             self.log_message(
                 f"Merging {len(vector_layer_paths)} watershed vector layers...")
 
+            self._remove_vector_dataset(self.merged_watershed_path)
             params_merge = {
                 'LAYERS': vector_layer_paths,
                 'CRS': None,
@@ -736,6 +1217,7 @@ class MorphologyProcessor(DialogUtils):
                 "native:mergevectorlayers", params_merge)
 
             if result_merge and os.path.exists(self.merged_watershed_path):
+                self.watershed_vector_path = self.merged_watershed_path
                 self.log_message(
                     f"Merged watershed vector saved: {self.merged_watershed_path}")
             else:
@@ -744,7 +1226,7 @@ class MorphologyProcessor(DialogUtils):
         else:
             self.log_message("Warning: No valid vector layers found to merge.")
 
-        if os.path.exists(self.merged_watershed_path):
+        if self.merged_watershed_path and os.path.exists(self.merged_watershed_path):
             self.load_layer(self.merged_watershed_path,
                             "4_watershed_merged", is_raster=False)
         else:
@@ -796,11 +1278,7 @@ class MorphologyProcessor(DialogUtils):
 
         # If the file already exists, remove it before creating a new one
         if os.path.exists(output_path):
-            try:
-                os.remove(output_path)
-            except Exception as e:
-                self.log_message(f"ERROR deleting existing output file: {e}")
-                return None
+            self._remove_vector_dataset(output_path)
 
         writer = QgsVectorFileWriter(output_path, "UTF-8", output_fields,
                                      QgsWkbTypes.Point, self.dialog.get_crs(), "ESRI Shapefile")
@@ -928,7 +1406,7 @@ class MorphologyProcessor(DialogUtils):
         # Check if aspect already exists
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
         self.aspect_path = os.path.join(
-            geometry_folder, "1_dem_aspect.sdat")
+            geometry_folder, "1_dem_aspect.tif")
         if self.aspect_path and os.path.exists(self.aspect_path):
             self.log_message("Aspect already exists. Loading existing file...")
             self.load_layer(self.aspect_path, "1_DEM_Aspect")
@@ -978,7 +1456,7 @@ class MorphologyProcessor(DialogUtils):
         # Check if slope already exists
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
         self.slope_path = os.path.join(
-            geometry_folder, "1_dem_slope.sdat")
+            geometry_folder, "1_dem_slope.tif")
         if self.slope_path and os.path.exists(self.slope_path):
             self.log_message("Slope already exists. Loading existing file...")
             self.load_layer(self.slope_path, "1_DEM_Slope")
@@ -986,11 +1464,16 @@ class MorphologyProcessor(DialogUtils):
 
         self.log_message("Processing Slope...")
 
+        slope_scale = self._slope_scale_for_dem(dem_layer)
+        if slope_scale != 1.0:
+            self.log_message(
+                f"Using gdaldem geographic scale factor for slope: {slope_scale}")
+
         params_slope = {
             'INPUT': input_dem_path,
             'BAND': 1,
-            'SCALE': 1,
-            'AS_PERCENT': False,
+            'SCALE': slope_scale,
+            'AS_PERCENT': True,
             'COMPUTE_EDGES': False,
             'ZEVENBERGEN': False,
             'OPTIONS': None,
@@ -1006,10 +1489,8 @@ class MorphologyProcessor(DialogUtils):
             self.log_message("Slope processing failed.")
 
     def process_flow_direction(self):
-        """Process Flow Direction using Channel Network and Drainage Basins algorithm"""
-        if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
-            QMessageBox.warning(
-                self.dialog, "Dependency Error", "Please run Step 1 (Fill DEM) successfully first.")
+        """Process D8 flow direction with pyflwdir."""
+        if not self._ensure_filled_dem():
             return
 
         # Check if flow direction already exists
@@ -1022,25 +1503,25 @@ class MorphologyProcessor(DialogUtils):
             self.load_layer(self.flow_direction_path, "2_Flow_Direction")
             return
 
-        self.log_message(
-            "Processing Flow Direction using Channel Network and Drainage Basins...")
+        self.log_message("Processing D8 Flow Direction with pyflwdir...")
 
-        params_flow_dir = {
-            'DEM': self.filled_dem_path,
-            'DIRECTION': self.flow_direction_path,
-            'CONNECTION': 'TEMPORARY_OUTPUT',
-            'ORDER': 'TEMPORARY_OUTPUT',
-            'BASIN': 'TEMPORARY_OUTPUT',
-            'SEGMENTS': 'TEMPORARY_OUTPUT',
-            'BASINS': 'TEMPORARY_OUTPUT',
-            'NODES': 'TEMPORARY_OUTPUT',
-            'THRESHOLD': 5,
-            'SUBBASINS': False
-        }
+        context = self._build_flwdir_from_filled_dem()
+        if not context:
+            self.log_message("Flow Direction processing failed.")
+            return
 
-        result = self.run_processing_algorithm(
-            "sagang:channelnetworkanddrainagebasins", params_flow_dir)
-        if result:
+        deps = context["deps"]
+        np = deps["np"]
+        gdal = deps["gdal"]
+        flow_direction = context["flwdir"].to_array().astype(np.uint8)
+        flow_direction[context["invalid_mask"]] = 247
+
+        if self._write_raster_array(
+                self.flow_direction_path,
+                flow_direction,
+                context["reference"],
+                nodata=247,
+                gdal_type=gdal.GDT_Byte):
             self.load_layer(self.flow_direction_path, "2_Flow_Direction")
             self.log_message(
                 "Flow Direction processing completed successfully.")
@@ -1048,17 +1529,13 @@ class MorphologyProcessor(DialogUtils):
             self.log_message("Flow Direction processing failed.")
 
     def process_flow_accumulation(self):
-        """Process Flow Accumulation using D8 method. Converts area to pixels and saves as integer raster."""
-        if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
-            QMessageBox.warning(
-                self.dialog, "Dependency Error", "Please run Step 1 (Fill DEM) successfully first.")
+        """Process cell-based flow accumulation with pyflwdir."""
+        if not self._ensure_filled_dem():
             return
 
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
-        flow_accumulation_area_path = os.path.join(
-            geometry_folder, "2_flow_accumulation_area.sdat")
-        flow_accumulation_pixels_float_path = os.path.join(
-            geometry_folder, "2_flow_accumulation_pixels_float.tif")
+        self.flow_accumulation_area_path = os.path.join(
+            geometry_folder, "2_flow_accumulation_area.tif")
         self.flow_accumulation_path = os.path.join(
             geometry_folder, "2_flow_accumulation.tif")
 
@@ -1070,136 +1547,59 @@ class MorphologyProcessor(DialogUtils):
                             "2_Flow_Accumulation")
             return
 
-        self.log_message("Processing Flow Accumulation (Area)...")
+        self.log_message("Processing Flow Accumulation with pyflwdir...")
 
-        # Step 1: Calculate flow accumulation area
-        params_acc = {
-            'DEM': self.filled_dem_path,
-            'PREPROCESSING': 0,  # No preprocessing (already filled)
-            'FLOW_ROUTING': 0,  # D8
-            'TCA': flow_accumulation_area_path,
-            'SCA': 'TEMPORARY_OUTPUT',
-            'FLOW_PATH_LENGTH': 'TEMPORARY_OUTPUT'
-        }
-        result_acc = self.run_processing_algorithm(
-            "sagang:flowaccumulationonestep", params_acc)
-
-        if not result_acc or not os.path.exists(flow_accumulation_area_path):
-            self.log_message(
-                "ERROR: Flow Accumulation (Area) processing failed.")
+        context = self._build_flwdir_from_filled_dem()
+        if not context:
+            self.log_message("ERROR: Flow Accumulation processing failed.")
             return
 
-        self.log_message("Flow Accumulation (Area) calculated successfully.")
-        
-        # Store flow accumulation area path in self attribute
-        self.flow_accumulation_area_path = flow_accumulation_area_path
+        deps = context["deps"]
+        np = deps["np"]
+        gdal = deps["gdal"]
 
-        # Step 2: Get cell size from filled DEM
-        filled_dem_layer = QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
-        if not filled_dem_layer.isValid():
-            self.log_message("ERROR: Cannot read filled DEM to get cell size.")
-            return
+        flow_accumulation = context["flwdir"].upstream_area(unit="cell")
+        flow_accumulation = np.rint(flow_accumulation).astype(np.int32)
+        flow_accumulation[context["invalid_mask"]] = -9999
 
-        # Get pixel size (cell size)
-        raster_extent = filled_dem_layer.extent()
-        width = filled_dem_layer.width()
-        height = filled_dem_layer.height()
-        cell_size_x = (raster_extent.xMaximum() -
-                       raster_extent.xMinimum()) / width
-        cell_size_y = (raster_extent.yMaximum() -
-                       raster_extent.yMinimum()) / height
+        flow_accumulation_area = context["flwdir"].upstream_area(unit="m2")
+        flow_accumulation_area = flow_accumulation_area.astype(np.float32)
+        flow_accumulation_area[context["invalid_mask"]] = -9999.0
 
-        # Use average cell size if they differ
-        cell_size = (cell_size_x + cell_size_y) / 2.0
-        self.log_message(f"Cell size: {cell_size:.2f} meters")
+        wrote_cells = self._write_raster_array(
+            self.flow_accumulation_path,
+            flow_accumulation,
+            context["reference"],
+            nodata=-9999,
+            gdal_type=gdal.GDT_Int32)
+        wrote_area = self._write_raster_array(
+            self.flow_accumulation_area_path,
+            flow_accumulation_area,
+            context["reference"],
+            nodata=-9999.0,
+            gdal_type=gdal.GDT_Float32)
 
-        # Step 3: Convert area to pixels using raster calculator
-        self.log_message("Converting flow accumulation from area to pixels...")
-
-        # Load the area raster temporarily to get proper layer reference
-        area_layer = QgsRasterLayer(
-            flow_accumulation_area_path, "2_Flow_Accumulation_Area")
-        if not area_layer.isValid():
-            self.log_message(
-                "ERROR: Cannot load flow accumulation area layer.")
-            return
-
-        # Get base name for layer reference (QGIS uses filename without extension)
-        base_name = os.path.splitext(
-            os.path.basename(flow_accumulation_area_path))[0]
-        # Replace spaces and special characters
-        layer_name = base_name.replace(" ", "_")
-
-        # Expression: round("2_flow_accumulation_area@1" / (cellsize * cellsize))
-        expression = f'"{layer_name}@1" / ({cell_size} * {cell_size})'
-
-        params_calc = {
-            'LAYERS': [flow_accumulation_area_path],
-            'EXPRESSION': expression,
-            'EXTENT': None,
-            'CELL_SIZE': None,
-            'CRS': None,
-            'OUTPUT': flow_accumulation_pixels_float_path
-        }
-
-        result_calc = self.run_processing_algorithm(
-            "native:rastercalc", params_calc)
-
-        if not result_calc or not os.path.exists(flow_accumulation_pixels_float_path):
-            self.log_message("ERROR: Raster calculator processing failed.")
-            return
-
-        self.log_message("Flow accumulation converted to pixels (float).")
-
-        # Step 4: Convert float to integer using GDAL translate
-        self.log_message(
-            "Converting flow accumulation from float to integer...")
-
-        params_translate = {
-            'INPUT': flow_accumulation_pixels_float_path,
-            'TARGET_CRS': self.dialog.get_crs(),
-            'NODATA': None,
-            'COPY_SUBDATASETS': False,
-            'OPTIONS': None,
-            'EXTRA': '',  # Specify Int32 output type
-            'DATA_TYPE': 4,  # Int32 = 4
-            'OUTPUT': self.flow_accumulation_path
-        }
-
-        result_translate = self.run_processing_algorithm(
-            "gdal:translate", params_translate)
-
-        if result_translate and os.path.exists(self.flow_accumulation_path):
+        if wrote_cells:
             self.load_layer(self.flow_accumulation_path, "2_Flow_Accumulation")
             self.log_message(
                 "Flow Accumulation (pixels, integer) processing completed successfully.")
-
-            # Clean up temporary files
-            try:
-                if os.path.exists(flow_accumulation_pixels_float_path):
-                    os.remove(flow_accumulation_pixels_float_path)
-                    self.log_message("Cleaned up temporary float raster file.")
-            except Exception as e:
-                self.log_message(
-                    f"Warning: Could not remove temporary file: {e}")
+            if wrote_area:
+                self.log_message("Flow Accumulation area raster written for channel thresholding.")
+            else:
+                self.log_message("WARNING: Flow Accumulation area raster could not be written.")
         else:
             self.log_message(
-                "ERROR: Failed to convert flow accumulation to integer.")
+                "ERROR: Failed to write flow accumulation raster.")
 
     def process_gauge_position(self):
         """Process Gauge Position from pour points"""
         # Check prerequisites
-        if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
-            QMessageBox.warning(
-                self.dialog, "Dependency Error",
-                "Please run Step 1 (Fill DEM) successfully first.")
+        if not self._ensure_filled_dem():
             return
 
         if not self.snapped_points_path or not os.path.exists(self.snapped_points_path):
-            QMessageBox.warning(
-                self.dialog, "Dependency Error",
-                "Please run Snap Points successfully first.")
-            return
+            if not self._ensure_snapped_points():
+                return
 
         # Check if gauge position already exists
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
@@ -1615,6 +2015,9 @@ class MorphologyProcessor(DialogUtils):
 
     def process_land_use(self):
         """Process Land Use layer with clipping and reclassification"""
+        if not self.check_prerequisites():
+            return
+
         layer = self.dialog.mMapLayerComboBox_land_cover.currentLayer()
         if not layer:
             QMessageBox.warning(self.dialog, "Input Error",
@@ -1809,10 +2212,7 @@ class MorphologyProcessor(DialogUtils):
             return
         
         # Check if filled DEM exists
-        if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
-            QMessageBox.warning(
-                self.dialog, "Dependency Error",
-                "Please run Fill DEM successfully first.")
+        if not self._ensure_filled_dem():
             return
         
         # Get soil layer
@@ -2135,10 +2535,7 @@ class MorphologyProcessor(DialogUtils):
             return
         
         # Check if filled DEM exists
-        if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
-            QMessageBox.warning(
-                self.dialog, "Dependency Error",
-                "Please run Fill DEM successfully first.")
+        if not self._ensure_filled_dem():
             return
         
         # Get geology layer
@@ -2323,21 +2720,23 @@ class MorphologyProcessor(DialogUtils):
         if not self.check_prerequisites():
             return
         
-        if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
-            QMessageBox.warning(
-                self.dialog, "Dependency Error",
-                "Please run Fill DEM successfully first.")
+        if not self._ensure_filled_dem():
             return
         
         # Check for merged watershed mask
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
-        merged_watershed_path = os.path.join(
-            geometry_folder, "4_watershed_merged_vector.shp")
+        merged_watershed_path = self._restore_existing_path(
+            "merged_watershed_path",
+            os.path.join("Watersheds", "4_watershed_merged_vector.shp"),
+            "4_watershed_merged_vector.shp"
+        )
         
-        if not os.path.exists(merged_watershed_path):
-            QMessageBox.warning(
-                self.dialog, "Dependency Error",
-                "Please run Watershed Delineation successfully first to create merged watershed layer.")
+        if not merged_watershed_path or not os.path.exists(merged_watershed_path):
+            if not self._ensure_merged_watershed():
+                return
+            merged_watershed_path = self.merged_watershed_path
+
+        if not merged_watershed_path or not os.path.exists(merged_watershed_path):
             return
         
         # Read L0, L1, L2 values and units from UI
@@ -2664,10 +3063,10 @@ class MorphologyProcessor(DialogUtils):
         dem_masked_path = os.path.join(geometry_folder, "1_dem_filled_masked.tif")
         
         if not os.path.exists(dem_masked_path):
-            QMessageBox.warning(
-                self.dialog, "Dependency Error",
-                "Please run 'Mask All Layers' successfully first to create masked DEM.")
-            return
+            self.log_message("Masked DEM is missing. Running Mask All Layers first...")
+            self.mask_all_layers()
+            if not os.path.exists(dem_masked_path):
+                return
         
         # Read L0, L1, L2 values and units from UI
         try:
@@ -3079,10 +3478,29 @@ class MorphologyProcessor(DialogUtils):
                 })
         
         if not masked_layers:
-            QMessageBox.warning(
-                self.dialog, "No Layers",
-                "No masked layers found. Please run 'Mask All Layers' first.")
-            return
+            self.log_message("No masked layers found. Running Mask All Layers first...")
+            self.mask_all_layers()
+            for filename in os.listdir(geometry_folder):
+                if filename.endswith("_masked.tif"):
+                    input_path = os.path.join(geometry_folder, filename)
+                    output_filename = filename_mapping.get(filename)
+                    if not output_filename:
+                        base_name = filename.replace("_masked.tif", "")
+                        output_filename = f"{base_name}.asc"
+                        self.log_message(
+                            f"WARNING: No mapping found for {filename}, using default name: {output_filename}")
+
+                    output_path = os.path.join(morph_folder, output_filename)
+                    layer_name = filename.replace("_masked.tif", "").replace("_", " ").title()
+                    masked_layers.append({
+                        'input': input_path,
+                        'output': output_path,
+                        'name': layer_name,
+                        'output_filename': output_filename
+                    })
+
+            if not masked_layers:
+                return
         
         self.log_message(f"Found {len(masked_layers)} masked layer(s) to convert...")
         
@@ -3103,12 +3521,13 @@ class MorphologyProcessor(DialogUtils):
                 continue
             
             self.log_message(f"Converting {layer_name} to {output_filename}...")
+            nodata_value = 247 if output_filename == "fdir.asc" else -9999
             
             # Use gdal:translate to convert to ASCII
             params_translate = {
                 'INPUT': input_path,
                 'TARGET_CRS': None,
-                'NODATA': -9999,
+                'NODATA': nodata_value,
                 'COPY_SUBDATASETS': False,
                 'OPTIONS': None,
                 'EXTRA': '',
@@ -3606,6 +4025,7 @@ class MorphologyProcessor(DialogUtils):
         self.snapped_points_path = None
         self.watershed_raster_path = None
         self.watershed_vector_path = None
+        self.merged_watershed_path = None
         self.aspect_path = None
         self.slope_path = None
         self.flow_direction_path = None
@@ -3636,7 +4056,9 @@ class MorphologyProcessor(DialogUtils):
         12. upslope area
         13. mask all layers
         14. process lat/lon headers
-        15. write all layers (convert to ASCII)
+        15. write geology class definition
+        16. write soil class definition
+        17. write all layers (convert to ASCII)
         """
         self.log_message("\n=== Starting Execute All Processing ===")
         
@@ -3651,88 +4073,96 @@ class MorphologyProcessor(DialogUtils):
         
         try:
             # Step 1: Fill DEM
-            self.log_message("\n--- Step 1/15: Fill DEM ---")
+            self.log_message("\n--- Step 1/17: Fill DEM ---")
             self.fill_dem()
             if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
                 self.log_message("ERROR: Fill DEM failed. Aborting Execute All.")
                 return
             
             # Step 2: Slope
-            self.log_message("\n--- Step 2/15: Process Slope ---")
+            self.log_message("\n--- Step 2/17: Process Slope ---")
             self.process_slope()
             
             # Step 3: Aspect
-            self.log_message("\n--- Step 3/15: Process Aspect ---")
+            self.log_message("\n--- Step 3/17: Process Aspect ---")
             self.process_aspect()
             
             # Step 4: Land Cover
-            self.log_message("\n--- Step 4/15: Process Land Cover ---")
+            self.log_message("\n--- Step 4/17: Process Land Cover ---")
             self.process_land_use()
             
             # Step 5: Soil
-            self.log_message("\n--- Step 5/15: Process Soil ---")
+            self.log_message("\n--- Step 5/17: Process Soil ---")
             self.process_soil()
             
             # Step 6: Geology
-            self.log_message("\n--- Step 6/15: Process Geology ---")
+            self.log_message("\n--- Step 6/17: Process Geology ---")
             self.process_geology()
             
             # Step 7: Flow Accumulation
-            self.log_message("\n--- Step 7/15: Process Flow Accumulation ---")
+            self.log_message("\n--- Step 7/17: Process Flow Accumulation ---")
             self.process_flow_accumulation()
             if not self.flow_accumulation_path or not os.path.exists(self.flow_accumulation_path):
                 self.log_message("ERROR: Flow Accumulation failed. Aborting Execute All.")
                 return
             
             # Step 8: Flow Direction
-            self.log_message("\n--- Step 8/15: Process Flow Direction ---")
+            self.log_message("\n--- Step 8/17: Process Flow Direction ---")
             self.process_flow_direction()
             if not self.flow_direction_path or not os.path.exists(self.flow_direction_path):
                 self.log_message("ERROR: Flow Direction failed. Aborting Execute All.")
                 return
             
             # Step 9: ID Gauges (Gauge Position) - Note: requires snap points, will be processed after step 11
-            self.log_message("\n--- Step 9/15: Process ID Gauges (deferred until after snap points) ---")
+            self.log_message("\n--- Step 9/17: Process ID Gauges (deferred until after snap points) ---")
             # This will be processed after snap points in step 11
             
             # Step 10: Channel Network
-            self.log_message("\n--- Step 10/15: Process Channel Network ---")
+            self.log_message("\n--- Step 10/17: Process Channel Network ---")
             self.process_channel_network()
             if not self.channel_network_vector_path or not os.path.exists(self.channel_network_vector_path):
                 self.log_message("ERROR: Channel Network failed. Aborting Execute All.")
                 return
             
             # Step 11: Snap Points
-            self.log_message("\n--- Step 11/15: Snap Points ---")
+            self.log_message("\n--- Step 11/17: Snap Points ---")
             if not self.check_prerequisites(needs_pour_points=True):
                 self.log_message("WARNING: Pour points not available. Skipping Snap Points step.")
             else:
                 self.snap_points()
                 # Now process ID Gauges (Step 9) after snap points are created
                 if self.snapped_points_path and os.path.exists(self.snapped_points_path):
-                    self.log_message("\n--- Processing Step 9/15: ID Gauges (now that snap points are available) ---")
+                    self.log_message("\n--- Processing Step 9/17: ID Gauges (now that snap points are available) ---")
                     self.process_gauge_position()
             
             # Step 12: Upslope Area (Delineate Watershed)
-            self.log_message("\n--- Step 12/15: Delineate Watershed (Upslope Area) ---")
+            self.log_message("\n--- Step 12/17: Delineate Watershed (Upslope Area) ---")
             if not self.snapped_points_path or not os.path.exists(self.snapped_points_path):
                 self.log_message("WARNING: Snapped points not available. Skipping Upslope Area step.")
             else:
                 self.delineate_watershed()
             
             # Step 13: Mask All Layers
-            self.log_message("\n--- Step 13/15: Mask All Layers ---")
+            self.log_message("\n--- Step 13/17: Mask All Layers ---")
             if not self.merged_watershed_path or not os.path.exists(self.merged_watershed_path):
                 self.log_message("WARNING: Merged watershed not available. Skipping Mask All Layers step.")
             else:
                 self.mask_all_layers()
             
             # Step 14: Process Lat/Lon Headers
-            self.log_message("\n--- Step 14/15: Process Lat/Lon Headers ---")
+            self.log_message("\n--- Step 14/17: Process Lat/Lon Headers ---")
             self.process_lat_lon()
             
-            # Step 15: Write All Layers (Convert to ASCII)
-            self.log_message("\n--- Step 15/15: Write All Layers (Convert to ASCII) ---")
+            # Step 15: Write Geology Class Definition
+            self.log_message("\n--- Step 15/17: Write Geology Class Definition ---")
+            self.geology_classification_writer()
+
+            # Step 16: Write Soil Class Definition
+            self.log_message("\n--- Step 16/17: Write Soil Class Definition ---")
+            self.soil_classdefinition_writer()
+
+            # Step 17: Write All Layers (Convert to ASCII)
+            self.log_message("\n--- Step 17/17: Write All Layers (Convert to ASCII) ---")
             self.write_all_layers()
             
             self.log_message("\n=== Execute All Processing Completed Successfully ===")

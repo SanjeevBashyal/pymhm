@@ -58,6 +58,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             QgsMapLayerProxyModel.RasterLayer | QgsMapLayerProxyModel.VectorLayer)
         self.mMapLayerComboBox_geology.setFilters(
             QgsMapLayerProxyModel.RasterLayer | QgsMapLayerProxyModel.VectorLayer)
+        self.configure_input_layer_combo_boxes()
 
         # --- Instance attributes for managing file paths ---
         self.project_folder = None
@@ -69,6 +70,34 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         # --- Connect signals and slots ---
         self.connect_signals()
+
+    def configure_input_layer_combo_boxes(self):
+        """Allow input layer boxes to start empty so layers are chosen deliberately."""
+        layer_combo_boxes = [
+            self.mMapLayerComboBox_dem,
+            self.mMapLayerComboBox_pour_points,
+            self.mMapLayerComboBox_soil,
+            self.mMapLayerComboBox_land_cover,
+            self.mMapLayerComboBox_geology,
+        ]
+
+        if hasattr(self, "mMapLayerComboBox_LAI_Class"):
+            layer_combo_boxes.append(self.mMapLayerComboBox_LAI_Class)
+
+        for combo_box in layer_combo_boxes:
+            if hasattr(combo_box, "setAllowEmptyLayer"):
+                try:
+                    combo_box.setAllowEmptyLayer(True)
+                except TypeError:
+                    combo_box.setAllowEmptyLayer(True, "")
+
+            if hasattr(combo_box, "setLayer"):
+                try:
+                    combo_box.setLayer(None)
+                except TypeError:
+                    combo_box.setCurrentIndex(-1)
+            else:
+                combo_box.setCurrentIndex(-1)
 
     def connect_signals(self):
         """Connect all UI element signals to appropriate slots."""
