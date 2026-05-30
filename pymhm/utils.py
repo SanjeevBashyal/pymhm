@@ -26,6 +26,10 @@ class DialogUtils:
     
     def log_message(self, message):
         """Appends a message to the log text browser."""
+        try:
+            print(message)
+        except Exception:
+            pass
         self.LogText.append(message)
         QgsApplication.processEvents()
 
@@ -98,4 +102,3 @@ class DialogUtils:
         pixel_size_y = (raster_extent.yMaximum() - raster_extent.yMinimum()) / height
         
         return extent_str, pixel_size_x, pixel_size_y
-

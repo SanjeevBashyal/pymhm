@@ -22,12 +22,17 @@
  ***************************************************************************/
 """
 import os
+import json
 
 # QGIS and PyQt imports
 from qgis.PyQt.QtWidgets import QDialog, QFileDialog
 from qgis.core import (
     QgsApplication,
-    QgsMapLayerProxyModel
+    QgsMapLayer,
+    QgsMapLayerProxyModel,
+    QgsProject,
+    QgsRasterLayer,
+    QgsVectorLayer
 )
 
 # UI class from the compiled .ui file
@@ -35,7 +40,7 @@ from .ui_pymhm_dialog_base import Ui_pymhmDialog
 
 # Import utility mixin and processors
 from .utils import DialogUtils
-from .morphology_processor import MorphologyProcessor
+from .Morphology import MorphologyProcessor
 from .simulation_processor import SimulationProcessor
 
 
@@ -58,11 +63,16 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             QgsMapLayerProxyModel.RasterLayer | QgsMapLayerProxyModel.VectorLayer)
         self.mMapLayerComboBox_geology.setFilters(
             QgsMapLayerProxyModel.RasterLayer | QgsMapLayerProxyModel.VectorLayer)
+        if hasattr(self, "mMapLayerComboBox_landCoverLookup"):
+            self.mMapLayerComboBox_landCoverLookup.setFilters(
+                QgsMapLayerProxyModel.VectorLayer)
         self.configure_input_layer_combo_boxes()
 
         # --- Instance attributes for managing file paths ---
         self.project_folder = None
         self.geometry_folder = None  # Subfolder for geometry outputs
+        self.input_state_filename = "pymhm_input_state.json"
+        self._loading_input_state = False
 
         # --- Initialize processors ---
         self.morphology_processor = MorphologyProcessor(self)
@@ -83,6 +93,8 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         if hasattr(self, "mMapLayerComboBox_LAI_Class"):
             layer_combo_boxes.append(self.mMapLayerComboBox_LAI_Class)
+        if hasattr(self, "mMapLayerComboBox_landCoverLookup"):
+            layer_combo_boxes.append(self.mMapLayerComboBox_landCoverLookup)
 
         for combo_box in layer_combo_boxes:
             if hasattr(combo_box, "setAllowEmptyLayer"):
@@ -107,43 +119,66 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.tabWidget.currentChanged.connect(self.on_tab_changed)
         
         # Morphology/Geometry processing - delegate to processor
-        self.pushButton_convertDEMtoASC.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_convertDEMtoASC, "Convert DEM to ASC",
             self.morphology_processor.convert_dem_to_asc)
-        self.pushButton_fillDem.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_fillDem, "Fill DEM",
             self.morphology_processor.fill_dem)
-        self.pushButton_createNetwork.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_createNetwork, "Create Channel Network",
             self.morphology_processor.process_channel_network)
-        self.pushButton_snapPoints.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_snapPoints, "Snap Pour Points",
             self.morphology_processor.snap_points)
-        self.pushButton_delineate.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_delineate, "Delineate Watershed",
             self.morphology_processor.delineate_watershed)
+        if hasattr(self, "pushButton_elevation_bands"):
+            self.connect_processor_button(
+                self.pushButton_elevation_bands, "Elevation Bands",
+                self.morphology_processor.process_elevation_bands)
+        if hasattr(self, "pushButton_bandDetails"):
+            self.connect_processor_button(
+                self.pushButton_bandDetails, "Elevation Band Land Cover Details",
+                self.morphology_processor.process_band_details)
 
         # Hydrological processing - delegate to processor
-        self.pushButton_aspect.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_aspect, "Aspect",
             self.morphology_processor.process_aspect)
-        self.pushButton_slope.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_slope, "Slope",
             self.morphology_processor.process_slope)
-        self.pushButton_flowAccumulation.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_flowAccumulation, "Flow Accumulation",
             self.morphology_processor.process_flow_accumulation)
-        self.pushButton_flowDirection.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_flowDirection, "Flow Direction",
             self.morphology_processor.process_flow_direction)
-        self.pushButton_gaugePosition.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_gaugePosition, "Gauge Position",
             self.morphology_processor.process_gauge_position)
         
         # Layer processing - delegate to processor
-        self.pushButton_landUse.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_landUse, "Land Use",
             self.morphology_processor.process_land_use)
-        self.pushButton_soil.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_soil, "Soil",
             self.morphology_processor.process_soil)
-        self.pushButton_hydrogeology.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_hydrogeology, "Hydrogeology",
             self.morphology_processor.process_geology)
         
         # Mask all layers
-        self.pushButton_maskAll.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_maskAll, "Mask All Layers",
             self.morphology_processor.mask_all_layers)
         
         # Write all layers (convert to ASCII)
-        self.pushButton_writeAll.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_writeAll, "Write All Layers",
             self.morphology_processor.write_all_layers)
         
         # Reset geometry
@@ -151,15 +186,17 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.morphology_processor.resetGeometry)
         
         # Execute all processing
-        self.pushButton_executeAll.clicked.connect(
+        self.connect_processor_button(
+            self.pushButton_executeAll, "Execute All Processing",
             self.morphology_processor.execute_all_processing)
         
         # LAI file browser
         self.pushButton_browse_lai.clicked.connect(self.browse_lai_file)
         
         # Lookup table browsers
-        self.pushButton_browse_land_cover_lookup.clicked.connect(
-            self.browse_land_cover_lookup)
+        if hasattr(self, "pushButton_browse_land_cover_lookup"):
+            self.pushButton_browse_land_cover_lookup.clicked.connect(
+                self.browse_land_cover_lookup)
         self.pushButton_browse_soil_lookup.clicked.connect(
             self.browse_soil_lookup)
         self.pushButton_browse_geology_lookup.clicked.connect(
@@ -174,12 +211,285 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.simulation_processor.create_nml_files)
         self.pushButton_RUN.clicked.connect(
             self.simulation_processor.run_mhm)
+        self.connect_input_state_signals()
         
         # Initialize CRS widget with project CRS
-        from qgis.core import QgsProject
         project_crs = QgsProject.instance().crs()
         if project_crs.isValid():
             self.mProjectionSelectionWidget_crs.setCrs(project_crs)
+
+    def connect_input_state_signals(self):
+        """Save input selections when editable inputs change."""
+        for _, combo_box in self.input_layer_widgets():
+            try:
+                combo_box.layerChanged.connect(
+                    lambda layer=None: self.save_input_state())
+            except Exception:
+                pass
+
+        for _, line_edit in self.input_text_widgets():
+            try:
+                line_edit.editingFinished.connect(self.save_input_state)
+            except Exception:
+                try:
+                    line_edit.textChanged.connect(
+                        lambda text=None: self.save_input_state())
+                except Exception:
+                    pass
+
+        try:
+            self.mProjectionSelectionWidget_crs.crsChanged.connect(
+                lambda crs=None: self.save_input_state())
+        except Exception:
+            pass
+
+    def connect_processor_button(self, button, action_name, callback):
+        """Connect a button to a processor callback with input path logging."""
+        button.clicked.connect(
+            lambda checked=False, name=action_name, cb=callback:
+            self.run_processor_action(name, cb))
+
+    def run_processor_action(self, action_name, callback):
+        """Log current input selections before running a processor action."""
+        self.log_selected_input_paths(action_name)
+        self.save_input_state()
+        callback()
+
+    def input_layer_widgets(self):
+        """Return persistent layer input widgets and their state keys."""
+        widgets = [
+            ("dem", self.mMapLayerComboBox_dem),
+            ("pour_points", self.mMapLayerComboBox_pour_points),
+            ("soil", self.mMapLayerComboBox_soil),
+            ("land_cover", self.mMapLayerComboBox_land_cover),
+            ("geology", self.mMapLayerComboBox_geology),
+        ]
+
+        if hasattr(self, "mMapLayerComboBox_LAI_Class"):
+            widgets.append(("lai_class", self.mMapLayerComboBox_LAI_Class))
+        if hasattr(self, "mMapLayerComboBox_landCoverLookup"):
+            widgets.append(
+                ("land_cover_lookup", self.mMapLayerComboBox_landCoverLookup))
+
+        return widgets
+
+    def input_text_widgets(self):
+        """Return persistent text/path input widgets and their state keys."""
+        widgets = [
+            ("lai_file", self.lineEdit_lai_file),
+            ("soil_lookup", self.lineEdit_soil_lookup),
+            ("geology_lookup", self.lineEdit_geology_lookup),
+            ("meteo_folder", self.lineEdit_meteo_folder),
+        ]
+
+        if hasattr(self, "lineEdit_land_cover_lookup"):
+            widgets.append(
+                ("land_cover_lookup_file", self.lineEdit_land_cover_lookup))
+
+        for key, widget_name in (
+                ("l0", "lineEdit_L0"),
+                ("l1", "lineEdit_L1"),
+                ("l2", "lineEdit_L2")):
+            if hasattr(self, widget_name):
+                widgets.append((key, getattr(self, widget_name)))
+
+        return widgets
+
+    def input_state_path(self):
+        """Return the project-local input state file path."""
+        if not self.project_folder:
+            return None
+        return os.path.join(self.project_folder, self.input_state_filename)
+
+    def save_input_state(self):
+        """Save selected inputs to a JSON file in the project folder."""
+        if not self.project_folder or self._loading_input_state:
+            return
+
+        state_path = self.input_state_path()
+        if not state_path:
+            return
+
+        layers = {}
+        for key, combo_box in self.input_layer_widgets():
+            layer = combo_box.currentLayer()
+            if not layer:
+                layers[key] = None
+                continue
+
+            layer_type = (
+                "raster"
+                if isinstance(layer, QgsRasterLayer) or layer.type() == QgsMapLayer.RasterLayer
+                else "vector"
+            )
+            layers[key] = {
+                "name": layer.name(),
+                "source": layer.source(),
+                "type": layer_type,
+            }
+
+        text_inputs = {
+            key: widget.text()
+            for key, widget in self.input_text_widgets()
+        }
+
+        crs = self.get_crs()
+        state = {
+            "version": 1,
+            "layers": layers,
+            "text_inputs": text_inputs,
+            "crs_authid": crs.authid() if crs and crs.isValid() else "",
+        }
+
+        try:
+            with open(state_path, "w", encoding="utf-8") as state_file:
+                json.dump(state, state_file, indent=2, sort_keys=True)
+        except Exception as e:
+            self.log_message(f"WARNING: Could not save input state: {e}")
+
+    def load_input_state(self):
+        """Load saved input selections from the project folder."""
+        state_path = self.input_state_path()
+        if not state_path or not os.path.exists(state_path):
+            self.log_message("No saved input state found for this project.")
+            return
+
+        try:
+            with open(state_path, "r", encoding="utf-8") as state_file:
+                state = json.load(state_file)
+        except Exception as e:
+            self.log_message(f"WARNING: Could not read input state: {e}")
+            return
+
+        self._loading_input_state = True
+        try:
+            self.restore_text_inputs(state.get("text_inputs", {}))
+            self.restore_input_crs(state.get("crs_authid", ""))
+            self.restore_input_layers(state.get("layers", {}))
+        finally:
+            self._loading_input_state = False
+
+        self.log_message(f"Input state loaded: {state_path}")
+
+    def restore_text_inputs(self, text_inputs):
+        """Restore saved file/folder and numeric text fields."""
+        widget_lookup = dict(self.input_text_widgets())
+        for key, value in text_inputs.items():
+            widget = widget_lookup.get(key)
+            if widget is not None:
+                widget.setText(value or "")
+
+    def restore_input_crs(self, crs_authid):
+        """Restore the saved processing CRS if it is valid."""
+        if not crs_authid:
+            return
+
+        from qgis.core import QgsCoordinateReferenceSystem
+        crs = QgsCoordinateReferenceSystem(crs_authid)
+        if crs.isValid():
+            self.mProjectionSelectionWidget_crs.setCrs(crs)
+
+    def restore_input_layers(self, saved_layers):
+        """Restore saved layer selections, loading sources into QGIS if needed."""
+        widget_lookup = dict(self.input_layer_widgets())
+        for key, layer_info in saved_layers.items():
+            combo_box = widget_lookup.get(key)
+            if combo_box is None or not layer_info:
+                continue
+
+            layer = self.find_or_load_saved_layer(layer_info)
+            if not layer:
+                self.log_message(
+                    f"WARNING: Could not restore saved layer '{key}': "
+                    f"{layer_info.get('source', '')}")
+                continue
+
+            try:
+                combo_box.setLayer(layer)
+            except Exception as e:
+                self.log_message(
+                    f"WARNING: Could not set saved layer '{key}': {e}")
+
+    def find_or_load_saved_layer(self, layer_info):
+        """Find an existing QGIS layer by source or load it from disk."""
+        source = layer_info.get("source", "")
+        if not source:
+            return None
+
+        existing_layer = self.find_project_layer_by_source(source)
+        if existing_layer:
+            return existing_layer
+
+        name = layer_info.get("name") or os.path.basename(source.split("|")[0])
+        layer_type = layer_info.get("type", "vector")
+        if layer_type == "raster":
+            layer = QgsRasterLayer(source, name)
+        else:
+            layer = QgsVectorLayer(source, name, "ogr")
+
+        if not layer.isValid():
+            return None
+
+        QgsProject.instance().addMapLayer(layer)
+        self.log_message(f"Restored input layer: {name} | {source}")
+        return layer
+
+    def find_project_layer_by_source(self, source):
+        """Find a loaded layer with the same source path/URI."""
+        target_source = self.normalized_layer_source(source)
+        for layer in QgsProject.instance().mapLayers().values():
+            if self.normalized_layer_source(layer.source()) == target_source:
+                return layer
+        return None
+
+    def normalized_layer_source(self, source):
+        """Normalize a QGIS layer source for comparison."""
+        if not source:
+            return ""
+
+        base_source = source.split("|")[0]
+        if os.path.exists(base_source):
+            base_source = os.path.abspath(base_source)
+            suffix = source[len(source.split("|")[0]):]
+            return (base_source + suffix).replace("\\", "/").lower()
+
+        return source.replace("\\", "/").lower()
+
+    def log_selected_input_paths(self, action_name):
+        """Print selected layer/file inputs for easier debugging from QGIS."""
+        self.log_message(f"\n--- Input selections before {action_name} ---")
+        self.log_message(f"Project folder: {self.project_folder or '<not selected>'}")
+
+        layer_inputs = [
+            ("DEM", self.mMapLayerComboBox_dem),
+            ("Pour points", self.mMapLayerComboBox_pour_points),
+            ("Land cover", self.mMapLayerComboBox_land_cover),
+            ("Soil", self.mMapLayerComboBox_soil),
+            ("Geology", self.mMapLayerComboBox_geology),
+        ]
+
+        if hasattr(self, "mMapLayerComboBox_LAI_Class"):
+            layer_inputs.append(("LAI class", self.mMapLayerComboBox_LAI_Class))
+        if hasattr(self, "mMapLayerComboBox_landCoverLookup"):
+            layer_inputs.append(
+                ("Land cover lookup", self.mMapLayerComboBox_landCoverLookup))
+
+        for label, combo_box in layer_inputs:
+            layer = combo_box.currentLayer()
+            if layer:
+                self.log_message(f"{label}: {layer.name()} | {layer.source()}")
+            else:
+                self.log_message(f"{label}: <not selected>")
+
+        self.log_message(f"LAI file: {self.lineEdit_lai_file.text() or '<not selected>'}")
+        if hasattr(self, "lineEdit_land_cover_lookup"):
+            self.log_message(
+                f"Land cover lookup: {self.lineEdit_land_cover_lookup.text() or '<not selected>'}")
+        self.log_message(
+            f"Soil lookup: {self.lineEdit_soil_lookup.text() or '<not selected>'}")
+        self.log_message(
+            f"Geology lookup: {self.lineEdit_geology_lookup.text() or '<not selected>'}")
+        self.log_message(f"Meteorology folder: {self.lineEdit_meteo_folder.text() or '<not selected>'}")
 
     # --- Project Management Methods ---
 
@@ -195,6 +505,8 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.geometry_folder = os.path.join(
                 self.project_folder, "Geometry")
             os.makedirs(self.geometry_folder, exist_ok=True)
+
+            self.load_input_state()
 
             # Load project state in morphology processor
             self.morphology_processor.load_project_state()
@@ -214,15 +526,22 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if file_path:
             self.lineEdit_lai_file.setText(file_path)
             self.log_message(f"LAI file selected: {file_path}")
+            self.save_input_state()
 
     def browse_land_cover_lookup(self):
         """Browse for Land Cover lookup table or database"""
+        if not hasattr(self, "lineEdit_land_cover_lookup"):
+            self.log_message(
+                "Land cover lookup is now selected from the layer dropdown.")
+            return
+
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Select Land Cover Lookup Table", "", 
             "All Files (*);;CSV (*.csv);;Excel (*.xlsx *.xls);;Database (*.db *.sqlite)")
         if file_path:
             self.lineEdit_land_cover_lookup.setText(file_path)
             self.log_message(f"Land cover lookup table selected: {file_path}")
+            self.save_input_state()
 
     def browse_soil_lookup(self):
         """Browse for Soil lookup table or database"""
@@ -232,6 +551,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if file_path:
             self.lineEdit_soil_lookup.setText(file_path)
             self.log_message(f"Soil lookup table selected: {file_path}")
+            self.save_input_state()
 
     def browse_geology_lookup(self):
         """Browse for Geology lookup table or database"""
@@ -241,6 +561,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if file_path:
             self.lineEdit_geology_lookup.setText(file_path)
             self.log_message(f"Geology lookup table selected: {file_path}")
+            self.save_input_state()
     
     def browse_meteo_folder(self):
         """Browse for Meteorology data folder"""
@@ -249,6 +570,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if folder:
             self.lineEdit_meteo_folder.setText(folder)
             self.log_message(f"Meteorology data folder selected: {folder}")
+            self.save_input_state()
     
     def get_lai_time_range(self):
         """Get the selected LAI time/date for extraction"""

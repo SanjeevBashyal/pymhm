@@ -150,29 +150,125 @@
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_geom_row1">
          <item>
-          <layout class="QGridLayout" name="gridLayout_morpho_toolbox" rowstretch="0,0">
+          <layout class="QGridLayout" name="gridLayout_morpho_toolbox" rowstretch="1,2" columnstretch="24,1,18,1,12" columnminimumwidth="4,1,3,1,2">
+           <item row="1" column="4">
+            <layout class="QGridLayout" name="gridLayout_others">
+             <item row="0" column="0">
+              <widget class="QPushButton" name="pushButton_createLatLon">
+               <property name="maximumSize">
+                <size>
+                 <width>24</width>
+                 <height>24</height>
+                </size>
+               </property>
+               <property name="toolTip">
+                <string>Create LatLon.nc file</string>
+               </property>
+               <property name="text">
+                <string/>
+               </property>
+               <property name="icon">
+                <iconset resource="resources.qrc">
+                 <normaloff>:/plugins/pymhm/Resources/latlon.png</normaloff>:/plugins/pymhm/Resources/latlon.png</iconset>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <spacer name="horizontalSpacer_4">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>40</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </item>
+           <item row="1" column="2">
+            <layout class="QGridLayout" name="gridLayout_production">
+             <item row="0" column="3">
+              <widget class="QPushButton" name="pushButton_writeAll">
+               <property name="maximumSize">
+                <size>
+                 <width>23</width>
+                 <height>23</height>
+                </size>
+               </property>
+               <property name="toolTip">
+                <string>Write All</string>
+               </property>
+               <property name="text">
+                <string/>
+               </property>
+               <property name="icon">
+                <iconset resource="resources.qrc">
+                 <normaloff>:/plugins/pymhm/Resources/write.png</normaloff>:/plugins/pymhm/Resources/write.png</iconset>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QPushButton" name="pushButton_maskAll">
+               <property name="minimumSize">
+                <size>
+                 <width>23</width>
+                 <height>23</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>23</width>
+                 <height>23</height>
+                </size>
+               </property>
+               <property name="toolTip">
+                <string>Mask all layers</string>
+               </property>
+               <property name="text">
+                <string/>
+               </property>
+               <property name="icon">
+                <iconset resource="resources.qrc">
+                 <normaloff>:/plugins/pymhm/Resources/mask.png</normaloff>:/plugins/pymhm/Resources/mask.png</iconset>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="0">
+              <widget class="QPushButton" name="pushButton_convertDEMtoASC">
+               <property name="maximumSize">
+                <size>
+                 <width>24</width>
+                 <height>24</height>
+                </size>
+               </property>
+               <property name="toolTip">
+                <string>DEM to ASC</string>
+               </property>
+               <property name="text">
+                <string>A</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="4">
+              <spacer name="horizontalSpacer_7">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>40</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </item>
            <item row="0" column="2">
-            <widget class="QLabel" name="label_3">
-             <property name="text">
-              <string>Others</string>
-             </property>
-             <property name="alignment">
-              <set>Qt::AlignCenter</set>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="0">
-            <widget class="QLabel" name="label">
-             <property name="text">
-              <string>Watershed</string>
-             </property>
-             <property name="alignment">
-              <set>Qt::AlignCenter</set>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="1">
-            <widget class="QLabel" name="label_2">
+            <widget class="QLabel" name="label_productionTools">
              <property name="text">
               <string>Production</string>
              </property>
@@ -181,8 +277,98 @@
              </property>
             </widget>
            </item>
+           <item row="0" column="4">
+            <widget class="QLabel" name="label_otherTools">
+             <property name="text">
+              <string>Others</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="Line" name="line_3">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>2</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="3">
+            <widget class="Line" name="line_5">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>2</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="Line" name="line_4">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>2</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+            </widget>
+           </item>
            <item row="1" column="0">
             <layout class="QGridLayout" name="gridLayout_watershed">
+             <item row="0" column="3">
+              <widget class="QPushButton" name="pushButton_elevation_bands">
+               <property name="minimumSize">
+                <size>
+                 <width>23</width>
+                 <height>23</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>23</width>
+                 <height>16777215</height>
+                </size>
+               </property>
+               <property name="text">
+                <string/>
+               </property>
+               <property name="icon">
+                <iconset resource="resources.qrc">
+                 <normaloff>:/plugins/pymhm/Resources/band.png</normaloff>:/plugins/pymhm/Resources/band.png</iconset>
+               </property>
+              </widget>
+             </item>
              <item row="0" column="2">
               <widget class="QPushButton" name="pushButton_delineate">
                <property name="minimumSize">
@@ -249,8 +435,8 @@
                </property>
               </widget>
              </item>
-             <item row="0" column="3">
-              <widget class="QPushButton" name="pushButton_elevation_bands">
+             <item row="0" column="5">
+              <widget class="QPushButton" name="pushButton_bandDetails">
                <property name="minimumSize">
                 <size>
                  <width>23</width>
@@ -264,103 +450,74 @@
                 </size>
                </property>
                <property name="text">
-                <string>E</string>
+                <string>L</string>
                </property>
               </widget>
+             </item>
+             <item row="0" column="6">
+              <spacer name="horizontalSpacer_8">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>40</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
              </item>
             </layout>
            </item>
-           <item row="1" column="1">
-            <layout class="QGridLayout" name="gridLayout_production">
-             <item row="0" column="0">
-              <widget class="QPushButton" name="pushButton_convertDEMtoASC">
-               <property name="maximumSize">
-                <size>
-                 <width>24</width>
-                 <height>24</height>
-                </size>
-               </property>
-               <property name="toolTip">
-                <string>DEM to ASC</string>
-               </property>
-               <property name="text">
-                <string>A</string>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="2">
-              <widget class="QPushButton" name="pushButton_writeAll">
-               <property name="maximumSize">
-                <size>
-                 <width>23</width>
-                 <height>23</height>
-                </size>
-               </property>
-               <property name="toolTip">
-                <string>Write All</string>
-               </property>
-               <property name="text">
-                <string/>
-               </property>
-               <property name="icon">
-                <iconset resource="resources.qrc">
-                 <normaloff>:/plugins/pymhm/Resources/write.png</normaloff>:/plugins/pymhm/Resources/write.png</iconset>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="1">
-              <widget class="QPushButton" name="pushButton_maskAll">
-               <property name="minimumSize">
-                <size>
-                 <width>23</width>
-                 <height>23</height>
-                </size>
-               </property>
-               <property name="maximumSize">
-                <size>
-                 <width>23</width>
-                 <height>23</height>
-                </size>
-               </property>
-               <property name="toolTip">
-                <string>Mask all layers</string>
-               </property>
-               <property name="text">
-                <string/>
-               </property>
-               <property name="icon">
-                <iconset resource="resources.qrc">
-                 <normaloff>:/plugins/pymhm/Resources/mask.png</normaloff>:/plugins/pymhm/Resources/mask.png</iconset>
-               </property>
-              </widget>
-             </item>
-            </layout>
+           <item row="1" column="3">
+            <widget class="Line" name="line_6">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>2</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+            </widget>
            </item>
-           <item row="1" column="2">
-            <layout class="QGridLayout" name="gridLayout_others">
-             <item row="0" column="0">
-              <widget class="QPushButton" name="pushButton_createLatLon">
-               <property name="maximumSize">
-                <size>
-                 <width>24</width>
-                 <height>24</height>
-                </size>
-               </property>
-               <property name="toolTip">
-                <string>Create LatLon.nc file</string>
-               </property>
-               <property name="text">
-                <string/>
-               </property>
-               <property name="icon">
-                <iconset resource="resources.qrc">
-                 <normaloff>:/plugins/pymhm/Resources/latlon.png</normaloff>:/plugins/pymhm/Resources/latlon.png</iconset>
-               </property>
-              </widget>
-             </item>
-            </layout>
+           <item row="0" column="0">
+            <widget class="QLabel" name="label_watershedTools">
+             <property name="text">
+              <string>Watershed</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
            </item>
           </layout>
+         </item>
+         <item>
+          <widget class="Line" name="line_7">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>2</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+          </widget>
          </item>
          <item>
           <widget class="QPushButton" name="pushButton_resetGeometry">
@@ -1339,33 +1496,11 @@
            </widget>
           </item>
           <item row="3" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout_land_cover_lookup">
+           <layout class="QHBoxLayout" name="horizontalLayout_landCoverLookup">
             <item>
-             <widget class="QLineEdit" name="lineEdit_land_cover_lookup">
-              <property name="toolTip">
-               <string>Path to land cover lookup table or database</string>
-              </property>
-              <property name="readOnly">
-               <bool>true</bool>
-              </property>
+             <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_landCoverLookup">
               <property name="placeholderText">
                <string>Lookup table...</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="pushButton_browse_land_cover_lookup">
-              <property name="maximumSize">
-               <size>
-                <width>40</width>
-                <height>16777215</height>
-               </size>
-              </property>
-              <property name="toolTip">
-               <string>Browse for land cover lookup table</string>
-              </property>
-              <property name="text">
-               <string>...</string>
               </property>
              </widget>
             </item>
