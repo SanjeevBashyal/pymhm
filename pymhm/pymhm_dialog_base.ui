@@ -596,7 +596,7 @@
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_meteo_row1">
          <item>
-          <widget class="QPushButton" name="pushButton_meteo_action1">
+          <widget class="QPushButton" name="pushButton_meteo_runSave">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -616,10 +616,14 @@
             </size>
            </property>
            <property name="toolTip">
-            <string>Meteorology Action 1</string>
+            <string>Compile and save meteo nc files</string>
            </property>
            <property name="text">
-            <string>P1</string>
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="resources.qrc">
+             <normaloff>:/plugins/pymhm/Resources/runSave.png</normaloff>:/plugins/pymhm/Resources/runSave.png</iconset>
            </property>
           </widget>
          </item>
@@ -641,7 +645,7 @@
             <string>Meteorology Action 2</string>
            </property>
            <property name="text">
-            <string>P2</string>
+            <string/>
            </property>
           </widget>
          </item>

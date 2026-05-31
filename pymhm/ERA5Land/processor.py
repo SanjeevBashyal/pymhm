@@ -270,8 +270,8 @@ def _process_single_time_period(nc_folder: Path, vector_path: Path, dem_path: Pa
     tmax_daily_c = _k_to_c(tmax_daily_k)
     tmin_daily_c = _k_to_c(tmin_daily_k)
 
-    # Solar radiation: hourly to daily maximum (J/m²)
-    slr_daily = ds_rad_clip[rad_var].resample(time="1D").max()
+    # Solar radiation: hourly to daily maximum (J/m²) -> Convert to MJ/m²
+    slr_daily = (ds_rad_clip[rad_var].resample(time="1D").max()) / 1000000.0
 
     # Dewpoint temperature: hourly to daily median for RH calculation
     dew_daily_k = ds_dew_clip[dew_var].resample(time="1D").median()
@@ -294,7 +294,15 @@ def _process_single_time_period(nc_folder: Path, vector_path: Path, dem_path: Pa
     dew_daily_k = _round_xarray_coords(dew_daily_k)
     
     # Now compute humidity with aligned coordinates
-    tmean_daily_k = _round_xarray_coords((tmax_daily_k + tmin_daily_k) / 2)
+    # Ensure all inputs have rounded coordinates
+    tmax_daily_k = _round_xarray_coords(tmax_daily_k)
+    tmin_daily_k = _round_xarray_coords(tmin_daily_k)
+    tmean_daily_k = (tmax_daily_k + tmin_daily_k) / 2
+    
+    # Force align dewpoint to temperature grid using nearest neighbor to handle slight mismatches
+    dew_daily_k = _round_xarray_coords(dew_daily_k)
+    dew_daily_k = dew_daily_k.reindex_like(tmean_daily_k, method='nearest', tolerance=1e-2)
+    
     hmd_values = _compute_rh_percent_from_t_tdew_k(tmean_daily_k, dew_daily_k)
     
     # Wind components: calculate resultant wind velocity and get daily median
@@ -308,17 +316,10 @@ def _process_single_time_period(nc_folder: Path, vector_path: Path, dem_path: Pa
     df_tmin = tmin_daily_c.to_dataframe(name="tmin").reset_index()
     df_slr = slr_daily.to_dataframe(name="slr").reset_index()
     
-    # FIX 2: Create hmd DataFrame from tmax structure, then replace values
-    # This ensures humidity has the same coordinate structure as temperature
-    df_hmd = df_tmax.copy()
-    df_hmd = df_hmd.rename(columns={'tmax': 'hmd'})
-    # Convert hmd xarray to dataframe and extract values
-    hmd_temp_df = hmd_values.to_dataframe(name='hmd_values').reset_index()
-    # Merge to get hmd values into the proper structure
-    df_hmd = df_hmd.drop(columns=['hmd'])
-    df_hmd = pd.merge(df_hmd, hmd_temp_df[['time', 'latitude', 'longitude', 'hmd_values']], 
-                      on=['time', 'latitude', 'longitude'], how='left')
-    df_hmd = df_hmd.rename(columns={'hmd_values': 'hmd'})
+    # FIX 2: Create hmd DataFrame directly from aligned xarray
+    # Ensure humidity has exactly the same coordinates as temperature
+    hmd_values = hmd_values.reindex_like(tmax_daily_c)
+    df_hmd = hmd_values.to_dataframe(name='hmd').reset_index()
     
     df_wnd = wnd_daily.to_dataframe(name="wnd").reset_index()
 
@@ -521,76 +522,148 @@ def main(nc_folder: Path, vector_path: Path, dem_path: Path, output_dir: Path, s
     print(f"Writing station files for {len(station_data)} stations...")
     
     # Write station files
-    station_records = []
+    station_records = {
+        "pcp": [],
+        "tmp": [],
+        "slr": [],
+        "hmd": [],
+        "wnd": []
+    }
+    
+    def write_swatplus_station_file(filepath: Path, station_name: str, var_type: str, 
+                                  lat: float, lon: float, elev: float, 
+                                  data: list, start_date_str: str) -> None:
+        """
+        Write a station file in SWAT+ format.
+        
+        Args:
+            filepath: Path to output file
+            station_name: Name of the station
+            var_type: Type of variable ('pcp', 'tmp', 'slr', 'hmd', 'wnd')
+            lat: Latitude
+            lon: Longitude
+            elev: Elevation
+            data: List of data values. For 'tmp', each item is a tuple (max, min).
+            start_date_str: Start date string (YYYYMMDD) - used to calculate years
+        """
+        
+        # Parse start date to track years
+        start_dt = pd.to_datetime(start_date_str, format="%Y%m%d")
+        current_year = start_dt.year
+        
+        # Calculate number of years (approximate based on data length)
+        # This is just for the header, exact count might need full traversal if strictly required,
+        # but usually it's the span of data.
+        # For simplicity, we'll write the header after processing or just use a placeholder if needed.
+        # SWAT+ seems to want nbyr. Let's calculate it properly.
+        
+        # We need to iterate through data to format lines and count years
+        lines = []
+        
+        current_date = start_dt
+        years_seen = set()
+        
+        for val in data:
+            year = current_date.year
+            doy = current_date.dayofyear
+            years_seen.add(year)
+            
+            if var_type == 'tmp':
+                # val is (max, min)
+                tmax, tmin = val
+                lines.append(f"{year:<4} {doy:<4} {float(tmax):10.5f} {float(tmin):10.5f}")
+            else:
+                # val is single value
+                lines.append(f"{year:<4} {doy:<4} {float(val):10.5f}")
+            
+            current_date += pd.Timedelta(days=1)
+            
+        nbyr = len(years_seen)
+        tstep = 0 # Daily
+        
+        with filepath.open("w", newline="\n") as f:
+            # Line 1: Title
+            # Format: [filename]: [Description]
+            # We'll use a generic description
+            desc_map = {
+                'pcp': 'Precipitation data',
+                'tmp': 'Temperature data',
+                'slr': 'Solar radiation data',
+                'hmd': 'Relative humidity data',
+                'wnd': 'Wind speed data'
+            }
+            f.write(f"{filepath.name}: {desc_map.get(var_type, 'Data')} - generated by pyhydrology\n")
+            
+            # Line 2: Header
+            f.write(f"nbyr     tstep       lat       lon      elev\n")
+            
+            # Line 3: Header values
+            # Format matches sample:   24         0    11.600    37.360  1790.000
+            f.write(f"{nbyr:4} {tstep:9} {lat:9.3f} {lon:9.3f} {elev:9.3f}\n")
+            
+            # Data lines
+            for line in lines:
+                f.write(f"{line}\n")
+
     for station_id, data in station_data.items():
         station_name = data['name']
-        pcp_filename = f"{station_name}_pcp.txt"
-        tmp_filename = f"{station_name}_tmp.txt"
-        slr_filename = f"{station_name}_slr.txt"
-        hmd_filename = f"{station_name}_hmd.txt"
-        wnd_filename = f"{station_name}_wnd.txt"
+        lat = data['lat']
+        lon = data['lon']
+        elev = data.get('elev', -99.0)
+        
+        # Define filenames
+        pcp_filename = f"{station_name}.pcp"
+        tmp_filename = f"{station_name}.tem" # Note .tem extension
+        slr_filename = f"{station_name}.slr"
+        hmd_filename = f"{station_name}.hmd"
+        wnd_filename = f"{station_name}.wnd"
         
         # Get start date from first time period
         if data['pcp_data']:
-            # Write precipitation file
-            with (output_dir / pcp_filename).open("w", newline="\n") as f:
-                # Use first time period as start date
-                first_period = time_periods[0]
-                year, month = first_period.split('_')
-                start_date_str = f"{year}{month}01"
-                f.write(f"{start_date_str}\n")
-                for v in data['pcp_data']:
-                    f.write(f"{float(v):.3f}\n")
+            first_period = time_periods[0]
+            year, month = first_period.split('_')
+            start_date_str = f"{year}{month}01"
             
-            # Write temperature file
-            with (output_dir / tmp_filename).open("w", newline="\n") as f:
-                f.write(f"{start_date_str}\n")
-                for tmax, tmin in data['tmp_data']:
-                    f.write(f"{float(tmax):.1f},{float(tmin):.1f}\n")
+            # Write files
+            write_swatplus_station_file(output_dir / pcp_filename, station_name, 'pcp', lat, lon, elev, data['pcp_data'], start_date_str)
+            station_records['pcp'].append(pcp_filename)
             
-            # Write solar radiation file
-            with (output_dir / slr_filename).open("w", newline="\n") as f:
-                f.write(f"{start_date_str}\n")
-                for v in data['slr_data']:
-                    f.write(f"{float(v):.1f}\n")
+            write_swatplus_station_file(output_dir / tmp_filename, station_name, 'tmp', lat, lon, elev, data['tmp_data'], start_date_str)
+            station_records['tmp'].append(tmp_filename)
             
-            # Write relative humidity file
-            with (output_dir / hmd_filename).open("w", newline="\n") as f:
-                f.write(f"{start_date_str}\n")
-                for v in data['hmd_data']:
-                    f.write(f"{float(v):.1f}\n")
+            write_swatplus_station_file(output_dir / slr_filename, station_name, 'slr', lat, lon, elev, data['slr_data'], start_date_str)
+            station_records['slr'].append(slr_filename)
             
-            # Write wind speed file
-            with (output_dir / wnd_filename).open("w", newline="\n") as f:
-                f.write(f"{start_date_str}\n")
-                for v in data['wnd_data']:
-                    f.write(f"{float(v):.2f}\n")
-        
-        station_records.append({
-            "id": station_id,
-            "name": station_name,
-            "lat": data['lat'],
-            "lon": data['lon'],
-            "elev": data.get('elev', -99.0),
-            "pcp": pcp_filename,
-            "tmp": tmp_filename,
-            "slr": slr_filename,
-            "hmd": hmd_filename,
-            "wnd": wnd_filename,
-        })
+            write_swatplus_station_file(output_dir / hmd_filename, station_name, 'hmd', lat, lon, elev, data['hmd_data'], start_date_str)
+            station_records['hmd'].append(hmd_filename)
+            
+            write_swatplus_station_file(output_dir / wnd_filename, station_name, 'wnd', lat, lon, elev, data['wnd_data'], start_date_str)
+            station_records['wnd'].append(wnd_filename)
     
-    # Write stations.cli file
-    stations_cli = output_dir / "stations.cli"
-    with stations_cli.open("w", newline="\n") as f:
-        f.write("id\tname\tlat\tlon\telev\tpcp\ttmp\tslr\thmd\twnd\n")
-        for r in station_records:
-            f.write(
-                f"{r['id']}\t{r['name']}\t{r['lat']:.4f}\t{r['lon']:.4f}\t{r['elev']:.1f}\t{r['pcp']}\t{r['tmp']}\t{r['slr']}\t{r['hmd']}\t{r['wnd']}\n"
-            )
+    # Write entry files (.cli)
+    # Format:
+    # [filename]: [description]
+    # filename
+    # [list of files]
     
-    print(f"Processing complete! Generated {len(station_records)} station files.")
+    cli_configs = [
+        ('pcp.cli', 'pcp', 'Precipitation file names'),
+        ('tmp.cli', 'tmp', 'Temperature file names'),
+        ('slr.cli', 'slr', 'Solar radiation file names'),
+        ('hmd.cli', 'hmd', 'Relative humidity file names'),
+        ('wnd.cli', 'wnd', 'Wind speed file names')
+    ]
+    
+    for cli_file, key, desc in cli_configs:
+        with (output_dir / cli_file).open("w", newline="\n") as f:
+            f.write(f"{cli_file}: {desc}\n")
+            f.write("filename\n")
+            for fname in sorted(station_records[key]):
+                f.write(f"{fname}\n")
+    
+    print(f"Processing complete! Generated files for {len(station_data)} stations.")
     print(f"Output directory: {output_dir}")
-    print(f"Stations file: {stations_cli}")
+
 
 
 if __name__ == "__main__":
@@ -610,7 +683,7 @@ if __name__ == "__main__":
     print(f"NC folder exists: {NC_FOLDER.exists()}")
     
     # Example usage with date range (optional)
-    START_DATE = "2015-01-01"  # Format: YYYY-MM-DD
+    START_DATE = "2000-01-01"  # Format: YYYY-MM-DD
     END_DATE = "2015-12-31"    # Format: YYYY-MM-DD
     main(NC_FOLDER, VECTOR_FILE, DEM_FILE, OUTPUT_DIR, START_DATE, END_DATE)
     

@@ -41,6 +41,7 @@ from .ui_pymhm_dialog_base import Ui_pymhmDialog
 # Import utility mixin and processors
 from .utils import DialogUtils
 from .Morphology import MorphologyProcessor
+from .Meteorology import MeteorologyProcessor
 from .simulation_processor import SimulationProcessor
 
 
@@ -76,6 +77,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         # --- Initialize processors ---
         self.morphology_processor = MorphologyProcessor(self)
+        self.meteorology_processor = MeteorologyProcessor(self)
         self.simulation_processor = SimulationProcessor(self)
 
         # --- Connect signals and slots ---
@@ -205,6 +207,11 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         # Meteorology folder browser
         self.pushButton_browse_meteo_folder.clicked.connect(
             self.browse_meteo_folder)
+        if hasattr(self, "pushButton_meteo_runSave"):
+            self.connect_processor_button(
+                self.pushButton_meteo_runSave,
+                "Prepare Meteorology Forcing",
+                self.meteorology_processor.process_meteo_forcing)
         
         # Simulation processing - delegate to processor
         self.pushButton_createNML.clicked.connect(
@@ -510,6 +517,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
             # Load project state in morphology processor
             self.morphology_processor.load_project_state()
+            self.meteorology_processor.load_project_state()
 
     def on_tab_changed(self, index):
         """Switches the stacked widget page when the tab is changed."""
