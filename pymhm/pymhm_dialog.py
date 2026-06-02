@@ -161,6 +161,18 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.connect_processor_button(
             self.pushButton_gaugePosition, "Gauge Position",
             self.morphology_processor.process_gauge_position)
+        if hasattr(self, "pushButton_assignDischargeTables"):
+            self.connect_processor_button(
+                self.pushButton_assignDischargeTables,
+                "Assign Discharge Tables",
+                self.morphology_processor.assign_discharge_tables)
+        try:
+            self.mMapLayerComboBox_pour_points.layerChanged.connect(
+                lambda layer=None:
+                self.morphology_processor.update_gauged_outlet_count(layer))
+        except Exception:
+            pass
+        self.morphology_processor.update_gauged_outlet_count()
         
         # Layer processing - delegate to processor
         self.connect_processor_button(
@@ -514,6 +526,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             os.makedirs(self.geometry_folder, exist_ok=True)
 
             self.load_input_state()
+            self.morphology_processor.update_gauged_outlet_count()
 
             # Load project state in morphology processor
             self.morphology_processor.load_project_state()
