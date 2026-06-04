@@ -1,3 +1,11 @@
+# Doxy files
+pymhm/doxy/
+pymhm/html/
+pymhm/latex/
+pymhm/xml/
+pymhm/rtf/
+pymhm/man/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

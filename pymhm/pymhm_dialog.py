@@ -42,7 +42,7 @@ from .ui_pymhm_dialog_base import Ui_pymhmDialog
 from .utils import DialogUtils
 from .Morphology import MorphologyProcessor
 from .Meteorology import MeteorologyProcessor
-from .simulation_processor import SimulationProcessor
+from .configuration_processor import ConfigurationProcessor
 
 
 class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
@@ -78,10 +78,20 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         # --- Initialize processors ---
         self.morphology_processor = MorphologyProcessor(self)
         self.meteorology_processor = MeteorologyProcessor(self)
-        self.simulation_processor = SimulationProcessor(self)
+        self.configuration_processor = ConfigurationProcessor(self)
+        self.simulation_processor = self.configuration_processor
 
         # --- Connect signals and slots ---
+        self.configure_page_aliases()
         self.connect_signals()
+        self.configuration_processor.refresh_status_indicators()
+
+    def configure_page_aliases(self):
+        """Keep renamed stacked pages compatible with older plugin code."""
+        if hasattr(self, "page_configuration") and not hasattr(self, "page_validation"):
+            self.page_validation = self.page_configuration
+        if hasattr(self, "page_execution") and not hasattr(self, "page_datasets"):
+            self.page_datasets = self.page_execution
 
     def configure_input_layer_combo_boxes(self):
         """Allow input layer boxes to start empty so layers are chosen deliberately."""
@@ -225,11 +235,34 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 "Prepare Meteorology Forcing",
                 self.meteorology_processor.process_meteo_forcing)
         
-        # Simulation processing - delegate to processor
-        self.pushButton_createNML.clicked.connect(
-            self.simulation_processor.create_nml_files)
-        self.pushButton_RUN.clicked.connect(
-            self.simulation_processor.run_mhm)
+        # Configuration/execution processing - delegate to processor
+        if hasattr(self, "pushButton_configureMHM"):
+            self.connect_processor_button(
+                self.pushButton_configureMHM,
+                "Configure mHM",
+                self.configuration_processor.configure_mhm)
+        if hasattr(self, "pushButton_configureParameters"):
+            self.connect_processor_button(
+                self.pushButton_configureParameters,
+                "Configure Parameters",
+                self.configuration_processor.configure_parameters)
+        if hasattr(self, "pushButton_configureOutputs"):
+            self.connect_processor_button(
+                self.pushButton_configureOutputs,
+                "Configure Outputs",
+                self.configuration_processor.configure_outputs)
+        self.connect_processor_button(
+            self.pushButton_createNML,
+            "Create Namelists",
+            self.configuration_processor.create_nml_files)
+        self.connect_processor_button(
+            self.pushButton_RUN,
+            "Run mHM",
+            self.configuration_processor.run_mhm)
+        if hasattr(self, "comboBox_mHMversion"):
+            self.comboBox_mHMversion.currentIndexChanged.connect(
+                lambda index=None:
+                self.configuration_processor.refresh_status_indicators())
         self.connect_input_state_signals()
         
         # Initialize CRS widget with project CRS
@@ -531,11 +564,34 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             # Load project state in morphology processor
             self.morphology_processor.load_project_state()
             self.meteorology_processor.load_project_state()
+            self.configuration_processor.refresh_status_indicators()
 
     def on_tab_changed(self, index):
         """Switches the stacked widget page when the tab is changed."""
-        self.stackedWidget.setCurrentIndex(index)
+        page = self.page_for_tab_index(index)
+        if page is not None:
+            self.stackedWidget.setCurrentWidget(page)
+        else:
+            self.stackedWidget.setCurrentIndex(index)
+        self.configuration_processor.refresh_status_indicators()
         self.log_message(f"Switched to '{self.tabWidget.tabText(index)}' tab.")
+
+    def page_for_tab_index(self, index):
+        """Return the stacked page associated with a tab widget index."""
+        tab = self.tabWidget.widget(index)
+        page_pairs = (
+            (getattr(self, "tab_geometry", None), getattr(self, "page_geometry", None)),
+            (getattr(self, "tab_meteo", None), getattr(self, "page_meteo", None)),
+            (getattr(self, "tab_hydro", None), getattr(self, "page_hydro", None)),
+            (getattr(self, "tab_configuration", None), getattr(self, "page_configuration", None)),
+            (getattr(self, "tab_execution", None), getattr(self, "page_execution", None)),
+            (getattr(self, "tab_calibration", None), getattr(self, "page_calibration", None)),
+            (getattr(self, "tab_outputs", None), getattr(self, "page_outputs", None)),
+        )
+        for tab_widget, page_widget in page_pairs:
+            if tab_widget is tab:
+                return page_widget
+        return None
 
     # --- UI Helper Methods ---
 

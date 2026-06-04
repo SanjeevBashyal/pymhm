@@ -16,11 +16,9 @@ class FlowAnalysisMixin:
 
         # Check if flow direction already exists
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
-        self.flow_direction_path = os.path.join(
-            geometry_folder, "2_flow_direction.tif")
+        self.flow_direction_path = os.path.join(geometry_folder, "2_flow_direction.tif")
         if self.flow_direction_path and os.path.exists(self.flow_direction_path):
-            self.log_message(
-                "Flow Direction already exists. Loading existing file...")
+            self.log_message("Flow Direction already exists. Loading existing file...")
             self.load_layer(self.flow_direction_path, "2_Flow_Direction")
             return
 
@@ -38,14 +36,14 @@ class FlowAnalysisMixin:
         flow_direction[context["invalid_mask"]] = 247
 
         if self._write_raster_array(
-                self.flow_direction_path,
-                flow_direction,
-                context["reference"],
-                nodata=247,
-                gdal_type=gdal.GDT_Byte):
+            self.flow_direction_path,
+            flow_direction,
+            context["reference"],
+            nodata=247,
+            gdal_type=gdal.GDT_Byte,
+        ):
             self.load_layer(self.flow_direction_path, "2_Flow_Direction")
-            self.log_message(
-                "Flow Direction processing completed successfully.")
+            self.log_message("Flow Direction processing completed successfully.")
         else:
             self.log_message("Flow Direction processing failed.")
 
@@ -56,16 +54,18 @@ class FlowAnalysisMixin:
 
         geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
         self.flow_accumulation_area_path = os.path.join(
-            geometry_folder, "2_flow_accumulation_area.tif")
+            geometry_folder, "2_flow_accumulation_area.tif"
+        )
         self.flow_accumulation_path = os.path.join(
-            geometry_folder, "2_flow_accumulation.tif")
+            geometry_folder, "2_flow_accumulation.tif"
+        )
 
         # Check if final flow accumulation already exists
         if self.flow_accumulation_path and os.path.exists(self.flow_accumulation_path):
             self.log_message(
-                "Flow Accumulation (pixels, integer) already exists. Loading existing file...")
-            self.load_layer(self.flow_accumulation_path,
-                            "2_Flow_Accumulation")
+                "Flow Accumulation (pixels, integer) already exists. Loading existing file..."
+            )
+            self.load_layer(self.flow_accumulation_path, "2_Flow_Accumulation")
             return
 
         self.log_message("Processing Flow Accumulation with pyflwdir...")
@@ -92,22 +92,28 @@ class FlowAnalysisMixin:
             flow_accumulation,
             context["reference"],
             nodata=-9999,
-            gdal_type=gdal.GDT_Int32)
+            gdal_type=gdal.GDT_Int32,
+        )
         wrote_area = self._write_raster_array(
             self.flow_accumulation_area_path,
             flow_accumulation_area,
             context["reference"],
             nodata=-9999.0,
-            gdal_type=gdal.GDT_Float32)
+            gdal_type=gdal.GDT_Float32,
+        )
 
         if wrote_cells:
             self.load_layer(self.flow_accumulation_path, "2_Flow_Accumulation")
             self.log_message(
-                "Flow Accumulation (pixels, integer) processing completed successfully.")
+                "Flow Accumulation (pixels, integer) processing completed successfully."
+            )
             if wrote_area:
-                self.log_message("Flow Accumulation area raster written for channel thresholding.")
+                self.log_message(
+                    "Flow Accumulation area raster written for channel thresholding."
+                )
             else:
-                self.log_message("WARNING: Flow Accumulation area raster could not be written.")
+                self.log_message(
+                    "WARNING: Flow Accumulation area raster could not be written."
+                )
         else:
-            self.log_message(
-                "ERROR: Failed to write flow accumulation raster.")
+            self.log_message("ERROR: Failed to write flow accumulation raster.")

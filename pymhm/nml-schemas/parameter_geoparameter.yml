@@ -1,0 +1,19 @@
+title: Geological parameters
+description: Parameters for geoparameter.
+x-fortran-namelist: geoparameter
+type: object
+properties:
+  GeoParam:
+    title: Geological parameters
+    type: array
+    items:
+      type: number
+      x-fortran-kind: dp
+    x-fortran-shape: [5, max_geo_units]
+    x-fortran-flex-tail-dims: 1
+    description: |-
+      Geological parameters (ordering according to class-definition file)
+      These parameters are NOT REGIONALIZED yet, i.e. these are <beta> and not <gamma>
+    examples: [[1.000, 1000.00, 100.0, 1, 1]]
+required:
+  - GeoParam

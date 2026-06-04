@@ -1,0 +1,69 @@
+! mHM output configuration
+&output_mhm
+  ! Output deflate level
+  output_deflate_level = 6
+  ! Output double precision
+  output_double_precision = .false.
+  ! Output time reference
+  output_time_reference = 2
+  ! Output time step
+  output_frequency = -2
+  ! Interception
+  out_interception = .false.
+  ! Snowpack
+  out_snowpack = .false.
+  ! Layered Soil Water Content
+  out_SWC = .false.
+  ! Layered Volumetric Soil Moisture
+  out_SM = .false.
+  ! Mean Volumetric Soil Moisture
+  out_SM_all = .false.
+  ! Reservoir of Sealed areas
+  out_sealedSTW = .false.
+  ! Reservoir of Unsaturated areas
+  out_unsatSTW = .false.
+  ! Reservoir of Saturated areas
+  out_satSTW = .false.
+  ! Potential Evapotranspiration
+  out_PET = .false.
+  ! Mean actual Evapotranspiration
+  out_aET_all = .false.
+  ! Total Discharge
+  out_Q = .false.
+  ! Direct Runoff
+  out_QD = .false.
+  ! Fast Interflow
+  out_QIf = .false.
+  ! Slow Interflow
+  out_QIs = .false.
+  ! Baseflow
+  out_QB = .false.
+  ! Groundwater Recharge
+  out_recharge = .false.
+  ! Soil Infiltration
+  out_soil_infil = .false.
+  ! Neutrons
+  out_neutrons = .false.
+  ! Actual Evapotranspiration from Soil Layers
+  out_aET_layer = .false.
+  ! Effective Precipitation
+  out_preEffect = .false.
+  ! Snow Melt
+  out_Qsm = .false.
+/
+
+! mRM output configuration
+&output_mrm
+  ! Output deflate level
+  output_deflate_level = 6
+  ! Output double precision
+  output_double_precision = .false.
+  ! Output time reference
+  output_time_reference = 2
+  ! Output time step
+  output_frequency = -1
+  ! Routed Streamflow
+  out_Qrouted = .true.
+  ! Routed Temperature
+  out_RivTemp = .true.
+/
