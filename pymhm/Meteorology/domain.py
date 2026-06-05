@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..project_layout import geometry_folder
+
 
 @dataclass(frozen=True)
 class MeteoDomainBounds:
@@ -44,7 +46,7 @@ def bounds_from_dialog(dialog) -> MeteoDomainBounds | None:
     source = ""
 
     if dialog.project_folder:
-        masked_dem = Path(dialog.project_folder) / "Geometry" / "1_dem_filled_masked.tif"
+        masked_dem = Path(geometry_folder(dialog.project_folder)) / "1_dem_filled_masked.tif"
         if masked_dem.exists():
             candidate = QgsRasterLayer(str(masked_dem), "DEM_Masked")
             if candidate.isValid():

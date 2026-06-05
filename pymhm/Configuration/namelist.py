@@ -26,6 +26,31 @@ def variable_base(lhs):
     return str(lhs).split("(", 1)[0].strip()
 
 
+def variable_key(lhs):
+    """Return a key that preserves numeric Fortran indices when present."""
+    full_key = canonical_name(lhs)
+    base_key = canonical_name(variable_base(lhs))
+    return full_key if full_key != base_key else base_key
+
+
+def indexed_template_key(lhs):
+    """Return internal indexed key for a Fortran indexed lhs."""
+    base_name = variable_base(lhs)
+    base_key = canonical_name(base_name)
+    match = re.search(r"\(([^)]*)\)", str(lhs))
+    if not match:
+        return None
+
+    parts = [part.strip() for part in match.group(1).split(",")]
+    numeric_parts = [part for part in parts if part.isdigit()]
+    if not numeric_parts:
+        return None
+
+    index = numeric_parts[-1]
+    suffix = "class" if base_key == "geoparam" else "domain"
+    return f"{base_key}__{suffix}{index}"
+
+
 def split_inline_comment(text):
     """Split a namelist value from an inline comment."""
     quote = None
@@ -116,8 +141,11 @@ def template_values(path):
             assignment = ASSIGNMENT_RE.match(line)
             if not assignment:
                 continue
-            name = canonical_name(variable_base(assignment.group(2)))
-            values[current_block][name] = parse_value(assignment.group(4))
+            key = (
+                indexed_template_key(assignment.group(2))
+                or variable_key(assignment.group(2))
+            )
+            values[current_block][key] = parse_value(assignment.group(4))
     return values
 
 
@@ -150,8 +178,42 @@ def format_scalar(value):
 def format_value(value):
     """Format a scalar or list for a namelist assignment."""
     if isinstance(value, (list, tuple)):
-        return ", ".join(format_scalar(item) for item in value)
+        flattened = []
+        for item in value:
+            if isinstance(item, (list, tuple)):
+                flattened.extend(item)
+            else:
+                flattened.append(item)
+        return ", ".join(format_scalar(item) for item in flattened)
     return format_scalar(value)
+
+
+def indexed_assignment_items(block_values, base_key, suffix):
+    """Return sorted domain/class assignment values for a base key."""
+    prefix = f"{base_key}__{suffix}"
+    items = []
+    for key, value in block_values.items():
+        if not key.startswith(prefix):
+            continue
+        index_text = key[len(prefix):]
+        if not index_text.isdigit():
+            continue
+        items.append((int(index_text), value))
+    return sorted(items)
+
+
+def geo_param_lhs(template_path, index):
+    """Return version-specific GeoParam assignment lhs."""
+    if "v5.13" in template_path.replace("\\", "/"):
+        return f"GeoParam({index},:)"
+    return f"GeoParam(:, {index})"
+
+
+def indexed_lhs(template_path, variable_name, suffix, index):
+    """Return an lhs for a generated indexed assignment."""
+    if suffix == "class" and canonical_name(variable_name) == "geoparam":
+        return geo_param_lhs(template_path, index)
+    return f"{variable_name}(:,{index})"
 
 
 def render_template(template_path, values_by_block, include_blocks=None):
@@ -173,6 +235,8 @@ def render_template(template_path, values_by_block, include_blocks=None):
             rendered.append(line)
         elif current_included and block_buffer is not None:
             block_buffer.append(line)
+
+    emitted_indexed = set()
 
     for line in lines:
         block_match = BLOCK_RE.match(line)
@@ -202,9 +266,35 @@ def render_template(template_path, values_by_block, include_blocks=None):
         if current_block:
             assignment = ASSIGNMENT_RE.match(line)
             if assignment and current_block in values_by_block:
-                key = canonical_name(variable_base(assignment.group(2)))
-                if key in values_by_block[current_block]:
-                    value_text = format_value(values_by_block[current_block][key])
+                lhs = assignment.group(2)
+                base_name = variable_base(lhs)
+                base_key = canonical_name(base_name)
+                lhs_key = variable_key(lhs)
+                block_values = values_by_block[current_block]
+                domain_items = indexed_assignment_items(
+                    block_values, base_key, "domain")
+                class_items = indexed_assignment_items(
+                    block_values, base_key, "class")
+
+                if domain_items or class_items:
+                    emit_key = (current_block, base_key)
+                    if emit_key not in emitted_indexed:
+                        suffix = "domain" if domain_items else "class"
+                        indexed_items = domain_items or class_items
+                        for index, indexed_value in indexed_items:
+                            generated_lhs = indexed_lhs(
+                                template_path, base_name, suffix, index)
+                            line_text = (
+                                f"{assignment.group(1)}{generated_lhs}"
+                                f"{assignment.group(3)}"
+                                f"{format_value(indexed_value)}\n")
+                            write_line(line_text)
+                        emitted_indexed.add(emit_key)
+                    continue
+
+                if lhs_key in block_values or base_key in block_values:
+                    key = lhs_key if lhs_key in block_values else base_key
+                    value_text = format_value(block_values[key])
                     _, comment = split_inline_comment(assignment.group(4))
                     line = (
                         f"{assignment.group(1)}{assignment.group(2)}"

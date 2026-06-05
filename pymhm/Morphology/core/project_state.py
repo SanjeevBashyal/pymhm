@@ -2,6 +2,7 @@
 """Discovery and restoration of prepared project morphology outputs."""
 from ..common import (
     os,
+    project_geometry_folder,
     QgsRasterLayer,
     processing,
 )
@@ -38,7 +39,7 @@ class ProjectStateMixin:
         }
 
         found_any = False
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         for attr, filenames in files_to_check.items():
             if isinstance(filenames, str):
                 filenames = (filenames,)

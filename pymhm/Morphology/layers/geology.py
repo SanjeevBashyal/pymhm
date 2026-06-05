@@ -2,6 +2,7 @@
 """Geology class raster preparation."""
 from ..common import (
     os,
+    project_geometry_folder,
     QMessageBox,
     QgsVectorLayer,
     QgsRasterLayer,
@@ -37,7 +38,7 @@ class GeologyProcessingMixin:
             return
         
         # Check if output already exists
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         self.geology_path = os.path.join(geometry_folder, "3_geology_processed.tif")
         
         if os.path.exists(self.geology_path):

@@ -43,6 +43,14 @@ from .utils import DialogUtils
 from .Morphology import MorphologyProcessor
 from .Meteorology import MeteorologyProcessor
 from .configuration_processor import ConfigurationProcessor
+from .project_layout import (
+    data_folder,
+    ensure_project_structure,
+    geometry_folder,
+    output_folder,
+    restart_folder,
+    z_temp_folder,
+)
 
 
 class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
@@ -262,7 +270,10 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if hasattr(self, "comboBox_mHMversion"):
             self.comboBox_mHMversion.currentIndexChanged.connect(
                 lambda index=None:
-                self.configuration_processor.refresh_status_indicators())
+                self.configuration_processor.handle_version_changed())
+        if hasattr(self, "pushButton_browseConfiguration"):
+            self.pushButton_browseConfiguration.clicked.connect(
+                self.configuration_processor.browse_configuration_file)
         self.connect_input_state_signals()
         
         # Initialize CRS widget with project CRS
@@ -337,6 +348,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if hasattr(self, "lineEdit_land_cover_lookup"):
             widgets.append(
                 ("land_cover_lookup_file", self.lineEdit_land_cover_lookup))
+        if hasattr(self, "lineEdit_loadConfiguration"):
+            widgets.append(
+                ("configuration_settings_file", self.lineEdit_loadConfiguration))
 
         for key, widget_name in (
                 ("l0", "lineEdit_L0"),
@@ -391,6 +405,13 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             "layers": layers,
             "text_inputs": text_inputs,
             "crs_authid": crs.authid() if crs and crs.isValid() else "",
+            "project_layout": {
+                "data_folder": data_folder(self.project_folder),
+                "z_temp_folder": z_temp_folder(self.project_folder),
+                "geometry_folder": geometry_folder(self.project_folder),
+                "output_folder": output_folder(self.project_folder),
+                "restart_folder": restart_folder(self.project_folder),
+            },
         }
 
         try:
@@ -554,9 +575,13 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.lineEdit_ProjectFolder.setText(self.project_folder)
             self.log_message(f"Project folder set to: {self.project_folder}")
 
-            self.geometry_folder = os.path.join(
-                self.project_folder, "Geometry")
-            os.makedirs(self.geometry_folder, exist_ok=True)
+            created = ensure_project_structure(
+                self.project_folder,
+                self.configuration_processor.selected_version())
+            self.geometry_folder = geometry_folder(self.project_folder)
+            if created:
+                self.log_message(
+                    f"Project structure prepared with {len(created)} folder(s).")
 
             self.load_input_state()
             self.morphology_processor.update_gauged_outlet_count()
@@ -564,6 +589,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             # Load project state in morphology processor
             self.morphology_processor.load_project_state()
             self.meteorology_processor.load_project_state()
+            self.configuration_processor.load_project_state()
             self.configuration_processor.refresh_status_indicators()
 
     def on_tab_changed(self, index):

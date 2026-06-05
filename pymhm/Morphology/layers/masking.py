@@ -2,6 +2,7 @@
 """Watershed mask application for prepared morphology rasters."""
 from ..common import (
     os,
+    project_geometry_folder,
     math,
     QMessageBox,
     QgsRasterLayer,
@@ -30,7 +31,7 @@ class MaskingMixin:
             return
         
         # Check for merged watershed mask
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         merged_watershed_path = self._restore_existing_path(
             "merged_watershed_path",
             os.path.join("Watersheds", "4_watershed_merged_vector.shp"),

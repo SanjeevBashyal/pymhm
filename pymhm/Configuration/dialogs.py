@@ -3,21 +3,34 @@
 
 from qgis.PyQt import QtCore, QtWidgets
 
+from .array_editors import (
+    ArrayValueWidget,
+    InlineArrayWidget,
+    is_max_domains,
+    is_string_item,
+    shape_parts,
+)
 from .namelist import canonical_name, parse_scalar, split_csv
 
 
 class NamelistEditorDialog(QtWidgets.QDialog):
     """Multi-page editor for one namelist family."""
 
-    def __init__(self, parent, title, pages, parameter_mode=False):
+    def __init__(self, parent, title, pages, parameter_mode=False,
+                 domain_infos=None):
         super(NamelistEditorDialog, self).__init__(parent)
         self.pages = pages
         self.parameter_mode = parameter_mode
+        self.domain_infos = domain_infos or [
+            {"station_id": "1", "label": "1", "index": 1}]
         self.field_widgets = {}
         self.parameter_widgets = {}
+        self.geoparam_widgets = {}
 
         self.setWindowTitle(title)
-        self.resize(780, 620)
+        self.resize(
+            960 if parameter_mode else 780,
+            660 if parameter_mode else 620)
         self.build_ui()
         self.update_navigation()
 
@@ -75,7 +88,8 @@ class NamelistEditorDialog(QtWidgets.QDialog):
         for name, prop_schema in schema.get("properties", {}).items():
             label = QtWidgets.QLabel(self.field_label(name, prop_schema), content)
             label.setToolTip(prop_schema.get("description", ""))
-            widget = self.create_general_widget(prop_schema, defaults.get(name))
+            widget = self.create_general_widget(
+                name, prop_schema, defaults.get(name))
             widget.setToolTip(prop_schema.get("description", ""))
             self.field_widgets[(page["block"], name)] = {
                 "widget": widget,
@@ -88,6 +102,9 @@ class NamelistEditorDialog(QtWidgets.QDialog):
         return scroll
 
     def build_parameter_page(self, page):
+        if canonical_name(page["block"]) == "geoparameter":
+            return self.build_geoparam_page(page)
+
         table = QtWidgets.QTableWidget(self)
         table.setColumnCount(6)
         table.setHorizontalHeaderLabels([
@@ -139,16 +156,100 @@ class NamelistEditorDialog(QtWidgets.QDialog):
                 "default": default,
             }
 
-        table.resizeColumnsToContents()
-        table.horizontalHeader().setStretchLastSection(True)
+        self.configure_parameter_table(table)
         return table
+
+    def build_geoparam_page(self, page):
+        """Build class-wise GeoParam editor."""
+        table = QtWidgets.QTableWidget(self)
+        table.setColumnCount(6)
+        table.setHorizontalHeaderLabels([
+            "Geology class",
+            "Lower bound",
+            "Upper bound",
+            "Value",
+            "Flag",
+            "Scaling",
+        ])
+        table.verticalHeader().setVisible(False)
+        table.setAlternatingRowColors(True)
+        class_count = int(page.get("geo_class_count") or 16)
+        table.setRowCount(class_count)
+        default_rows = page["defaults"].get("GeoParam") or {}
+
+        prop_schema = page["schema"].get("properties", {}).get("GeoParam", {})
+        for row in range(class_count):
+            class_index = row + 1
+            default = self.parameter_default(
+                default_rows.get(str(class_index)),
+                prop_schema,
+            )
+            lower, upper, value, flag, scaling = default
+            class_item = QtWidgets.QTableWidgetItem(str(class_index))
+            class_item.setFlags(
+                class_item.flags() & ~QtCore.Qt.ItemIsEditable)
+            table.setItem(row, 0, class_item)
+
+            lower_item = QtWidgets.QTableWidgetItem(str(lower))
+            lower_item.setFlags(lower_item.flags() & ~QtCore.Qt.ItemIsEditable)
+            table.setItem(row, 1, lower_item)
+
+            upper_item = QtWidgets.QTableWidgetItem(str(upper))
+            upper_item.setFlags(upper_item.flags() & ~QtCore.Qt.ItemIsEditable)
+            table.setItem(row, 2, upper_item)
+
+            value_edit = QtWidgets.QLineEdit(str(value), table)
+            flag_combo = self.binary_combo(flag, table)
+            scaling_combo = self.binary_combo(scaling, table)
+            table.setCellWidget(row, 3, value_edit)
+            table.setCellWidget(row, 4, flag_combo)
+            table.setCellWidget(row, 5, scaling_combo)
+            self.geoparam_widgets[(page["block"], class_index)] = {
+                "lower": lower,
+                "upper": upper,
+                "value": value_edit,
+                "flag": flag_combo,
+                "scaling": scaling_combo,
+                "default": default,
+            }
+
+        self.configure_parameter_table(table)
+        return table
+
+    def configure_parameter_table(self, table):
+        """Make parameter table columns fit inside the dialog width."""
+        table.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        table.setWordWrap(True)
+        table.setSizeAdjustPolicy(
+            QtWidgets.QAbstractScrollArea.AdjustIgnored)
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+        header.setMinimumSectionSize(70)
+        table.verticalHeader().setSectionResizeMode(
+            QtWidgets.QHeaderView.ResizeToContents)
 
     def field_label(self, name, prop_schema):
         title = prop_schema.get("title") or name
         return f"{title} ({name})"
 
-    def create_general_widget(self, prop_schema, value):
+    def create_general_widget(self, name, prop_schema, value):
         value = self.general_default(value, prop_schema)
+        if prop_schema.get("type") == "array":
+            item_schema = prop_schema.get("items", {})
+            if is_string_item(item_schema):
+                line_edit = QtWidgets.QLineEdit(self)
+                line_edit.setText(self.array_value_to_text(value))
+                return line_edit
+            if self.is_single_domain_array(prop_schema):
+                return InlineArrayWidget(prop_schema, value, self)
+            return ArrayValueWidget(
+                name,
+                prop_schema,
+                value,
+                self.domain_infos,
+                self,
+            )
+
         if "enum" in prop_schema:
             combo = QtWidgets.QComboBox(self)
             for option in prop_schema.get("enum", []):
@@ -180,6 +281,15 @@ class NamelistEditorDialog(QtWidgets.QDialog):
         line_edit = QtWidgets.QLineEdit(self)
         line_edit.setText(self.value_to_text(value))
         return line_edit
+
+    def is_single_domain_array(self, prop_schema):
+        """Return True for one-dimensional max_domains arrays with one domain."""
+        shape = shape_parts(prop_schema)
+        return (
+            len(shape) == 1
+            and is_max_domains(shape[0])
+            and len(self.domain_infos) == 1
+        )
 
     def binary_combo(self, value, parent):
         combo = QtWidgets.QComboBox(parent)
@@ -215,6 +325,11 @@ class NamelistEditorDialog(QtWidgets.QDialog):
 
     def restore_current_page_defaults(self):
         page = self.pages[self.stack.currentIndex()]
+        if (
+                self.parameter_mode
+                and canonical_name(page["block"]) == "geoparameter"):
+            self.restore_geoparam_defaults(page["block"])
+            return
         for name, prop_schema in page["schema"].get("properties", {}).items():
             if self.parameter_mode:
                 self.restore_parameter_default(page["block"], name)
@@ -233,8 +348,16 @@ class NamelistEditorDialog(QtWidgets.QDialog):
             widget.setValue(float(value or 0.0))
         elif isinstance(widget, QtWidgets.QComboBox):
             self.set_combo_value(widget, value)
+        elif isinstance(widget, InlineArrayWidget):
+            widget.reset_value(value)
+        elif isinstance(widget, ArrayValueWidget):
+            widget._value = widget.normalized_value(value)
+            widget.update_summary()
         elif isinstance(widget, QtWidgets.QLineEdit):
-            widget.setText(self.value_to_text(value))
+            if prop_schema.get("type") == "array":
+                widget.setText(self.array_value_to_text(value))
+            else:
+                widget.setText(self.value_to_text(value))
 
     def restore_parameter_default(self, block, name):
         info = self.parameter_widgets[(block, name)]
@@ -244,6 +367,18 @@ class NamelistEditorDialog(QtWidgets.QDialog):
         self.set_combo_value(info["scaling"], int(float(scaling or 0)))
         info["lower"] = lower
         info["upper"] = upper
+
+    def restore_geoparam_defaults(self, block):
+        """Restore all GeoParam class rows."""
+        for (row_block, class_index), info in self.geoparam_widgets.items():
+            if row_block != block:
+                continue
+            lower, upper, value, flag, scaling = info["default"]
+            info["lower"] = lower
+            info["upper"] = upper
+            info["value"].setText(str(value))
+            self.set_combo_value(info["flag"], int(float(flag or 0)))
+            self.set_combo_value(info["scaling"], int(float(scaling or 0)))
 
     def collect_values(self):
         if self.parameter_mode:
@@ -255,8 +390,13 @@ class NamelistEditorDialog(QtWidgets.QDialog):
         for (block, name), info in self.field_widgets.items():
             block_key = canonical_name(block)
             values.setdefault(block_key, {})
-            values[block_key][canonical_name(name)] = self.read_general_widget(
-                info["widget"], info["schema"])
+            widget = info["widget"]
+            base_key = canonical_name(name)
+            if isinstance(widget, (ArrayValueWidget, InlineArrayWidget)):
+                values[block_key].update(widget.value_map(base_key))
+            else:
+                values[block_key][base_key] = self.read_general_widget(
+                    widget, info["schema"])
         return values
 
     def collect_parameter_values(self):
@@ -265,6 +405,16 @@ class NamelistEditorDialog(QtWidgets.QDialog):
             block_key = canonical_name(block)
             values.setdefault(block_key, {})
             values[block_key][canonical_name(name)] = [
+                info["lower"],
+                info["upper"],
+                parse_scalar(info["value"].text()),
+                int(info["flag"].currentData()),
+                int(info["scaling"].currentData()),
+            ]
+        for (block, class_index), info in self.geoparam_widgets.items():
+            block_key = canonical_name(block)
+            values.setdefault(block_key, {})
+            values[block_key][f"geoparam__class{class_index}"] = [
                 info["lower"],
                 info["upper"],
                 parse_scalar(info["value"].text()),
@@ -282,6 +432,10 @@ class NamelistEditorDialog(QtWidgets.QDialog):
             return widget.value()
         if isinstance(widget, QtWidgets.QComboBox):
             return widget.currentData()
+        if isinstance(widget, InlineArrayWidget):
+            return widget.value()
+        if isinstance(widget, ArrayValueWidget):
+            return widget.value()
         if prop_schema.get("type") == "array":
             return self.parse_array_text(widget.text(), prop_schema)
         return self.parse_text_value(widget.text(), prop_schema)
@@ -289,7 +443,7 @@ class NamelistEditorDialog(QtWidgets.QDialog):
     def parse_array_text(self, text, prop_schema):
         item_schema = prop_schema.get("items", {})
         if not text.strip():
-            return ""
+            return [""] if item_schema.get("type") == "string" else []
         return [
             self.parse_text_value(part.strip(), item_schema)
             for part in split_csv(text)
@@ -344,3 +498,16 @@ class NamelistEditorDialog(QtWidgets.QDialog):
         if value is False:
             return ".false."
         return "" if value is None else str(value)
+
+    def array_value_to_text(self, value):
+        """Format an array value for inline text editing."""
+        if isinstance(value, dict) and "__indexed__" in value:
+            indexed = value.get("__indexed__", {})
+            items = [
+                indexed[key]
+                for key in sorted(indexed, key=lambda item: int(item))
+            ]
+            return ", ".join(self.value_to_text(item) for item in items)
+        if isinstance(value, (list, tuple)):
+            return ", ".join(self.value_to_text(item) for item in value)
+        return self.value_to_text(value)

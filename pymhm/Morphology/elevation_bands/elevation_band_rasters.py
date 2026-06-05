@@ -2,6 +2,7 @@
 """Elevation-band raster generation and area summary writing."""
 from ..common import (
     os,
+    project_geometry_folder,
     csv,
     QMessageBox,
 )
@@ -96,7 +97,7 @@ class ElevationBandRasterMixin:
             f"Rounded band range used: {nice_min:.2f} to {nice_max:.2f} "
             f"({band_count} bands, window width {band_width:.2f})")
 
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         watershed_output_folder = os.path.join(geometry_folder, "Watersheds")
         watershed_rasters = self._collect_watershed_rasters(watershed_output_folder)
 

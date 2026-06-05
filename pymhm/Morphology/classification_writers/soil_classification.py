@@ -3,6 +3,7 @@
 from ..common import (
     os,
     QMessageBox,
+    morph_folder,
 )
 
 
@@ -42,11 +43,10 @@ class SoilClassificationWriterMixin:
                 "Please select a Soil lookup table file.")
             return
         
-        # Output file path - save to input/morph folder
-        input_folder = os.path.join(self.dialog.project_folder, "input")
-        morph_folder = os.path.join(input_folder, "morph")
-        os.makedirs(morph_folder, exist_ok=True)
-        output_file = os.path.join(morph_folder, "soil_classdefinition.txt")
+        morph_output_folder = morph_folder(self.dialog.project_folder)
+        os.makedirs(morph_output_folder, exist_ok=True)
+        output_file = os.path.join(
+            morph_output_folder, "soil_classdefinition.txt")
         
         try:
             import pandas as pd

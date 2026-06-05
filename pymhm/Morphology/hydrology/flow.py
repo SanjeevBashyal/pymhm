@@ -2,6 +2,7 @@
 """Flow direction and flow accumulation outputs."""
 from ..common import (
     os,
+    project_geometry_folder,
     processing,
 )
 
@@ -15,7 +16,7 @@ class FlowAnalysisMixin:
             return
 
         # Check if flow direction already exists
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         self.flow_direction_path = os.path.join(geometry_folder, "2_flow_direction.tif")
         if self.flow_direction_path and os.path.exists(self.flow_direction_path):
             self.log_message("Flow Direction already exists. Loading existing file...")
@@ -52,7 +53,7 @@ class FlowAnalysisMixin:
         if not self._ensure_filled_dem():
             return
 
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         self.flow_accumulation_area_path = os.path.join(
             geometry_folder, "2_flow_accumulation_area.tif"
         )

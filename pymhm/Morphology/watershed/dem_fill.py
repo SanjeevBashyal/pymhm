@@ -2,6 +2,7 @@
 """DEM depression filling workflow."""
 from ..common import (
     os,
+    project_geometry_folder,
     QMessageBox,
 )
 
@@ -15,7 +16,7 @@ class DemFillMixin:
         if not self.check_prerequisites():
             return
 
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         self.filled_dem_path = os.path.join(
             geometry_folder, "1_dem_filled.tif")
 

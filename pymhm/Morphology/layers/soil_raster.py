@@ -2,6 +2,7 @@
 """Soil raster preparation and class rasterization."""
 from ..common import (
     os,
+    project_geometry_folder,
     QMessageBox,
     QgsVectorLayer,
     QgsRasterLayer,
@@ -43,7 +44,7 @@ class SoilRasterMixin:
             return
         
         # Check if output already exists
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         output_path = os.path.join(geometry_folder, "3_soil.tif")
         
         if os.path.exists(output_path):

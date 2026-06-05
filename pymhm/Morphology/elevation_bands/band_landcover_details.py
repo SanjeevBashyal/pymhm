@@ -2,6 +2,7 @@
 """Elevation-band by land-cover detail CSV generation."""
 from ..common import (
     os,
+    project_geometry_folder,
     csv,
     QMessageBox,
     QgsRasterLayer,
@@ -29,7 +30,7 @@ class BandLandCoverDetailsMixin:
                 "Please select a project folder before proceeding.")
             return
 
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         elevation_band_folder = os.path.join(geometry_folder, "ElevationBands")
         elevation_band_summary_path = os.path.join(
             elevation_band_folder, "elevation_band_areas.csv")

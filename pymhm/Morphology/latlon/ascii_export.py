@@ -3,6 +3,8 @@
 from ..common import (
     os,
     QMessageBox,
+    geometry_folder,
+    morph_folder,
 )
 
 
@@ -13,7 +15,7 @@ class AsciiExportMixin:
         """
         Convert all masked layers to ASCII format using gdal:translate.
         Finds all masked .tif files in the geometry folder and converts them to .asc files
-        with standardized names in the input/morph folder.
+        with standardized names in the data/static/morph folder.
         """
         self.log_message("\n--- Converting all masked layers to ASCII format ---")
         
@@ -21,18 +23,16 @@ class AsciiExportMixin:
         if not self.check_prerequisites():
             return
         
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geom_folder = geometry_folder(self.dialog.project_folder)
         
-        if not os.path.exists(geometry_folder):
+        if not os.path.exists(geom_folder):
             QMessageBox.warning(
                 self.dialog, "Error",
                 "Geometry folder does not exist. Please process layers first.")
             return
         
-        # Output folder - save to input/morph folder
-        input_folder = os.path.join(self.dialog.project_folder, "input")
-        morph_folder = os.path.join(input_folder, "morph")
-        os.makedirs(morph_folder, exist_ok=True)
+        morph_output_folder = morph_folder(self.dialog.project_folder)
+        os.makedirs(morph_output_folder, exist_ok=True)
         
         # Mapping from masked layer filenames to output ASCII filenames
         filename_mapping = {
@@ -42,16 +42,16 @@ class AsciiExportMixin:
             "2_flow_accumulation_masked.tif": "facc.asc",
             "2_flow_direction_masked.tif": "fdir.asc",
             "2_gauge_position_masked.tif": "idgauges.asc",
-            "3_land_use_masked.tif": "luse.asc",
+            "3_land_use_masked.tif": "lc.asc",
             "3_soil_masked.tif": "soil_class.asc",
             "3_geology_processed_masked.tif": "geology_class.asc"
         }
         
         # Find all masked .tif files in the geometry folder
         masked_layers = []
-        for filename in os.listdir(geometry_folder):
+        for filename in os.listdir(geom_folder):
             if filename.endswith("_masked.tif"):
-                input_path = os.path.join(geometry_folder, filename)
+                input_path = os.path.join(geom_folder, filename)
                 
                 # Get output filename from mapping, or use default if not found
                 output_filename = filename_mapping.get(filename)
@@ -61,7 +61,7 @@ class AsciiExportMixin:
                     output_filename = f"{base_name}.asc"
                     self.log_message(f"WARNING: No mapping found for {filename}, using default name: {output_filename}")
                 
-                output_path = os.path.join(morph_folder, output_filename)
+                output_path = os.path.join(morph_output_folder, output_filename)
                 layer_name = filename.replace("_masked.tif", "").replace("_", " ").title()
                 masked_layers.append({
                     'input': input_path,
@@ -73,9 +73,9 @@ class AsciiExportMixin:
         if not masked_layers:
             self.log_message("No masked layers found. Running Mask All Layers first...")
             self.without_layer_loading(self.mask_all_layers)
-            for filename in os.listdir(geometry_folder):
+            for filename in os.listdir(geom_folder):
                 if filename.endswith("_masked.tif"):
-                    input_path = os.path.join(geometry_folder, filename)
+                    input_path = os.path.join(geom_folder, filename)
                     output_filename = filename_mapping.get(filename)
                     if not output_filename:
                         base_name = filename.replace("_masked.tif", "")
@@ -83,7 +83,7 @@ class AsciiExportMixin:
                         self.log_message(
                             f"WARNING: No mapping found for {filename}, using default name: {output_filename}")
 
-                    output_path = os.path.join(morph_folder, output_filename)
+                    output_path = os.path.join(morph_output_folder, output_filename)
                     layer_name = filename.replace("_masked.tif", "").replace("_", " ").title()
                     masked_layers.append({
                         'input': input_path,
@@ -144,7 +144,7 @@ class AsciiExportMixin:
             self.log_message(f"Failed to convert: {failed_count} layer(s)")
         
         if success_count > 0:
-            self.log_message(f"ASCII files saved to: {morph_folder}")
+            self.log_message(f"ASCII files saved to: {morph_output_folder}")
             self.log_message("ASCII conversion process completed.")
         else:
             QMessageBox.warning(

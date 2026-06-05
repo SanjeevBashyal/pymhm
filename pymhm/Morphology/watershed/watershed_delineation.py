@@ -2,6 +2,7 @@
 """Per-pour-point watershed delineation and watershed merge outputs."""
 from ..common import (
     os,
+    project_geometry_folder,
     QMessageBox,
     QgsVectorLayer,
     NULL,
@@ -51,7 +52,7 @@ class WatershedDelineationMixin:
                                 "No snapped points found.")
             return
 
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         watershed_output_folder = os.path.join(geometry_folder, "Watersheds")
         os.makedirs(watershed_output_folder, exist_ok=True)
         self.log_message(f"Watershed outputs folder: {watershed_output_folder}")

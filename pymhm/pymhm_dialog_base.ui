@@ -2029,6 +2029,42 @@
        <item>
         <layout class="QVBoxLayout" name="verticalLayout_2">
          <item>
+          <layout class="QHBoxLayout" name="horizontalLayout_5" stretch="0,0,0">
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="label_loadConfiguration">
+             <property name="text">
+              <string>Load from file:</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLineEdit" name="lineEdit_loadConfiguration"/>
+           </item>
+           <item>
+            <widget class="QPushButton" name="pushButton_browseConfiguration">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>40</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="text">
+              <string>...</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
           <layout class="QGridLayout" name="gridLayout_4" columnstretch="5,0">
            <item row="1" column="1">
             <widget class="QLabel" name="label_mHMConfigurationStatus">
@@ -2103,7 +2139,7 @@
               </size>
              </property>
              <property name="toolTip">
-              <string>mhm_outputs.nml and mrm_outputs.nml have not been saved yet.</string>
+              <string>mhm_outputs.nml has not been saved yet.</string>
              </property>
              <property name="styleSheet">
               <string notr="true">QLabel {
@@ -2154,7 +2190,7 @@
               </size>
              </property>
              <property name="toolTip">
-              <string>mhm_parameter.nml has not been saved yet.</string>
+              <string>mhm_parameters.nml has not been saved yet.</string>
              </property>
              <property name="styleSheet">
               <string notr="true">QLabel {

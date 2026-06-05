@@ -2,6 +2,7 @@
 """Land-cover clipping and mHM class raster preparation."""
 from ..common import (
     os,
+    project_geometry_folder,
     QMessageBox,
 )
 
@@ -67,7 +68,7 @@ class LandCoverProcessingMixin:
                                 "Please select a Land Cover layer.")
             return
 
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         clipped_path = os.path.join(geometry_folder, "3_land_use_clipped.tif")
         final_path = os.path.join(geometry_folder, "3_land_use.tif")
 

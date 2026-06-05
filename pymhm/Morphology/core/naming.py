@@ -3,6 +3,7 @@
 from ..common import (
     os,
     math,
+    geometry_folder,
 )
 
 
@@ -90,4 +91,4 @@ class NamingAndRangeMixin:
 
     def _geometry_path(self, filename):
         """Return an output path in the project Geometry folder."""
-        return os.path.join(self.dialog.project_folder, "Geometry", filename)
+        return os.path.join(geometry_folder(self.dialog.project_folder), filename)

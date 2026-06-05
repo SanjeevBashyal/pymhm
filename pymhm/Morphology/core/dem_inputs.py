@@ -4,6 +4,8 @@ from ..common import (
     os,
     QMessageBox,
     QgsRasterLayer,
+    geometry_folder,
+    morph_folder,
     processing,
 )
 
@@ -43,9 +45,9 @@ class DemInputMixin:
             return dem_layer
 
         # Need to reproject - check if reprojected file already exists
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
         reprojected_dem_path = os.path.join(
-            geometry_folder, "0_dem_reprojected.tif")
+            geometry_folder(self.dialog.project_folder),
+            "0_dem_reprojected.tif")
 
         if os.path.exists(reprojected_dem_path):
             self.log_message(f"Found existing reprojected DEM. Loading it...")
@@ -106,14 +108,12 @@ class DemInputMixin:
         if not self.check_prerequisites():
             return
 
-        # Output folder - save to input/morph folder
-        input_folder = os.path.join(self.dialog.project_folder, "input")
-        morph_folder = os.path.join(input_folder, "morph")
-        os.makedirs(morph_folder, exist_ok=True)
-        dem_asc_path = os.path.join(morph_folder, "dem.asc")
+        morph_output_folder = morph_folder(self.dialog.project_folder)
+        os.makedirs(morph_output_folder, exist_ok=True)
+        dem_asc_path = os.path.join(morph_output_folder, "dem.asc")
         
         # Geometry folder for temporary files
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geom_folder = geometry_folder(self.dialog.project_folder)
 
         # Check if ASC file already exists
         if os.path.exists(dem_asc_path):
@@ -161,7 +161,7 @@ class DemInputMixin:
 
         # Step 1: Reproject DEM to input CRS (if needed)
         reprojected_dem_path = os.path.join(
-            geometry_folder, "dem_reprojected.tif")
+            geom_folder, "dem_reprojected.tif")
         dem_source_for_conversion = dem_source
 
         # Check if reprojection is needed

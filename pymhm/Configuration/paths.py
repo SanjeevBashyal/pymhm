@@ -4,6 +4,7 @@
 import os
 
 from .constants import OUTPUT_FILES, TEMPLATE_NAMES
+from ..project_layout import version_key as layout_version_key
 
 
 def package_root():
@@ -23,10 +24,7 @@ def templates_root():
 
 def version_key(version_text):
     """Map the version combo-box text to a template folder key."""
-    text = (version_text or "").strip().lower()
-    if text.startswith("5"):
-        return "v5.13"
-    return "v6"
+    return layout_version_key(version_text)
 
 
 def template_dir(version_text):
@@ -46,11 +44,11 @@ def template_path(version_text, kind):
         f"No template found for {kind!r} in {directory}. Expected: {expected}")
 
 
-def model_inputs_dir(project_folder):
-    """Return the project-local model input directory."""
-    return os.path.join(project_folder, "model_inputs")
+def namelist_output_dir(project_folder):
+    """Return the directory where root namelist files are written."""
+    return str(project_folder)
 
 
 def output_path(project_folder, kind):
     """Return the project-local output namelist path for a kind."""
-    return os.path.join(model_inputs_dir(project_folder), OUTPUT_FILES[kind])
+    return os.path.join(namelist_output_dir(project_folder), OUTPUT_FILES[kind])

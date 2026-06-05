@@ -37,3 +37,8 @@ from qgis.PyQt.QtCore import QVariant, NULL
 import processing
 
 from ..utils import DialogUtils
+from ..project_layout import (
+    geometry_folder,
+    geometry_folder as project_geometry_folder,
+    morph_folder,
+)

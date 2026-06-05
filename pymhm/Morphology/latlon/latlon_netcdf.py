@@ -194,13 +194,13 @@ class LatLonNetcdfMixin:
             }
             
             # Save to NetCDF file
-            output_file = os.path.join(latlon_folder, "latlon_1.nc")
+            output_file = os.path.join(latlon_folder, "latlon.nc")
             ds.to_netcdf(output_file, encoding=encoding)
             
             self.log_message(f"NetCDF file created successfully: {output_file}")
             self.mark_output_prepared(
                 output_file,
-                name="latlon_1.nc",
+                name="latlon.nc",
                 loaded=False
             )
             return True

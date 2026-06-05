@@ -2,6 +2,7 @@
 """Terrain derivative outputs: aspect and slope."""
 from ..common import (
     os,
+    project_geometry_folder,
     QMessageBox,
     processing,
 )
@@ -31,7 +32,7 @@ class TerrainAnalysisMixin:
             return
 
         # Check if aspect already exists
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         self.aspect_path = os.path.join(
             geometry_folder, "1_dem_aspect.tif")
         if self.aspect_path and os.path.exists(self.aspect_path):
@@ -81,7 +82,7 @@ class TerrainAnalysisMixin:
             return
 
         # Check if slope already exists
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         self.slope_path = os.path.join(
             geometry_folder, "1_dem_slope.tif")
         if self.slope_path and os.path.exists(self.slope_path):

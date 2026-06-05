@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'pymhm_dialog_base.ui'
+# Form implementation generated from reading ui file 'E:\0_Python\pymhm\pymhm\pymhm_dialog_base.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -26,6 +26,7 @@ class Ui_pymhmDialog(object):
         self.label_mHMversion.setObjectName("label_mHMversion")
         self.horizontalLayout_4.addWidget(self.label_mHMversion)
         self.comboBox_mHMversion = QtWidgets.QComboBox(pymhmDialog)
+        self.comboBox_mHMversion.setCurrentText("")
         self.comboBox_mHMversion.setObjectName("comboBox_mHMversion")
         self.comboBox_mHMversion.addItem("")
         self.comboBox_mHMversion.addItem("")
@@ -780,6 +781,21 @@ class Ui_pymhmDialog(object):
         self.verticalLayout_page_configuration.setObjectName("verticalLayout_page_configuration")
         self.verticalLayout_2 = QtWidgets.QVBoxLayout()
         self.verticalLayout_2.setObjectName("verticalLayout_2")
+        self.horizontalLayout_5 = QtWidgets.QHBoxLayout()
+        self.horizontalLayout_5.setContentsMargins(-1, 0, -1, -1)
+        self.horizontalLayout_5.setObjectName("horizontalLayout_5")
+        self.label_loadConfiguration = QtWidgets.QLabel(self.page_configuration)
+        self.label_loadConfiguration.setObjectName("label_loadConfiguration")
+        self.horizontalLayout_5.addWidget(self.label_loadConfiguration)
+        self.lineEdit_loadConfiguration = QtWidgets.QLineEdit(self.page_configuration)
+        self.lineEdit_loadConfiguration.setObjectName("lineEdit_loadConfiguration")
+        self.horizontalLayout_5.addWidget(self.lineEdit_loadConfiguration)
+        self.pushButton_browseConfiguration = QtWidgets.QPushButton(self.page_configuration)
+        self.pushButton_browseConfiguration.setMinimumSize(QtCore.QSize(0, 0))
+        self.pushButton_browseConfiguration.setMaximumSize(QtCore.QSize(40, 16777215))
+        self.pushButton_browseConfiguration.setObjectName("pushButton_browseConfiguration")
+        self.horizontalLayout_5.addWidget(self.pushButton_browseConfiguration)
+        self.verticalLayout_2.addLayout(self.horizontalLayout_5)
         self.gridLayout_4 = QtWidgets.QGridLayout()
         self.gridLayout_4.setObjectName("gridLayout_4")
         self.label_mHMConfigurationStatus = QtWidgets.QLabel(self.page_configuration)
@@ -892,7 +908,7 @@ class Ui_pymhmDialog(object):
         self.verticalLayout_Main.setStretch(7, 1)
 
         self.retranslateUi(pymhmDialog)
-        self.comboBox_mHMversion.setCurrentIndex(1)
+        self.comboBox_mHMversion.setCurrentIndex(-1)
         self.tabWidget.setCurrentIndex(0)
         self.stackedWidget.setCurrentIndex(0)
         self.comboBox_L0.setCurrentIndex(-1)
@@ -907,7 +923,6 @@ class Ui_pymhmDialog(object):
         pymhmDialog.setWindowTitle(_translate("pymhmDialog", "PymHM"))
         self.label_mHMversion.setText(_translate("pymhmDialog", "mHM Version"))
         self.comboBox_mHMversion.setToolTip(_translate("pymhmDialog", "Select the mHM version"))
-        self.comboBox_mHMversion.setCurrentText(_translate("pymhmDialog", "6.0"))
         self.comboBox_mHMversion.setItemText(0, _translate("pymhmDialog", "5.13"))
         self.comboBox_mHMversion.setItemText(1, _translate("pymhmDialog", "6.0"))
         self.groupBox_ProjectFolder.setTitle(_translate("pymhmDialog", "Project Setup"))
@@ -1016,6 +1031,8 @@ class Ui_pymhmDialog(object):
         self.label_numberOfGaugedOutlets.setText(_translate("pymhmDialog", "Number of Gauged Outlets:"))
         self.pushButton_assignDischargeTables.setText(_translate("pymhmDialog", "Assign Discharge Table to each Gauging Stations"))
         self.pushButton_showTemplateDischargeTable.setText(_translate("pymhmDialog", "Template"))
+        self.label_loadConfiguration.setText(_translate("pymhmDialog", "Load from file:"))
+        self.pushButton_browseConfiguration.setText(_translate("pymhmDialog", "..."))
         self.label_mHMConfigurationStatus.setToolTip(_translate("pymhmDialog", "mhm.nml has not been saved yet."))
         self.label_mHMConfigurationStatus.setText(_translate("pymhmDialog", "Not saved"))
         self.label_statusHeading.setText(_translate("pymhmDialog", "Status"))
@@ -1033,3 +1050,13 @@ class Ui_pymhmDialog(object):
 from qgsmaplayercombobox import QgsMapLayerComboBox
 from qgsprojectionselectionwidget import QgsProjectionSelectionWidget
 import resources_rc
+
+
+if __name__ == "__main__":
+    import sys
+    app = QtWidgets.QApplication(sys.argv)
+    pymhmDialog = QtWidgets.QDialog()
+    ui = Ui_pymhmDialog()
+    ui.setupUi(pymhmDialog)
+    pymhmDialog.show()
+    sys.exit(app.exec_())

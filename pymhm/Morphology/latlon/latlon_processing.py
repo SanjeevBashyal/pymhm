@@ -4,8 +4,10 @@ from ..common import (
     os,
     QMessageBox,
     QgsRasterLayer,
+    geometry_folder,
     processing,
 )
+from ...project_layout import data_folder
 
 
 class LatLonProcessingMixin:
@@ -22,8 +24,8 @@ class LatLonProcessingMixin:
         if not self.check_prerequisites():
             return
         
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
-        dem_masked_path = os.path.join(geometry_folder, "1_dem_filled_masked.tif")
+        geom_folder = geometry_folder(self.dialog.project_folder)
+        dem_masked_path = os.path.join(geom_folder, "1_dem_filled_masked.tif")
         
         if not os.path.exists(dem_masked_path):
             self.log_message("Masked DEM is missing. Running Mask All Layers first...")
@@ -158,9 +160,7 @@ class LatLonProcessingMixin:
         self.log_message(f"  xllcorner: {self.L2['xllcorner']}, yllcorner: {self.L2['yllcorner']}")
         self.log_message(f"  cellsize: {self.L2['cellsize']:.2f}")
         
-        # Create header files in input/latlon folder structure
-        input_folder = os.path.join(self.dialog.project_folder, "input")
-        latlon_folder = os.path.join(input_folder, "latlon")
+        latlon_folder = data_folder(self.dialog.project_folder)
         os.makedirs(latlon_folder, exist_ok=True)
         
         # Create NetCDF file
@@ -170,4 +170,4 @@ class LatLonProcessingMixin:
         self.log_message("Lat/Lon header processing completed successfully.")
         QMessageBox.information(
             self.dialog, "Success",
-            "Lat/Lon headers and NetCDF file created successfully in input/latlon folder.")
+            "Lat/Lon headers and NetCDF file created successfully in data folder.")

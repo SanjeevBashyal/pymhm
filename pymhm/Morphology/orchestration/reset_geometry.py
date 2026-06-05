@@ -2,6 +2,7 @@
 """Geometry output cleanup and in-memory path reset."""
 from ..common import (
     os,
+    project_geometry_folder,
     QMessageBox,
     QgsProject,
     processing,
@@ -36,7 +37,7 @@ class ResetGeometryMixin:
         
         # Step 1: Remove layers from QGIS interface
         project = QgsProject.instance()
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         
         if not os.path.exists(geometry_folder):
             self.log_message("Geometry folder does not exist. Nothing to reset.")

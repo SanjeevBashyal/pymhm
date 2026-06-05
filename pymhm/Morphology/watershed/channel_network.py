@@ -2,6 +2,7 @@
 """Channel network extraction from flow accumulation."""
 from ..common import (
     os,
+    project_geometry_folder,
     QgsRasterLayer,
     QgsFeature,
     QgsGeometry,
@@ -28,7 +29,7 @@ class ChannelNetworkMixin:
         if not self._ensure_flow_accumulation():
             return
 
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         self.channel_network_vector_path = os.path.join(
             geometry_folder, "2_channel_network.shp")
 

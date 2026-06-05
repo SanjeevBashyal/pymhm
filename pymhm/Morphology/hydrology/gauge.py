@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..common import (
     os,
+    project_geometry_folder,
     QMessageBox,
     QgsCoordinateTransform,
     QgsProject,
@@ -30,7 +31,7 @@ class GaugePositionMixin:
             if not self._ensure_snapped_points():
                 return
 
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         self.gauge_position_path = os.path.join(
             geometry_folder, "2_gauge_position.tif")
 

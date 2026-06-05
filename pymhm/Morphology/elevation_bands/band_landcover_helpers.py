@@ -2,6 +2,7 @@
 """Land-cover helpers for elevation-band detail tables."""
 from ..common import (
     os,
+    project_geometry_folder,
     math,
     QMessageBox,
     processing,
@@ -13,7 +14,7 @@ class BandLandCoverHelperMixin:
 
     def _ensure_land_use_raster(self):
         """Return a processed land-use raster, creating it if required."""
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         expected_path = os.path.join(geometry_folder, "3_land_use.tif")
 
         if self.land_use_layer and os.path.exists(self.land_use_layer):

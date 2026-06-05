@@ -2,6 +2,7 @@
 """Pour-point snap workflow orchestration."""
 from ..common import (
     os,
+    project_geometry_folder,
     QgsVectorLayer,
 )
 
@@ -16,7 +17,7 @@ class PourPointWorkflowMixin:
         if not self.check_prerequisites(needs_pour_points=True):
             return
 
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         self.snapped_points_path = os.path.join(
             geometry_folder, "2_pour_points_snapped.shp")
 

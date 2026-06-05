@@ -2,6 +2,7 @@
 """Generic layer reprojection, clipping, and rasterization helpers."""
 from ..common import (
     os,
+    project_geometry_folder,
     QMessageBox,
     QgsVectorLayer,
     QgsRasterLayer,
@@ -101,7 +102,7 @@ class LayerPreparationMixin:
         # Format: xmin,xmax,ymin,ymax [EPSG:xxxxx]
         extent_projwin = f"{dem_extent.xMinimum()},{dem_extent.xMaximum()},{dem_extent.yMinimum()},{dem_extent.yMaximum()} [{dem_crs.authid()}]"
 
-        geometry_folder = os.path.join(self.dialog.project_folder, "Geometry")
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
         output_path = os.path.join(geometry_folder, output_filename)
 
         # Check if already processed

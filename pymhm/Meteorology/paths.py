@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..project_layout import meteo_folder
+
 
 METEO_VARIABLES = ("pre", "tavg", "tmin", "tmax")
 
 
 def meteo_output_root(project_folder) -> Path:
     """Return the project-local mHM meteorology forcing root."""
-    return Path(project_folder) / "input" / "meteo"
+    return Path(meteo_folder(project_folder))
 
 
 def expected_meteo_outputs(project_folder) -> dict:
