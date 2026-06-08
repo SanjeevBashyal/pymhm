@@ -7,7 +7,6 @@ try:
 except Exception:  # pragma: no cover - fallback for generated UI imports
     from qgsmaplayercombobox import QgsMapLayerComboBox
 
-from qgis.core import QgsMapLayerProxyModel
 from qgis.PyQt.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -18,6 +17,8 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from ...qgis_compat import map_layer_filters
 
 
 class DischargeTableAssignmentDialog(QDialog):
@@ -44,7 +45,7 @@ class DischargeTableAssignmentDialog(QDialog):
             label = QLabel(f"STATION_ID: {station_id}", rows_widget)
             combo = QgsMapLayerComboBox(rows_widget)
             combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            combo.setFilters(QgsMapLayerProxyModel.VectorLayer)
+            combo.setFilters(map_layer_filters("VectorLayer"))
             if hasattr(combo, "setAllowEmptyLayer"):
                 combo.setAllowEmptyLayer(False)
             rows_layout.addWidget(label, row, 0)

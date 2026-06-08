@@ -7,10 +7,9 @@ from ..common import (
     QgsVectorLayer,
     QgsRasterLayer,
     QgsFeature,
-    QgsVectorFileWriter,
-    QgsField,
     QgsFields,
-    QVariant,
+    create_vector_file_writer,
+    qgs_field,
     processing,
 )
 
@@ -143,7 +142,7 @@ class SoilRasterMixin:
         output_fields = QgsFields()
         for field in fields:
             output_fields.append(field)
-        output_fields.append(QgsField("CLASS", QVariant.Int))
+        output_fields.append(qgs_field("CLASS", "Int"))
         
         # Remove existing file if it exists
         if os.path.exists(temp_soil_with_class_path):
@@ -159,11 +158,14 @@ class SoilRasterMixin:
         # Get geometry type from input layer
         geometry_type = layer_to_process.wkbType()
         
-        writer = QgsVectorFileWriter(
-            temp_soil_with_class_path, "UTF-8", output_fields,
-            geometry_type, input_crs, "ESRI Shapefile")
+        writer = create_vector_file_writer(
+            temp_soil_with_class_path,
+            output_fields,
+            geometry_type,
+            input_crs,
+        )
         
-        if writer.hasError() != QgsVectorFileWriter.NoError:
+        if writer.hasError():
             self.log_message(
                 f"ERROR creating temporary soil layer: {writer.errorMessage()}")
             QMessageBox.critical(

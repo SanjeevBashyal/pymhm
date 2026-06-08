@@ -7,11 +7,10 @@ from ..common import (
     QgsFeature,
     QgsGeometry,
     QgsSpatialIndex,
-    QgsVectorFileWriter,
-    QgsField,
     QgsFields,
     QgsWkbTypes,
-    QVariant,
+    create_vector_file_writer,
+    qgs_field,
     processing,
 )
 
@@ -59,17 +58,21 @@ class NetworkSnapperMixin:
         output_fields = QgsFields()
         for field in source_fields:
             output_fields.append(field)
-        output_fields.append(QgsField("snap_status", QVariant.String))
-        output_fields.append(QgsField("snap_dist", QVariant.Double))
-        output_fields.append(QgsField("snapped_order", QVariant.Int))
+        output_fields.append(qgs_field("snap_status", "String"))
+        output_fields.append(qgs_field("snap_dist", "Double"))
+        output_fields.append(qgs_field("snapped_order", "Int"))
 
         # If the file already exists, remove it before creating a new one
         if os.path.exists(output_path):
             self._remove_vector_dataset(output_path)
 
-        writer = QgsVectorFileWriter(output_path, "UTF-8", output_fields,
-                                     QgsWkbTypes.Point, self.dialog.get_crs(), "ESRI Shapefile")
-        if writer.hasError() != QgsVectorFileWriter.NoError:
+        writer = create_vector_file_writer(
+            output_path,
+            output_fields,
+            QgsWkbTypes.Point,
+            self.dialog.get_crs(),
+        )
+        if writer.hasError():
             self.log_message(
                 f"ERROR creating output file: {writer.errorMessage()}")
             return None

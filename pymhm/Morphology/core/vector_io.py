@@ -3,8 +3,8 @@
 from ..common import (
     os,
     QgsVectorLayer,
-    QgsVectorFileWriter,
     NULL,
+    create_vector_file_writer,
 )
 
 
@@ -30,15 +30,13 @@ class VectorIOMixin:
             return False
 
         self._remove_vector_dataset(output_path)
-        writer = QgsVectorFileWriter(
+        writer = create_vector_file_writer(
             output_path,
-            "UTF-8",
             source_layer.fields(),
             source_layer.wkbType(),
             source_layer.crs(),
-            "ESRI Shapefile"
         )
-        if writer.hasError() != QgsVectorFileWriter.NoError:
+        if writer.hasError():
             self.log_message(f"ERROR creating watershed vector: {writer.errorMessage()}")
             return False
 

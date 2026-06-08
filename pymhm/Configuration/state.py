@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
 
 from ..project_layout import (
     data_folder,
@@ -14,6 +13,7 @@ from ..project_layout import (
     restart_folder,
     z_temp_folder,
 )
+from ..time_utils import utc_timestamp
 
 
 CONFIGURATION_STATE_FILENAME = "pymhm_configuration_state.json"
@@ -75,8 +75,7 @@ class ConfigurationStateStore:
 
         state = dict(state or self.empty())
         state["version"] = 1
-        state["updated_at"] = (
-            datetime.utcnow().isoformat(timespec="seconds") + "Z")
+        state["updated_at"] = utc_timestamp()
         state["project_layout"] = self.project_layout()
         try:
             with open(path, "w", encoding="utf-8") as state_file:

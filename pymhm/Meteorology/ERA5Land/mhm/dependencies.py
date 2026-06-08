@@ -26,7 +26,7 @@ def import_dependencies():
         missing.append("xarray")
 
     backend_available = False
-    for backend in ("netCDF4", "h5netcdf", "scipy"):
+    for backend in ("h5netcdf", "scipy", "netCDF4"):
         try:
             __import__(backend)
             backend_available = True

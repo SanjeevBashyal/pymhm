@@ -29,7 +29,6 @@ from qgis.PyQt.QtWidgets import QDialog, QFileDialog
 from qgis.core import (
     QgsApplication,
     QgsMapLayer,
-    QgsMapLayerProxyModel,
     QgsProject,
     QgsRasterLayer,
     QgsVectorLayer
@@ -37,6 +36,7 @@ from qgis.core import (
 
 # UI class from the compiled .ui file
 from .ui_pymhm_dialog_base import Ui_pymhmDialog
+from .qgis_compat import map_layer_filters
 
 # Import utility mixin and processors
 from .utils import DialogUtils
@@ -45,9 +45,11 @@ from .Meteorology import MeteorologyProcessor
 from .configuration_processor import ConfigurationProcessor
 from .project_layout import (
     data_folder,
+    data_raw_folder,
     ensure_project_structure,
     geometry_folder,
     output_folder,
+    raw_meteo_folder,
     restart_folder,
     z_temp_folder,
 )
@@ -61,20 +63,20 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         # --- Filter map layer combo boxes to show only relevant layer types ---
         self.mMapLayerComboBox_dem.setFilters(
-            QgsMapLayerProxyModel.RasterLayer)
+            map_layer_filters("RasterLayer"))
         self.mMapLayerComboBox_pour_points.setFilters(
-            QgsMapLayerProxyModel.VectorLayer)
+            map_layer_filters("VectorLayer"))
         
         # Set filters for new layer combo boxes (both vector and raster allowed)
         self.mMapLayerComboBox_soil.setFilters(
-            QgsMapLayerProxyModel.RasterLayer | QgsMapLayerProxyModel.VectorLayer)
+            map_layer_filters("RasterLayer", "VectorLayer"))
         self.mMapLayerComboBox_land_cover.setFilters(
-            QgsMapLayerProxyModel.RasterLayer | QgsMapLayerProxyModel.VectorLayer)
+            map_layer_filters("RasterLayer", "VectorLayer"))
         self.mMapLayerComboBox_geology.setFilters(
-            QgsMapLayerProxyModel.RasterLayer | QgsMapLayerProxyModel.VectorLayer)
+            map_layer_filters("RasterLayer", "VectorLayer"))
         if hasattr(self, "mMapLayerComboBox_landCoverLookup"):
             self.mMapLayerComboBox_landCoverLookup.setFilters(
-                QgsMapLayerProxyModel.VectorLayer)
+                map_layer_filters("VectorLayer"))
         self.configure_input_layer_combo_boxes()
 
         # --- Instance attributes for managing file paths ---
@@ -407,6 +409,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             "crs_authid": crs.authid() if crs and crs.isValid() else "",
             "project_layout": {
                 "data_folder": data_folder(self.project_folder),
+                "data_raw_folder": data_raw_folder(self.project_folder),
                 "z_temp_folder": z_temp_folder(self.project_folder),
                 "geometry_folder": geometry_folder(self.project_folder),
                 "output_folder": output_folder(self.project_folder),
@@ -584,6 +587,11 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                     f"Project structure prepared with {len(created)} folder(s).")
 
             self.load_input_state()
+            if not self.lineEdit_meteo_folder.text().strip():
+                default_meteo_folder = raw_meteo_folder(self.project_folder)
+                self.lineEdit_meteo_folder.setText(default_meteo_folder)
+                self.log_message(
+                    f"Meteorology data folder set to: {default_meteo_folder}")
             self.morphology_processor.update_gauged_outlet_count()
 
             # Load project state in morphology processor

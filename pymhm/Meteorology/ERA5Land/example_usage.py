@@ -7,7 +7,11 @@ This script demonstrates how to use the ERA5-Land module to:
 """
 
 from pathlib import Path
-from pyhydrology.ERA5_Land.processor import main as process_era5
+
+try:
+    from .processor import main as process_era5
+except ImportError:  # pragma: no cover - direct script execution
+    from processor import main as process_era5
 
 # Example 1: Process ERA5-Land data to SWAT format
 # -------------------------------------------------
@@ -76,8 +80,8 @@ def example_process_all_data():
 
 # Example 2: Download ERA5-Land data
 # -----------------------------------
-# Note: You need to edit downloader.py to set your CDS API key and preferences
-# Then run: python pyhydrology/ERA5_Land/downloader.py
+# Note: You need to edit downloader.py to set your CDS API key and preferences.
+# Then run: python -m pymhm.Meteorology.ERA5Land.downloader <project-folder>
 
 
 if __name__ == "__main__":

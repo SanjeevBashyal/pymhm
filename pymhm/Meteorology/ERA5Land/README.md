@@ -18,7 +18,7 @@ This module provides tools for downloading and processing ERA5-Land reanalysis d
 ## Module Structure
 
 ```
-ERA5_Land/
+Meteorology/ERA5Land/
 ├── __init__.py          # Module initialization and main API
 ├── downloader.py        # Download ERA5-Land data from CDS
 ├── processor.py         # Process NetCDF to SWAT format
@@ -30,17 +30,17 @@ ERA5_Land/
 ### 1. Download ERA5-Land Data
 
 ```python
-from pyhydrology.ERA5_Land import download_era5
+from pymhm.Meteorology.ERA5Land import download_era5
 
 # The downloader will be configured with:
 # - CDS API credentials
 # - Time range (years and months)
 # - Geographic extent
 # - Variables to download
-# - Destination folder
+# - Destination folder: <selected-project>/data_raw/meteo
 
 # Run the downloader script directly:
-# python pyhydrology/ERA5_Land/downloader.py
+# python -m pymhm.Meteorology.ERA5Land.downloader <project-folder>
 ```
 
 **Configuration in downloader.py:**
@@ -50,7 +50,7 @@ api_key = "your-cds-api-key"
 years = [str(i) for i in range(1995,2025)]
 months = ['01','02','03','04','05','06','07','08','09','10','11','12']
 extents = [25.0, 79.0, 31.0, 89.0]  # North, West, South, East
-destination_folder = 'path/to/ERA5/data'
+destination_folder = '<selected-project>/data_raw/meteo'
 variables = ['2m_temperature', 'total_precipitation', ...]
 ```
 
@@ -58,7 +58,7 @@ variables = ['2m_temperature', 'total_precipitation', ...]
 
 ```python
 from pathlib import Path
-from pyhydrology.ERA5_Land.processor import main
+from pymhm.Meteorology.ERA5Land.processor import main
 
 # Set paths
 NC_FOLDER = Path("./1 Data/ERA5")
@@ -161,7 +161,7 @@ Handles different NetCDF formats with multiple possible variable names:
 - numpy
 - geopandas
 - cdsapi
-- pyhydrology (NetCDFProcessor, DEMSampler)
+- pymhm-local NetCDFProcessor and DEMSampler helpers
 
 ## Notes
 
@@ -172,6 +172,6 @@ Handles different NetCDF formats with multiple possible variable names:
 
 ## Author
 
-Pyhydrology Development Team
+pymhm Development Team
 
 

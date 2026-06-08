@@ -20,8 +20,8 @@ class ERA5MhmTools:
 def load_era5_mhm_tools() -> ERA5MhmTools:
     """Load ERA5-Land processing functions without importing them at plugin load."""
     try:
-        from ..ERA5Land import inspect_era5_folder, process_era5_to_mhm
-        from ..ERA5Land.mhm_forcing import MissingDependencyError
+        from .ERA5Land import inspect_era5_folder, process_era5_to_mhm
+        from .ERA5Land.mhm_forcing import MissingDependencyError
     except Exception as e:
         raise MeteorologyToolImportError(
             f"Could not import ERA5-Land processing tools:\n{e}") from e

@@ -6,12 +6,11 @@ from ..common import (
     QgsRasterLayer,
     QgsFeature,
     QgsGeometry,
-    QgsVectorFileWriter,
-    QgsField,
     QgsFields,
     QgsWkbTypes,
     QgsPointXY,
-    QVariant,
+    create_vector_file_writer,
+    qgs_field,
     processing,
 )
 
@@ -89,25 +88,23 @@ class ChannelNetworkMixin:
                 return
 
             fields = QgsFields()
-            fields.append(QgsField("Order", QVariant.Int))
-            fields.append(QgsField("UpArea", QVariant.Double))
-            fields.append(QgsField("idx", QVariant.Int))
-            fields.append(QgsField("idx_ds", QVariant.Int))
-            fields.append(QgsField("pit", QVariant.Int))
+            fields.append(qgs_field("Order", "Int"))
+            fields.append(qgs_field("UpArea", "Double"))
+            fields.append(qgs_field("idx", "Int"))
+            fields.append(qgs_field("idx_ds", "Int"))
+            fields.append(qgs_field("pit", "Int"))
 
             filled_dem_layer = QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
             output_crs = filled_dem_layer.crs() if filled_dem_layer.isValid() else self.dialog.get_crs()
 
             self._remove_vector_dataset(self.channel_network_vector_path)
-            writer = QgsVectorFileWriter(
+            writer = create_vector_file_writer(
                 self.channel_network_vector_path,
-                "UTF-8",
                 fields,
                 QgsWkbTypes.LineString,
                 output_crs,
-                "ESRI Shapefile"
             )
-            if writer.hasError() != QgsVectorFileWriter.NoError:
+            if writer.hasError():
                 self.log_message(f"ERROR creating channel network: {writer.errorMessage()}")
                 self.channel_network_vector_path = None
                 return

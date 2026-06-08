@@ -1,4 +1,5 @@
 # Doxy files
+pymhm/sphinx/
 pymhm/doxy/
 pymhm/html/
 pymhm/latex/

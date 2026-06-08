@@ -1,5 +1,5 @@
 """
-ERA5-Land Module for Pyhydrology
+ERA5-Land Module for pymhm
 
 This module contains tools for downloading, processing, and converting ERA5-Land 
 reanalysis data for hydrological modeling applications, particularly SWAT format.
@@ -9,7 +9,7 @@ Main Components:
 - processor: Process and convert ERA5-Land NetCDF files to SWAT input format
 - extractor: Extract data from compressed NetCDF archives
 
-Author: Pyhydrology Development Team
+Author: pymhm Development Team
 """
 
 from pathlib import Path

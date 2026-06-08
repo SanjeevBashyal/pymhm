@@ -3,9 +3,9 @@
 from ..common import (
     os,
     json,
-    datetime,
     processing,
 )
+from ...time_utils import utc_timestamp
 
 
 class ProcessingStateMixin:
@@ -86,7 +86,7 @@ class ProcessingStateMixin:
             "absolute_path": os.path.abspath(path),
             "exists": True,
             "loaded": bool(loaded),
-            "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "updated_at": utc_timestamp(),
         })
         if name:
             entry["name"] = name

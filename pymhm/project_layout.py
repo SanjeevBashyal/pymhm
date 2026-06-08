@@ -47,6 +47,11 @@ def data_folder(project_folder) -> str:
     return os.path.join(str(project_folder), "data")
 
 
+def data_raw_folder(project_folder) -> str:
+    """Return the raw input data folder."""
+    return os.path.join(str(project_folder), "data_raw")
+
+
 def static_folder(project_folder) -> str:
     """Return the static data folder."""
     return os.path.join(data_folder(project_folder), "static")
@@ -60,6 +65,11 @@ def morph_folder(project_folder) -> str:
 def meteo_folder(project_folder) -> str:
     """Return the meteorology forcing data folder."""
     return os.path.join(data_folder(project_folder), "meteo")
+
+
+def raw_meteo_folder(project_folder) -> str:
+    """Return the raw meteorology input data folder."""
+    return os.path.join(data_raw_folder(project_folder), "meteo")
 
 
 def lai_folder(project_folder) -> str:
@@ -112,9 +122,11 @@ def ensure_project_structure(project_folder, version_text=None) -> list[str]:
 
     for path in (
             data_folder(project_folder),
+            data_raw_folder(project_folder),
             static_folder(project_folder),
             morph_folder(project_folder),
             meteo_folder(project_folder),
+            raw_meteo_folder(project_folder),
             lai_folder(project_folder),
             streamflow_observation_folder(project_folder),
             output_folder(project_folder),

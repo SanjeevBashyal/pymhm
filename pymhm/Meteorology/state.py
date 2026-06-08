@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
 from pathlib import Path
+
+from ..time_utils import utc_timestamp
 
 
 STATE_FILENAME = "pymhm_processing_state.json"
@@ -73,7 +74,7 @@ class MeteorologyOutputState:
             "exists": True,
             "loaded": False,
             "category": "meteorology",
-            "updated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            "updated_at": utc_timestamp(),
         })
         if name:
             entry["name"] = name
