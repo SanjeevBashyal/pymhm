@@ -1,15 +1,20 @@
 # -*- coding: utf-8 -*-
 """Elevation-band raster discovery and summary CSV parsing."""
+from __future__ import annotations
+
 from ..common import (
     os,
     csv,
 )
+from ..core.naming import NamingAndRangeMixin
 
 
-class BandSummaryMixin:
+class BandSummaryMixin(NamingAndRangeMixin):
     """Elevation-band raster discovery and summary CSV parsing."""
 
-    def _collect_elevation_band_rasters(self, elevation_band_folder):
+    def _collect_elevation_band_rasters(
+            self,
+            elevation_band_folder: str) -> list[str]:
         """Find per-subcatchment elevation-band rasters."""
         if not os.path.exists(elevation_band_folder):
             return []
@@ -22,7 +27,7 @@ class BandSummaryMixin:
 
         return sorted(raster_paths)
 
-    def _subcatchment_from_elevation_band_path(self, raster_path):
+    def _subcatchment_from_elevation_band_path(self, raster_path: str) -> str:
         """Extract the subcatchment name used by elevation-band outputs."""
         stem = os.path.splitext(os.path.basename(raster_path))[0]
         prefix = "elevation_bands_"
@@ -30,7 +35,9 @@ class BandSummaryMixin:
             stem = stem[len(prefix):]
         return self._clean_output_name(stem, "subcatchment")
 
-    def _load_elevation_band_summary(self, csv_path):
+    def _load_elevation_band_summary(
+            self,
+            csv_path: str) -> dict[tuple[str, int], dict[str, float | int | None]]:
         """Load elevation band min/max and area summary rows."""
         if not os.path.exists(csv_path):
             return {}
@@ -66,7 +73,7 @@ class BandSummaryMixin:
 
         return summary
 
-    def _parse_optional_float(self, value):
+    def _parse_optional_float(self, value: object) -> float | None:
         """Parse a float value from CSV text, preserving blanks as None."""
         if value in (None, ""):
             return None
@@ -75,7 +82,7 @@ class BandSummaryMixin:
         except (TypeError, ValueError):
             return None
 
-    def _parse_optional_int(self, value):
+    def _parse_optional_int(self, value: object) -> int | None:
         """Parse an integer value from CSV text, preserving blanks as None."""
         if value in (None, ""):
             return None

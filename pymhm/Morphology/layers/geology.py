@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Geology class raster preparation."""
+from __future__ import annotations
+
 from ..common import (
     os,
     project_geometry_folder,
@@ -7,19 +9,25 @@ from ..common import (
     QgsVectorLayer,
     QgsRasterLayer,
 )
+from ..watershed.dem_fill import DemFillMixin
+from ..core.predecessors import PredecessorMixin
+from ..core.layer_preparation import LayerPreparationMixin
 
 
-class GeologyProcessingMixin:
+class GeologyProcessingMixin(
+        LayerPreparationMixin,
+        DemFillMixin,
+        PredecessorMixin):
     """Geology class raster preparation."""
 
-    def process_geology(self):
+    def process_geology(self) -> None:
         """Process Geology layer by rasterizing using GDAL with filled DEM extent and resolution"""
         # Check prerequisites
         if not self.check_prerequisites():
             return
         
         # Check if filled DEM exists
-        if not self._ensure_filled_dem():
+        if not self._ensure_filled_dem(self.fill_dem):
             return
         
         # Get geology layer

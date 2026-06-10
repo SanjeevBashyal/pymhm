@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Elevation-band parameter dialog helpers."""
+from __future__ import annotations
+
 from ..common import (
     QDialog,
     QDialogButtonBox,
@@ -8,12 +10,16 @@ from ..common import (
     QLabel,
     QVBoxLayout,
 )
+from ..core.naming import NamingAndRangeMixin
 
 
-class ElevationBandDialogMixin:
+class ElevationBandDialogMixin(NamingAndRangeMixin):
     """Elevation-band parameter dialog helpers."""
 
-    def _ask_elevation_band_width(self, min_elevation, max_elevation):
+    def _ask_elevation_band_width(
+            self,
+            min_elevation: float,
+            max_elevation: float) -> float | None:
         """Show elevation range and ask for the elevation window width."""
         band_dialog = QDialog(self.dialog)
         band_dialog.setWindowTitle("Elevation Bands")

@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """Processor for schema-driven mHM configuration namelists."""
+from __future__ import annotations
 
 import os
 import subprocess
+from typing import Any
 
 from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox
 
@@ -28,23 +30,27 @@ from .schema_loader import config_schemas, output_schemas, parameter_schema_look
 from .state import ConfigurationStateStore
 
 
+ConfigPage = dict[str, Any]
+ConfigValues = dict[str, dict[str, Any]]
+
+
 class ConfigurationProcessor(SimulationProcessor):
     """Handle mHM configuration dialogs, namelist writing, and status labels."""
 
-    def __init__(self, dialog):
+    def __init__(self, dialog: Any) -> None:
         super(ConfigurationProcessor, self).__init__(dialog)
         self.state_store = ConfigurationStateStore(dialog)
         self.configuration_state = self.state_store.empty()
-        self._last_mhm_values = None
+        self._last_mhm_values: ConfigValues | None = None
 
-    def selected_version(self):
+    def selected_version(self) -> str:
         """Return the selected mHM version, defaulting to schema-compatible v6."""
         combo = getattr(self.dialog, "comboBox_mHMversion", None)
         if combo is None:
             return "6.0"
         return combo.currentText().strip() or "6.0"
 
-    def load_project_state(self):
+    def load_project_state(self) -> None:
         """Load saved Configuration-tab state for the selected project."""
         self.configuration_state = self.state_store.load()
         if hasattr(self.dialog, "lineEdit_loadConfiguration"):
@@ -64,7 +70,7 @@ class ConfigurationProcessor(SimulationProcessor):
         if path and os.path.exists(path):
             self.log_message(f"Configuration state loaded: {path}")
 
-    def browse_configuration_file(self):
+    def browse_configuration_file(self) -> bool:
         """Load a configuration settings JSON file selected by the user."""
         if not self.ensure_project_folder():
             return False
@@ -102,7 +108,7 @@ class ConfigurationProcessor(SimulationProcessor):
             self.report_error("Load Configuration Settings", exc)
             return False
 
-    def save_state(self):
+    def save_state(self) -> None:
         """Persist current configuration state."""
         self.configuration_state["mhm_version"] = self.selected_version()
         self.state_store.save(self.configuration_state)
@@ -110,7 +116,7 @@ class ConfigurationProcessor(SimulationProcessor):
             self.dialog.lineEdit_loadConfiguration.setText(
                 self.state_store.path() or "")
 
-    def handle_version_changed(self):
+    def handle_version_changed(self) -> None:
         """Persist the selected version and refresh project paths/status."""
         if self.dialog.project_folder:
             ensure_project_structure(
@@ -119,7 +125,7 @@ class ConfigurationProcessor(SimulationProcessor):
             self.save_state()
         self.refresh_status_indicators()
 
-    def kind_state(self, kind):
+    def kind_state(self, kind: str) -> dict[str, Any]:
         """Return saved values for a namelist kind."""
         return (
             self.configuration_state
@@ -127,12 +133,12 @@ class ConfigurationProcessor(SimulationProcessor):
             .setdefault(kind, {})
         )
 
-    def set_kind_state(self, kind, values):
+    def set_kind_state(self, kind: str, values: dict[str, Any]) -> None:
         """Save values for a namelist kind into the state object."""
         self.configuration_state.setdefault("settings", {})[kind] = values
         self.save_state()
 
-    def configure_mhm(self):
+    def configure_mhm(self) -> bool:
         """Open the mHM configuration dialog and save mhm.nml on OK."""
         return self.open_editor(
             kind="mhm",
@@ -141,7 +147,7 @@ class ConfigurationProcessor(SimulationProcessor):
             parameter_mode=False,
         )
 
-    def configure_parameters(self):
+    def configure_parameters(self) -> bool:
         """Open the parameter configuration dialog and save mhm_parameters.nml."""
         config_values = self.current_mhm_values()
         return self.open_editor(
@@ -151,7 +157,7 @@ class ConfigurationProcessor(SimulationProcessor):
             parameter_mode=True,
         )
 
-    def configure_outputs(self):
+    def configure_outputs(self) -> bool:
         """Open the output configuration dialog and save mhm_outputs.nml."""
         return self.open_editor(
             kind="outputs",
@@ -160,7 +166,12 @@ class ConfigurationProcessor(SimulationProcessor):
             parameter_mode=False,
         )
 
-    def open_editor(self, kind, title, pages, parameter_mode):
+    def open_editor(
+            self,
+            kind: str,
+            title: str,
+            pages: list[ConfigPage],
+            parameter_mode: bool) -> bool:
         """Open a namelist editor and write its output when accepted."""
         if not self.ensure_project_folder():
             return False
@@ -192,7 +203,7 @@ class ConfigurationProcessor(SimulationProcessor):
             self.report_error(title, exc)
             return False
 
-    def create_nml_files(self):
+    def create_nml_files(self) -> bool:
         """Create all schema-driven namelist files using current/default values."""
         if not self.check_prerequisites():
             return False
@@ -228,7 +239,11 @@ class ConfigurationProcessor(SimulationProcessor):
             self.report_error("Create Namelists", exc)
             return False
 
-    def write_kind(self, kind, values, include_blocks=None):
+    def write_kind(
+            self,
+            kind: str,
+            values: dict[str, Any],
+            include_blocks: list[str] | None = None) -> str:
         """Render and save one namelist kind."""
         project_folder = self.dialog.project_folder
         ensure_project_structure(project_folder, self.selected_version())
@@ -241,15 +256,15 @@ class ConfigurationProcessor(SimulationProcessor):
         self.refresh_status_indicators()
         return destination
 
-    def build_config_pages(self):
+    def build_config_pages(self) -> list[ConfigPage]:
         """Build page data for the mHM configuration dialog."""
         return self.pages_from_schemas(config_schemas(), "mhm")
 
-    def build_output_pages(self):
+    def build_output_pages(self) -> list[ConfigPage]:
         """Build page data for the output configuration dialog."""
         return self.pages_from_schemas(output_schemas(), "outputs")
 
-    def build_parameter_pages(self, config_values):
+    def build_parameter_pages(self, config_values: dict[str, Any]) -> list[ConfigPage]:
         """Build parameter pages required by selected mHM process cases."""
         schema_lookup = parameter_schema_lookup()
         selected_blocks = self.parameter_blocks_for_config(config_values)
@@ -272,7 +287,7 @@ class ConfigurationProcessor(SimulationProcessor):
                 schemas.append(schema)
         return self.pages_from_schemas(schemas, "parameters")
 
-    def parameter_blocks_for_config(self, config_values):
+    def parameter_blocks_for_config(self, config_values: dict[str, Any]) -> list[str]:
         """Return parameter namelist blocks required by process selections."""
         process_values = self.process_values_from_config(config_values)
         selected_blocks = []
@@ -288,7 +303,7 @@ class ConfigurationProcessor(SimulationProcessor):
         selected_blocks.extend(PARAMETER_ALWAYS_BLOCKS)
         return selected_blocks
 
-    def process_values_from_config(self, config_values):
+    def process_values_from_config(self, config_values: dict[str, Any]) -> dict[str, Any]:
         """Extract config_processes values from current mHM config values."""
         processes = config_values.get(canonical_name("config_processes"), {})
         if processes:
@@ -296,7 +311,7 @@ class ConfigurationProcessor(SimulationProcessor):
         defaults = self.default_values_from_pages(self.build_config_pages())
         return defaults.get(canonical_name("config_processes"), {})
 
-    def current_mhm_values(self):
+    def current_mhm_values(self) -> dict[str, Any]:
         """Return current mHM config values from memory, file, or defaults."""
         if self._last_mhm_values:
             return self._last_mhm_values
@@ -310,7 +325,10 @@ class ConfigurationProcessor(SimulationProcessor):
                 return template_values(path)
         return self.default_values_from_pages(self.build_config_pages())
 
-    def pages_from_schemas(self, schemas, kind):
+    def pages_from_schemas(
+            self,
+            schemas: list[dict[str, Any]],
+            kind: str) -> list[ConfigPage]:
         """Create dialog page dictionaries from schemas and template defaults."""
         defaults = template_values(template_path(self.selected_version(), kind))
         saved = self.kind_state(kind)
@@ -345,8 +363,13 @@ class ConfigurationProcessor(SimulationProcessor):
                 pages[-1]["geo_class_count"] = geology_class_count(self.dialog)
         return pages
 
-    def default_for_property(self, template_defaults, generated_defaults,
-                             saved_defaults, name, prop_schema):
+    def default_for_property(
+            self,
+            template_defaults: dict[str, Any],
+            generated_defaults: dict[str, Any],
+            saved_defaults: dict[str, Any],
+            name: str,
+            prop_schema: dict[str, Any]) -> Any:
         """Return defaults for a schema property from saved/generated/template values."""
         base_key = canonical_name(name)
         for source in (saved_defaults, generated_defaults, template_defaults):
@@ -369,7 +392,11 @@ class ConfigurationProcessor(SimulationProcessor):
             return {"__indexed__": indexed}
         return None
 
-    def indexed_defaults(self, values, base_key, suffix):
+    def indexed_defaults(
+            self,
+            values: dict[str, Any],
+            base_key: str,
+            suffix: str) -> dict[str, Any]:
         """Return indexed defaults for base_key as {index: value}."""
         prefix = f"{base_key}__{suffix}"
         found = {}
@@ -381,7 +408,10 @@ class ConfigurationProcessor(SimulationProcessor):
                 found[index] = value
         return found
 
-    def default_values_from_pages(self, pages, parameter_mode=False):
+    def default_values_from_pages(
+            self,
+            pages: list[ConfigPage],
+            parameter_mode: bool = False) -> dict[str, Any]:
         """Collect default values from page data without opening an editor."""
         values = {}
         for page in pages:
@@ -409,7 +439,11 @@ class ConfigurationProcessor(SimulationProcessor):
                             canonical_name(name), default, prop_schema))
         return values
 
-    def default_entries_for_property(self, base_key, default, prop_schema):
+    def default_entries_for_property(
+            self,
+            base_key: str,
+            default: Any,
+            prop_schema: dict[str, Any]) -> dict[str, Any]:
         """Return namelist-ready entries for a non-parameter property."""
         if prop_schema.get("type") != "array":
             return {base_key: self.general_default(default, prop_schema)}
@@ -421,7 +455,7 @@ class ConfigurationProcessor(SimulationProcessor):
             }
         return {base_key: self.general_default(default, prop_schema)}
 
-    def general_default(self, value, prop_schema):
+    def general_default(self, value: Any, prop_schema: dict[str, Any]) -> Any:
         """Return a non-parameter default from template, schema, or type."""
         if value is not None:
             return value
@@ -442,7 +476,7 @@ class ConfigurationProcessor(SimulationProcessor):
             return 0.0
         return ""
 
-    def parameter_default(self, value, prop_schema):
+    def parameter_default(self, value: Any, prop_schema: dict[str, Any]) -> list[Any]:
         """Return [lower, upper, default, flag, scaling] for a parameter."""
         if isinstance(value, (list, tuple)) and len(value) >= 5:
             default = list(value[:5])
@@ -454,11 +488,11 @@ class ConfigurationProcessor(SimulationProcessor):
             default.append(0 if len(default) != 4 else 1)
         return default
 
-    def ordered_template_blocks(self, kind):
+    def ordered_template_blocks(self, kind: str) -> list[str]:
         """Return namelist block order for the selected version template."""
         return template_block_order(template_path(self.selected_version(), kind))
 
-    def ensure_project_folder(self):
+    def ensure_project_folder(self) -> bool:
         """Ensure a project folder is selected."""
         if self.dialog.project_folder:
             return True
@@ -468,7 +502,7 @@ class ConfigurationProcessor(SimulationProcessor):
             "Select a project folder before preparing namelist files.")
         return False
 
-    def refresh_status_indicators(self):
+    def refresh_status_indicators(self) -> None:
         """Update red/green status labels for saved namelist files."""
         project_folder = self.dialog.project_folder
         for kind, label_name in STATUS_LABELS.items():
@@ -479,7 +513,12 @@ class ConfigurationProcessor(SimulationProcessor):
             saved = bool(path and os.path.exists(path))
             self.set_status_label(label, kind, path, saved)
 
-    def set_status_label(self, label, kind, path, saved):
+    def set_status_label(
+            self,
+            label: Any,
+            kind: str,
+            path: str,
+            saved: bool) -> None:
         """Style one status label."""
         color = "#1f8f4d" if saved else "#b42318"
         label.setText("Saved" if saved else "Not saved")
@@ -501,7 +540,7 @@ class ConfigurationProcessor(SimulationProcessor):
             "}"
         )
 
-    def run_mhm(self):
+    def run_mhm(self) -> bool:
         """Create root-level namelists and run mHM against the project folder."""
         if not self.check_prerequisites():
             return False
@@ -537,7 +576,7 @@ class ConfigurationProcessor(SimulationProcessor):
             "Could not run mHM. Ensure mHM is available in PATH or a conda environment.")
         return False
 
-    def run_mhm_command(self, command, cwd):
+    def run_mhm_command(self, command: list[str], cwd: str) -> bool:
         """Run one mHM command and stream its output to the plugin console."""
         self.log_message(f"Executing command: {' '.join(command)}")
         process = subprocess.Popen(
@@ -569,7 +608,7 @@ class ConfigurationProcessor(SimulationProcessor):
             f"mHM command failed with return code {process.returncode}.")
         return False
 
-    def report_error(self, title, exc):
+    def report_error(self, title: str, exc: Exception) -> None:
         """Log and show a configuration error."""
         self.log_message(f"ERROR: {title} failed. Details: {exc}")
         QMessageBox.critical(self.dialog, "Configuration Error", str(exc))

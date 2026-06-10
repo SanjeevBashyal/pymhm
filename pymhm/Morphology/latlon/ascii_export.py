@@ -1,17 +1,20 @@
 # -*- coding: utf-8 -*-
 """ASCII export of masked morphology rasters."""
+from __future__ import annotations
+
 from ..common import (
     os,
     QMessageBox,
     geometry_folder,
     morph_folder,
 )
+from ..layers.masking import MaskingMixin
 
 
-class AsciiExportMixin:
+class AsciiExportMixin(MaskingMixin):
     """ASCII export of masked morphology rasters."""
 
-    def write_all_layers(self):
+    def write_all_layers(self) -> None:
         """
         Convert all masked layers to ASCII format using gdal:translate.
         Finds all masked .tif files in the geometry folder and converts them to .asc files

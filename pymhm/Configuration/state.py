@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any
 
 from ..project_layout import (
     data_folder,
@@ -22,17 +23,17 @@ CONFIGURATION_STATE_FILENAME = "pymhm_configuration_state.json"
 class ConfigurationStateStore:
     """Read and write all Configuration tab settings in one project JSON file."""
 
-    def __init__(self, dialog):
+    def __init__(self, dialog: Any) -> None:
         self.dialog = dialog
 
-    def path(self):
+    def path(self) -> str | None:
         """Return the project-local configuration state file."""
         if not self.dialog.project_folder:
             return None
         return os.path.join(
             self.dialog.project_folder, CONFIGURATION_STATE_FILENAME)
 
-    def empty(self):
+    def empty(self) -> dict[str, Any]:
         """Return an empty configuration state."""
         return {
             "version": 1,
@@ -44,7 +45,7 @@ class ConfigurationStateStore:
             },
         }
 
-    def load(self):
+    def load(self) -> dict[str, Any]:
         """Load configuration settings from disk."""
         path = self.path()
         if not path or not os.path.exists(path):
@@ -67,7 +68,7 @@ class ConfigurationStateStore:
                 f"WARNING: Could not read configuration state: {exc}")
             return self.empty()
 
-    def save(self, state):
+    def save(self, state: dict[str, Any]) -> None:
         """Save configuration settings to disk."""
         path = self.path()
         if not path:
@@ -84,7 +85,7 @@ class ConfigurationStateStore:
             self.dialog.log_message(
                 f"WARNING: Could not save configuration state: {exc}")
 
-    def project_layout(self):
+    def project_layout(self) -> dict[str, str]:
         """Return a serializable snapshot of the current project layout."""
         project_folder = self.dialog.project_folder
         if not project_folder:

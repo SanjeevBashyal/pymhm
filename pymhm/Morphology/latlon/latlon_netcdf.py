@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
 """Lat/lon NetCDF generation."""
+from __future__ import annotations
+
 from ..common import (
     os,
     QMessageBox,
 )
+from ..core.base import BaseProcessingMixin
 
 
-class LatLonNetcdfMixin:
+class LatLonNetcdfMixin(BaseProcessingMixin):
     """Lat/lon NetCDF generation."""
 
-    def create_latlon_nc_file(self, latlon_folder):
+    def create_latlon_nc_file(self, latlon_folder: str) -> bool:
         """
         Create latlon.nc NetCDF file with L0, L1, and L11 information.
         Includes xc/yc coordinates (1D arrays in UTM meters) and lat/lon values (2D arrays) for each level.

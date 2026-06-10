@@ -1,12 +1,20 @@
 # -*- coding: utf-8 -*-
 """Reference-grid comparison and nearest-neighbour raster alignment helpers."""
+from __future__ import annotations
+
+from typing import Any
+
 from ..common import os
+from ..core.base import BaseProcessingMixin
 
 
-class RasterAlignmentMixin:
+class RasterAlignmentMixin(BaseProcessingMixin):
     """Reference-grid comparison and nearest-neighbour raster alignment helpers."""
 
-    def _raster_matches_reference(self, raster_reference, target_reference):
+    def _raster_matches_reference(
+            self,
+            raster_reference: dict[str, Any],
+            target_reference: dict[str, Any]) -> bool:
         """Check whether two rasters share shape, geotransform, and projection."""
         if raster_reference["rows"] != target_reference["rows"]:
             return False
@@ -26,13 +34,13 @@ class RasterAlignmentMixin:
 
         return True
 
-    def _source_path_for_gdal(self, layer):
+    def _source_path_for_gdal(self, layer: Any) -> str:
         """Return a GDAL-openable source path from a QGIS layer source."""
         source = layer.source()
         source_path = source.split("|")[0]
         return source_path if os.path.exists(source_path) else source
 
-    def _reference_bounds(self, reference):
+    def _reference_bounds(self, reference: dict[str, Any]) -> tuple[float, float, float, float]:
         """Return GDAL output bounds from a reference raster."""
         gt = reference["geotransform"]
         cols = int(reference["cols"])
@@ -52,7 +60,13 @@ class RasterAlignmentMixin:
 
         return (min(xs), min(ys), max(xs), max(ys))
 
-    def _align_raster_to_reference(self, input_path, output_path, reference, deps, nodata=-9999):
+    def _align_raster_to_reference(
+            self,
+            input_path: str,
+            output_path: str,
+            reference: dict[str, Any],
+            deps: dict[str, Any],
+            nodata: int = -9999) -> bool:
         """Nearest-neighbour warp a categorical raster to a reference grid."""
         gdal = deps["gdal"]
         os.makedirs(os.path.dirname(output_path), exist_ok=True)

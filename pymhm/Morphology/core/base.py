@@ -1,16 +1,22 @@
 # -*- coding: utf-8 -*-
 """Processor setup, QGIS layer loading policy, and algorithm dispatch."""
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
 from ..common import (
     json,
     processing,
     DialogUtils,
 )
+from .processing_state import ProcessingStateMixin
 
 
-class BaseProcessingMixin:
+class BaseProcessingMixin(ProcessingStateMixin):
     """Processor setup, QGIS layer loading policy, and algorithm dispatch."""
 
-    def __init__(self, dialog):
+    def __init__(self, dialog: Any) -> None:
         """
         Initialize the morphology processor with reference to the dialog.
 
@@ -63,7 +69,11 @@ class BaseProcessingMixin:
         self.L11 = None
         self.L2 = None
 
-    def load_layer(self, path, name, is_raster=True):
+    def load_layer(
+            self,
+            path: str,
+            name: str,
+            is_raster: bool = True) -> Any | None:
         """
         Override load_layer to respect batch/intermediate loading suppression.
         """
@@ -76,13 +86,20 @@ class BaseProcessingMixin:
         # Call the parent load_layer method
         return self.dialog.load_layer(path, name, is_raster)
 
-    def run_processing_algorithm(self, name, params):
+    def run_processing_algorithm(
+            self,
+            name: str,
+            params: dict[str, Any]) -> Any:
         """Run a processing algorithm and record any file outputs it creates."""
         result = self.dialog.run_processing_algorithm(name, params)
         self.record_processing_outputs(name, params, result)
         return result
 
-    def without_layer_loading(self, callback, *args, **kwargs):
+    def without_layer_loading(
+            self,
+            callback: Callable[..., Any],
+            *args: Any,
+            **kwargs: Any) -> Any:
         """Run a callable while preventing QGIS layer additions."""
         self._layer_loading_suppressed += 1
         try:

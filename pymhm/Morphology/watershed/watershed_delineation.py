@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Per-pour-point watershed delineation and watershed merge outputs."""
+from __future__ import annotations
+
 from ..common import (
     os,
     project_geometry_folder,
@@ -7,12 +9,13 @@ from ..common import (
     QgsVectorLayer,
     NULL,
 )
+from .pour_point_workflow import PourPointWorkflowMixin
 
 
-class WatershedDelineationMixin:
+class WatershedDelineationMixin(PourPointWorkflowMixin):
     """Per-pour-point watershed delineation and watershed merge outputs."""
 
-    def delineate_watershed(self):
+    def delineate_watershed(self) -> None:
         """Step 4: Delineate upstream basins for snapped points with pyflwdir."""
         self.log_message(
             "\n--- Starting Geometry Step 4: Delineate Watershed ---")
@@ -20,10 +23,16 @@ class WatershedDelineationMixin:
             return
 
         self.log_message("Preparing snapped pour points before watershed delineation...")
-        if not self._ensure_snapped_points():
+        if not self._ensure_snapped_points(
+                self.snap_points,
+                self.process_channel_network,
+                self.process_flow_accumulation,
+                self.fill_dem):
             return
 
-        if not self._ensure_flow_direction():
+        if not self._ensure_flow_direction(
+                self.process_flow_direction,
+                self.fill_dem):
             return
 
         context = self._build_flwdir_from_filled_dem()

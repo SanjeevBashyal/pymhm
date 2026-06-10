@@ -23,7 +23,7 @@ class MeteoDomainBounds:
         return self.west, self.east, self.south, self.north
 
 
-def bounds_from_dialog(dialog) -> MeteoDomainBounds | None:
+def bounds_from_dialog(dialog: object) -> MeteoDomainBounds | None:
     """
     Get WGS84 crop bounds from the prepared masked DEM or selected DEM.
 

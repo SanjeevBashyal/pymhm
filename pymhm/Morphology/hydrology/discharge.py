@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 from ..common import QMessageBox
+from ..core.base import BaseProcessingMixin
 from .discharge_dialog import DischargeTableAssignmentDialog
 from .discharge_writer import write_streamflow_observation
 from .observation_paths import streamflow_observation_folder
 from .outlets import StationIdError, station_ids_from_layer
 
 
-class DischargeAssignmentMixin:
+class DischargeAssignmentMixin(BaseProcessingMixin):
     """Assign selected discharge table layers to gauged outlets."""
 
-    def assign_discharge_tables(self):
+    def assign_discharge_tables(self) -> None:
         """Open the discharge table assignment dialog and write mHM files."""
         self.log_message("\n--- Assigning discharge tables to gauged outlets ---")
 

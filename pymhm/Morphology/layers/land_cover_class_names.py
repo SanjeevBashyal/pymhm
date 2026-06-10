@@ -1,17 +1,22 @@
 # -*- coding: utf-8 -*-
 """Raw land-cover class-name lookup for reporting outputs."""
+from __future__ import annotations
+
+from typing import Any
+
 from ..common import (
     os,
     csv,
     QgsVectorLayer,
     NULL,
 )
+from .lookup_fields import LookupFieldMixin
 
 
-class LandCoverClassNameMixin:
+class LandCoverClassNameMixin(LookupFieldMixin):
     """Raw land-cover class-name lookup for reporting outputs."""
 
-    def _read_land_cover_class_names(self):
+    def _read_land_cover_class_names(self) -> dict[int, str]:
         """Read raw land-cover class value to class-name mappings."""
         lookup_layer_combo = getattr(
             self.dialog, "mMapLayerComboBox_landCoverLookup", None)
@@ -34,7 +39,9 @@ class LandCoverClassNameMixin:
 
         return {}
 
-    def _read_land_cover_class_names_from_layer(self, lookup_layer):
+    def _read_land_cover_class_names_from_layer(
+            self,
+            lookup_layer: Any) -> dict[int, str]:
         """Read class names from the selected tabular lookup layer."""
         if not isinstance(lookup_layer, QgsVectorLayer) or not lookup_layer.isValid():
             return {}
@@ -88,7 +95,9 @@ class LandCoverClassNameMixin:
 
         return class_names
 
-    def _read_land_cover_class_names_from_csv(self, lookup_file):
+    def _read_land_cover_class_names_from_csv(
+            self,
+            lookup_file: str) -> dict[int, str]:
         """Read class names from the older CSV lookup file."""
         try:
             with open(lookup_file, "r", newline="", encoding="utf-8") as csv_file:

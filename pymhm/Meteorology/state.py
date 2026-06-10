@@ -5,17 +5,19 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Union
 
 from ..time_utils import utc_timestamp
 
 
 STATE_FILENAME = "pymhm_processing_state.json"
+PathInput = Union[str, Path]
 
 
 class MeteorologyOutputState:
     """Small helper for recording prepared meteorology outputs."""
 
-    def __init__(self, dialog):
+    def __init__(self, dialog: object) -> None:
         self.dialog = dialog
 
     def state_path(self) -> Path | None:
@@ -23,7 +25,7 @@ class MeteorologyOutputState:
             return None
         return Path(self.dialog.project_folder) / STATE_FILENAME
 
-    def load(self) -> dict:
+    def load(self) -> dict[str, object]:
         path = self.state_path()
         if not path or not path.exists():
             return {"version": 1, "outputs": {}}
@@ -41,7 +43,7 @@ class MeteorologyOutputState:
                 f"WARNING: Could not read processing state: {e}")
             return {"version": 1, "outputs": {}}
 
-    def save(self, state: dict) -> None:
+    def save(self, state: dict[str, object]) -> None:
         path = self.state_path()
         if not path:
             return
@@ -60,7 +62,7 @@ class MeteorologyOutputState:
         except ValueError:
             return str(path.resolve()).replace("\\", "/")
 
-    def mark_prepared(self, path, name=None) -> None:
+    def mark_prepared(self, path: PathInput, name: str | None = None) -> None:
         path = Path(path)
         if not path.exists():
             return

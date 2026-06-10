@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Watershed mask application for prepared morphology rasters."""
+from __future__ import annotations
+
 from ..common import (
     os,
     project_geometry_folder,
@@ -13,12 +15,13 @@ from ..common import (
     QgsRectangle,
     QgsPointXY,
 )
+from ..watershed.watershed_delineation import WatershedDelineationMixin
 
 
-class MaskingMixin:
+class MaskingMixin(WatershedDelineationMixin):
     """Watershed mask application for prepared morphology rasters."""
 
-    def mask_all_layers(self):
+    def mask_all_layers(self) -> None:
         """
         Mask all raster layers using the merged watershed vector.
         Reads L0, L1, L2 values from UI and calculates extent based on L2.
@@ -27,7 +30,7 @@ class MaskingMixin:
         if not self.check_prerequisites():
             return
         
-        if not self._ensure_filled_dem():
+        if not self._ensure_filled_dem(self.fill_dem):
             return
         
         # Check for merged watershed mask
@@ -39,7 +42,12 @@ class MaskingMixin:
         )
         
         if not merged_watershed_path or not os.path.exists(merged_watershed_path):
-            if not self._ensure_merged_watershed():
+            if not self._ensure_merged_watershed(
+                    self.delineate_watershed,
+                    self.snap_points,
+                    self.process_channel_network,
+                    self.process_flow_accumulation,
+                    self.fill_dem):
                 return
             merged_watershed_path = self.merged_watershed_path
 

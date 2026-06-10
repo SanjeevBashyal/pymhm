@@ -6,9 +6,9 @@ from .latlon_netcdf import LatLonNetcdfMixin
 
 
 class LatLonHeaderMixin(
-    HeaderFileMixin,
     LatLonProcessingMixin,
     LatLonNetcdfMixin,
+    HeaderFileMixin,
 ):
     """Compatibility aggregate for lat/lon header and NetCDF processing."""
 

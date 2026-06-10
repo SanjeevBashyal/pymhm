@@ -1,15 +1,24 @@
 # -*- coding: utf-8 -*-
 """Raster array IO, cell-area helpers, and pyflwdir raster context builders."""
+from __future__ import annotations
+
+from typing import Any
+
 from ..common import (
     os,
     math,
 )
+from .base import BaseProcessingMixin
+from .dependencies import PythonDependencyMixin
 
 
-class RasterIOMixin:
+class RasterIOMixin(PythonDependencyMixin, BaseProcessingMixin):
     """Raster array IO, cell-area helpers, and pyflwdir raster context builders."""
 
-    def _read_raster_array(self, raster_path, as_float=False):
+    def _read_raster_array(
+            self,
+            raster_path: str,
+            as_float: bool = False) -> dict[str, Any] | None:
         """Read a single-band raster into a NumPy array with GDAL metadata."""
         deps = self._get_python_morphology_deps()
         if not deps:
@@ -39,7 +48,13 @@ class RasterIOMixin:
         ds = None
         return metadata
 
-    def _write_raster_array(self, output_path, array, reference, nodata=None, gdal_type=None):
+    def _write_raster_array(
+            self,
+            output_path: str,
+            array: Any,
+            reference: dict[str, Any],
+            nodata: float | int | None = None,
+            gdal_type: Any | None = None) -> bool:
         """Write a NumPy array as a single-band GeoTIFF using reference metadata."""
         deps = self._get_python_morphology_deps()
         if not deps:
@@ -91,7 +106,7 @@ class RasterIOMixin:
             return True
         return False
 
-    def _projection_is_geographic(self, projection, osr):
+    def _projection_is_geographic(self, projection: str | None, osr: Any) -> bool:
         """Return True when GDAL projection WKT describes a geographic CRS."""
         if not projection:
             return False
@@ -100,7 +115,10 @@ class RasterIOMixin:
             return False
         return bool(spatial_ref.IsGeographic())
 
-    def _reference_cell_area_m2(self, reference, deps):
+    def _reference_cell_area_m2(
+            self,
+            reference: dict[str, Any],
+            deps: dict[str, Any]) -> float:
         """Approximate raster cell area in square metres for channel thresholds."""
         geotransform = reference["geotransform"]
         pixel_width = abs(float(geotransform[1]))
@@ -114,7 +132,10 @@ class RasterIOMixin:
 
         return max(pixel_width * pixel_height, 1.0)
 
-    def _normalise_dem_array(self, array, nodata):
+    def _normalise_dem_array(
+            self,
+            array: Any,
+            nodata: float | int | None) -> tuple[Any | None, Any | None, float | None]:
         """Prepare DEM data for pyflwdir using a finite -9999 nodata value."""
         deps = self._get_python_morphology_deps()
         if not deps:
@@ -131,9 +152,10 @@ class RasterIOMixin:
         dem[invalid_mask] = pyflwdir_nodata
         return dem, invalid_mask, pyflwdir_nodata
 
-    def _build_flwdir_from_filled_dem(self):
+    def _build_flwdir_from_filled_dem(self) -> dict[str, Any] | None:
         """Build a pyflwdir object from the filled DEM."""
-        if not self._ensure_filled_dem():
+        if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
+            self.log_message("ERROR: Filled DEM is missing. Run Fill DEM first.")
             return None
 
         deps = self._get_python_morphology_deps()

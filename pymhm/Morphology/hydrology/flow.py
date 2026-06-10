@@ -1,18 +1,22 @@
 # -*- coding: utf-8 -*-
 """Flow direction and flow accumulation outputs."""
+from __future__ import annotations
+
 from ..common import (
     os,
     project_geometry_folder,
     processing,
 )
+from ..core.predecessors import PredecessorMixin
+from ..watershed.dem_fill import DemFillMixin
 
 
-class FlowAnalysisMixin:
+class FlowAnalysisMixin(DemFillMixin, PredecessorMixin):
     """Flow direction and flow accumulation outputs."""
 
-    def process_flow_direction(self):
+    def process_flow_direction(self) -> None:
         """Process D8 flow direction with pyflwdir."""
-        if not self._ensure_filled_dem():
+        if not self._ensure_filled_dem(self.fill_dem):
             return
 
         # Check if flow direction already exists
@@ -48,9 +52,9 @@ class FlowAnalysisMixin:
         else:
             self.log_message("Flow Direction processing failed.")
 
-    def process_flow_accumulation(self):
+    def process_flow_accumulation(self) -> None:
         """Process cell-based flow accumulation with pyflwdir."""
-        if not self._ensure_filled_dem():
+        if not self._ensure_filled_dem(self.fill_dem):
             return
 
         geometry_folder = project_geometry_folder(self.dialog.project_folder)

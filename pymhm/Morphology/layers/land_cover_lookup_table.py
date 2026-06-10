@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 """Land-cover lookup table loading for mHM class reclassification."""
+from __future__ import annotations
+
+from typing import Any
+
 from ..common import (
     os,
     csv,
     QgsVectorLayer,
 )
+from .lookup_fields import LookupFieldMixin
 
 
-class LandCoverLookupTableMixin:
+class LandCoverLookupTableMixin(LookupFieldMixin):
     """Land-cover lookup table loading for mHM class reclassification."""
 
-    def load_land_cover_lookup_table(self):
+    def load_land_cover_lookup_table(self) -> dict[int, int]:
         """
         Load land cover lookup table from a selected tabular layer, an older
         file-path widget, or use the default mapping.
@@ -102,7 +107,9 @@ class LandCoverLookupTableMixin:
                 f"ERROR reading lookup table: {e}. Using default mapping.")
             return default_lookup
 
-    def _read_land_cover_lookup_layer(self, lookup_layer):
+    def _read_land_cover_lookup_layer(
+            self,
+            lookup_layer: Any) -> dict[int, int] | None:
         """Read land-cover lookup mappings from a tabular/vector layer."""
         if not isinstance(lookup_layer, QgsVectorLayer) or not lookup_layer.isValid():
             self.log_message("ERROR: Land cover lookup layer is not valid.")

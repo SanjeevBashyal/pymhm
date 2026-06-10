@@ -1,16 +1,24 @@
 # -*- coding: utf-8 -*-
 """Land-cover clipping and mHM class raster preparation."""
+from __future__ import annotations
+
 from ..common import (
     os,
     project_geometry_folder,
     QMessageBox,
 )
+from .land_cover_lookup_table import LandCoverLookupTableMixin
+from ..core.layer_preparation import LayerPreparationMixin
 
 
-class LandCoverProcessingMixin:
+class LandCoverProcessingMixin(LayerPreparationMixin, LandCoverLookupTableMixin):
     """Land-cover clipping and mHM class raster preparation."""
 
-    def reclassify_land_use_raster(self, input_raster_path, output_path, lookup_mapping):
+    def reclassify_land_use_raster(
+            self,
+            input_raster_path: str,
+            output_path: str,
+            lookup_mapping: dict[int, int]) -> bool:
         """
         Reclassify land use raster values based on lookup table.
 
@@ -57,7 +65,7 @@ class LandCoverProcessingMixin:
             self.log_message("ERROR: Land use reclassification failed.")
             return False
 
-    def process_land_use(self):
+    def process_land_use(self) -> None:
         """Process Land Use layer with clipping and reclassification"""
         if not self.check_prerequisites():
             return

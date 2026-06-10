@@ -1,17 +1,20 @@
 # -*- coding: utf-8 -*-
 """Discovery and restoration of prepared project morphology outputs."""
+from __future__ import annotations
+
 from ..common import (
     os,
     project_geometry_folder,
     QgsRasterLayer,
     processing,
 )
+from .processing_state import ProcessingStateMixin
 
 
-class ProjectStateMixin:
+class ProjectStateMixin(ProcessingStateMixin):
     """Discovery and restoration of prepared project morphology outputs."""
 
-    def load_project_state(self):
+    def load_project_state(self) -> None:
         """Checks for existing output files and sets instance attributes to resume work."""
         self.log_message("\n--- Checking for existing project files... ---")
         self.load_processing_state()

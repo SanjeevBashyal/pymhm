@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 """mHM grid header file writing."""
+from __future__ import annotations
+
 from ..common import os
+from ..core.base import BaseProcessingMixin
 
 
-class HeaderFileMixin:
+class HeaderFileMixin(BaseProcessingMixin):
     """mHM grid header file writing."""
 
-    def write_header_file(self, L_info, output_path):
+    def write_header_file(self, L_info: dict[str, object], output_path: str) -> bool:
         """
         Helper function to write header.txt file for a given L level.
         

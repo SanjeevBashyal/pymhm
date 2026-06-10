@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from pathlib import Path
+from typing import Callable, Any
 
 from .exceptions import MeteorologyToolImportError
 
@@ -12,8 +13,8 @@ from .exceptions import MeteorologyToolImportError
 class ERA5MhmTools:
     """Callable ERA5-Land tools used by the QGIS meteorology workflow."""
 
-    inspect_folder: Callable
-    process_to_mhm: Callable
+    inspect_folder: Callable[[Path], dict[str, Any]]
+    process_to_mhm: Callable[..., Any]
     missing_dependency_error: type[Exception]
 
 

@@ -11,7 +11,10 @@ from ..common import (
     QgsRasterLayer,
     QgsVectorLayer,
 )
+from ..core.predecessors import PredecessorMixin
+from ..watershed.pour_point_workflow import PourPointWorkflowMixin
 from .outlets import (
+    OutletCountMixin,
     StationIdError,
     find_station_id_field,
     station_id_int,
@@ -19,16 +22,20 @@ from .outlets import (
 )
 
 
-class GaugePositionMixin:
+class GaugePositionMixin(PourPointWorkflowMixin, OutletCountMixin, PredecessorMixin):
     """Gauge-position raster preparation from snapped pour points."""
 
-    def process_gauge_position(self):
+    def process_gauge_position(self) -> None:
         """Prepare the mHM idgauges raster from snapped gauged outlets."""
-        if not self._ensure_filled_dem():
+        if not self._ensure_filled_dem(self.fill_dem):
             return
 
         if not self.snapped_points_path or not os.path.exists(self.snapped_points_path):
-            if not self._ensure_snapped_points():
+            if not self._ensure_snapped_points(
+                    self.snap_points,
+                    self.process_channel_network,
+                    self.process_flow_accumulation,
+                    self.fill_dem):
                 return
 
         geometry_folder = project_geometry_folder(self.dialog.project_folder)
@@ -177,7 +184,7 @@ class GaugePositionMixin:
 
         return gauge_features
 
-    def _stream_mask_from_context(self, context):
+    def _stream_mask_from_context(self, context: dict) -> object | None:
         """Recreate the channel network stream mask on the filled DEM grid."""
         deps = context["deps"]
         np = deps["np"]
@@ -206,7 +213,7 @@ class GaugePositionMixin:
 
         return flow_accumulation >= threshold_cells
 
-    def _snapped_to_raster_transform(self, snapped_layer):
+    def _snapped_to_raster_transform(self, snapped_layer: object) -> object | None:
         """Return a coordinate transform when snapped points and DEM CRS differ."""
         filled_dem_layer = QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
         if not filled_dem_layer.isValid():
@@ -227,14 +234,25 @@ class GaugePositionMixin:
         transform.setBallparkTransformsAreAppropriate(True)
         return transform
 
-    def _point_to_row_col(self, x, y, geotransform, deps) -> tuple[int, int]:
+    def _point_to_row_col(
+            self,
+            x: float,
+            y: float,
+            geotransform: tuple,
+            deps: dict) -> tuple[int, int]:
         """Convert map coordinates to raster row/column indices."""
         transform = deps["Affine"].from_gdal(*geotransform)
         col_float, row_float = (~transform) * (float(x), float(y))
         np = deps["np"]
         return int(np.floor(row_float)), int(np.floor(col_float))
 
-    def _nearest_stream_cell(self, row, col, stream_mask, np, max_radius=10):
+    def _nearest_stream_cell(
+            self,
+            row: int,
+            col: int,
+            stream_mask: object,
+            np: object,
+            max_radius: int = 10) -> tuple[int, int, float]:
         """Return the nearest stream cell to a candidate row/column."""
         rows, cols = stream_mask.shape
         row = min(max(int(row), 0), rows - 1)
@@ -254,7 +272,12 @@ class GaugePositionMixin:
         candidates = np.argwhere(stream_mask)
         return self._closest_candidate(row, col, candidates, np)
 
-    def _closest_candidate(self, row, col, candidates, np):
+    def _closest_candidate(
+            self,
+            row: int,
+            col: int,
+            candidates: object,
+            np: object) -> tuple[int, int, float]:
         """Choose the closest row/column candidate and report cell distance."""
         deltas = candidates.astype(float)
         deltas[:, 0] -= row
@@ -265,7 +288,11 @@ class GaugePositionMixin:
         best_col = int(candidates[best_index, 1])
         return best_row, best_col, float(distances[best_index])
 
-    def _existing_gauge_position_matches(self, path, station_values, deps):
+    def _existing_gauge_position_matches(
+            self,
+            path: str,
+            station_values: list[int],
+            deps: dict) -> bool:
         """Return True when an existing idgauges raster already has these IDs."""
         reference = self._read_raster_array(path, as_float=False)
         if not reference:

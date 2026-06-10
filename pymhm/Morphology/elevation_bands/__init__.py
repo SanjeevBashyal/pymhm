@@ -5,8 +5,8 @@ from .band_details import BandDetailsMixin
 
 
 class ElevationBandsMixin(
-    ElevationBandGenerationMixin,
     BandDetailsMixin,
+    ElevationBandGenerationMixin,
 ):
     """Compatibility aggregate for elevation-band morphology mixins."""
 

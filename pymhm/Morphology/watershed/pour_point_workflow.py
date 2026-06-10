@@ -1,16 +1,24 @@
 # -*- coding: utf-8 -*-
 """Pour-point snap workflow orchestration."""
+from __future__ import annotations
+
 from ..common import (
     os,
     project_geometry_folder,
     QgsVectorLayer,
 )
+from ..core.layer_preparation import LayerPreparationMixin
+from .channel_network import ChannelNetworkMixin
+from .network_snapper import NetworkSnapperMixin
 
 
-class PourPointWorkflowMixin:
+class PourPointWorkflowMixin(
+        LayerPreparationMixin,
+        ChannelNetworkMixin,
+        NetworkSnapperMixin):
     """Pour-point snap workflow orchestration."""
 
-    def snap_points(self):
+    def snap_points(self) -> None:
         """Step 3: Snap Pour Points to the nearest high-order channel segment."""
         self.log_message(
             "\n--- Starting Geometry Step 3: Snap Pour Points ---")
@@ -30,7 +38,10 @@ class PourPointWorkflowMixin:
             return
 
         if not self.channel_network_vector_path or not os.path.exists(self.channel_network_vector_path):
-            if not self._ensure_channel_network():
+            if not self._ensure_channel_network(
+                    self.process_channel_network,
+                    self.process_flow_accumulation,
+                    self.fill_dem):
                 return
 
         pour_points_layer = self.dialog.mMapLayerComboBox_pour_points.currentLayer()

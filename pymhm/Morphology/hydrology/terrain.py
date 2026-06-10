@@ -1,17 +1,20 @@
 # -*- coding: utf-8 -*-
 """Terrain derivative outputs: aspect and slope."""
+from __future__ import annotations
+
 from ..common import (
     os,
     project_geometry_folder,
     QMessageBox,
     processing,
 )
+from ..core.dem_inputs import DemInputMixin
 
 
-class TerrainAnalysisMixin:
+class TerrainAnalysisMixin(DemInputMixin):
     """Terrain derivative outputs: aspect and slope."""
 
-    def process_aspect(self):
+    def process_aspect(self) -> None:
         """Process Aspect from input DEM"""
         # Ensure DEM is checked and reprojected if needed
         if not self.dem_layer:
@@ -61,7 +64,7 @@ class TerrainAnalysisMixin:
         else:
             self.log_message("Aspect processing failed.")
 
-    def process_slope(self):
+    def process_slope(self) -> None:
         """Process Slope from input DEM"""
         # Ensure DEM is checked and reprojected if needed
         if not self.dem_layer:

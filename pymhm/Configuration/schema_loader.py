@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 """Load YAML namelist schemas."""
+from __future__ import annotations
 
 import glob
 import os
+from typing import Any
 
 from .constants import CONFIG_ORDER, OUTPUT_ORDER
 from .paths import schemas_dir
 
 
-def load_yaml_package():
+def load_yaml_package() -> Any:
     """Import PyYAML lazily so the plugin can report a useful error."""
     try:
         import yaml
@@ -21,7 +23,7 @@ def load_yaml_package():
     return yaml
 
 
-def load_schema(path):
+def load_schema(path: str) -> dict[str, Any]:
     """Load one YAML schema using yaml.safe_load."""
     yaml = load_yaml_package()
     with open(path, "r", encoding="utf-8") as schema_file:
@@ -30,7 +32,7 @@ def load_schema(path):
     return data
 
 
-def load_schema_group(prefix):
+def load_schema_group(prefix: str) -> dict[str, dict[str, Any]]:
     """Load all schemas with a prefix and index them by fortran namelist."""
     pattern = os.path.join(schemas_dir(), f"{prefix}_*.yml")
     schemas = {}
@@ -42,7 +44,9 @@ def load_schema_group(prefix):
     return schemas
 
 
-def ordered_schemas(prefix, order=None):
+def ordered_schemas(
+        prefix: str,
+        order: list[str] | tuple[str, ...] | None = None) -> list[dict[str, Any]]:
     """Load schemas and return them in a requested namelist order."""
     schemas = load_schema_group(prefix)
     ordered = []
@@ -55,16 +59,16 @@ def ordered_schemas(prefix, order=None):
     return ordered
 
 
-def config_schemas():
+def config_schemas() -> list[dict[str, Any]]:
     """Return mHM configuration schemas in the requested page order."""
     return ordered_schemas("config", CONFIG_ORDER)
 
 
-def output_schemas():
+def output_schemas() -> list[dict[str, Any]]:
     """Return output schemas in template order."""
     return ordered_schemas("output", OUTPUT_ORDER)
 
 
-def parameter_schema_lookup():
+def parameter_schema_lookup() -> dict[str, dict[str, Any]]:
     """Return parameter schemas indexed by namelist name."""
     return load_schema_group("parameter")

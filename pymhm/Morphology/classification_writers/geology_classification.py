@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
 """mHM geology classdefinition writer."""
+from __future__ import annotations
+
 from ..common import (
     os,
     QMessageBox,
     morph_folder,
 )
+from ..core.base import BaseProcessingMixin
 
 
-class GeologyClassificationWriterMixin:
+class GeologyClassificationWriterMixin(BaseProcessingMixin):
     """mHM geology classdefinition writer."""
 
-    def geology_classification_writer(self):
+    def geology_classification_writer(self) -> str | None:
         """
         Read geological lookup file and produce geology_classdefinition.txt.
         

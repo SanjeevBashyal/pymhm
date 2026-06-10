@@ -7,10 +7,10 @@ from .elevation_band_rasters import ElevationBandRasterMixin
 
 
 class ElevationBandGenerationMixin(
+    ElevationBandRasterMixin,
     ElevationBandDialogMixin,
     RasterMaskMixin,
     WatershedRasterDiscoveryMixin,
-    ElevationBandRasterMixin,
 ):
     """Compatibility aggregate for elevation-band raster generation."""
 

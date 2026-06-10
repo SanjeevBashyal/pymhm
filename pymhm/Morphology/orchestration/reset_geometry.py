@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Geometry output cleanup and in-memory path reset."""
+from __future__ import annotations
+
 from ..common import (
     os,
     project_geometry_folder,
@@ -7,12 +9,13 @@ from ..common import (
     QgsProject,
     processing,
 )
+from ..core.base import BaseProcessingMixin
 
 
-class ResetGeometryMixin:
+class ResetGeometryMixin(BaseProcessingMixin):
     """Geometry output cleanup and in-memory path reset."""
 
-    def resetGeometry(self):
+    def resetGeometry(self) -> None:
         """
         Reset geometry processing by:
         1. Removing all layers from QGIS interface that were created by the plugin

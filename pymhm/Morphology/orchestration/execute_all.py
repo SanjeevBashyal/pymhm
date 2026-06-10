@@ -1,16 +1,28 @@
 # -*- coding: utf-8 -*-
 """Execute-all morphology workflow orchestration."""
+from __future__ import annotations
+
 from ..common import (
     os,
     QMessageBox,
     processing,
 )
+from ..classification_writers import ClassificationWritersMixin
+from ..hydrology.aggregate import HydrologyMixin
+from ..latlon import LatLonMixin
+from ..layers import LayerProcessingMixin
+from ..watershed import WatershedMixin
 
 
-class ExecuteAllMixin:
+class ExecuteAllMixin(
+        WatershedMixin,
+        HydrologyMixin,
+        LayerProcessingMixin,
+        LatLonMixin,
+        ClassificationWritersMixin):
     """Execute-all morphology workflow orchestration."""
 
-    def execute_all_processing(self):
+    def execute_all_processing(self) -> None:
         """
         Execute all processing steps sequentially in the following order:
         1. filled dem

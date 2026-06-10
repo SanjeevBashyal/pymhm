@@ -2,6 +2,8 @@
 """Meteorology button actions for pymhm."""
 from __future__ import annotations
 
+from typing import Any
+
 from qgis.PyQt.QtWidgets import QMessageBox
 
 from .era5_tools import load_era5_mhm_tools
@@ -16,12 +18,12 @@ from .state import MeteorologyOutputState
 class MeteorologyProcessor:
     """Handle meteorology forcing preparation from the pymhm dialog."""
 
-    def __init__(self, dialog):
+    def __init__(self, dialog: Any) -> None:
         self.dialog = dialog
         self.log_message = dialog.log_message
         self.state = MeteorologyOutputState(dialog)
 
-    def load_project_state(self):
+    def load_project_state(self) -> None:
         """Record and report existing final meteorology forcing files."""
         if not self.dialog.project_folder:
             return
@@ -39,7 +41,7 @@ class MeteorologyProcessor:
                 "Existing meteorology forcing files found: "
                 + ", ".join(found))
 
-    def process_meteo_forcing(self):
+    def process_meteo_forcing(self) -> bool:
         """Prepare mHM meteo forcing NetCDF files from ERA5-Land inputs."""
         self.log_message("\n--- Preparing meteorology forcing files ---")
 

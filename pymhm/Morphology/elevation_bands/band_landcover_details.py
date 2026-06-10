@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Elevation-band by land-cover detail CSV generation."""
+from __future__ import annotations
+
 from ..common import (
     os,
     project_geometry_folder,
@@ -7,12 +9,24 @@ from ..common import (
     QMessageBox,
     QgsRasterLayer,
 )
+from ..layers.land_cover_class_names import LandCoverClassNameMixin
+from .band_landcover_helpers import BandLandCoverHelperMixin
+from .band_summary import BandSummaryMixin
+from .elevation_band_rasters import ElevationBandRasterMixin
+from .raster_alignment import RasterAlignmentMixin
+from .raster_masks import RasterMaskMixin
 
 
-class BandLandCoverDetailsMixin:
+class BandLandCoverDetailsMixin(
+        ElevationBandRasterMixin,
+        BandSummaryMixin,
+        RasterAlignmentMixin,
+        BandLandCoverHelperMixin,
+        LandCoverClassNameMixin,
+        RasterMaskMixin):
     """Elevation-band by land-cover detail CSV generation."""
 
-    def process_band_details(self):
+    def process_band_details(self) -> None:
         """
         Intersect elevation bands with raw land-cover classes and write details.
 

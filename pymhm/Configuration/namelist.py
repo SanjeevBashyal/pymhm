@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 """Fortran namelist parsing and template rendering helpers."""
+from __future__ import annotations
 
 import os
 import re
+from typing import Any
+
+NamelistValue = Any
+NamelistBlockValues = dict[str, NamelistValue]
+NamelistValues = dict[str, NamelistBlockValues]
 
 
 BLOCK_RE = re.compile(r"^\s*&\s*([A-Za-z_][A-Za-z0-9_]*)")
@@ -11,7 +17,7 @@ ASSIGNMENT_RE = re.compile(
     r"^(\s*)([A-Za-z_][A-Za-z0-9_]*(?:\s*\([^)]*\))?)(\s*=\s*)(.*)$")
 
 
-def canonical_name(name):
+def canonical_name(name: object) -> str:
     """Return a forgiving key for block and variable matching."""
     key = re.sub(r"[^a-z0-9]", "", str(name or "").lower())
     aliases = {
@@ -21,19 +27,19 @@ def canonical_name(name):
     return aliases.get(key, key)
 
 
-def variable_base(lhs):
+def variable_base(lhs: object) -> str:
     """Return the variable name without any Fortran array index."""
     return str(lhs).split("(", 1)[0].strip()
 
 
-def variable_key(lhs):
+def variable_key(lhs: object) -> str:
     """Return a key that preserves numeric Fortran indices when present."""
     full_key = canonical_name(lhs)
     base_key = canonical_name(variable_base(lhs))
     return full_key if full_key != base_key else base_key
 
 
-def indexed_template_key(lhs):
+def indexed_template_key(lhs: object) -> str | None:
     """Return internal indexed key for a Fortran indexed lhs."""
     base_name = variable_base(lhs)
     base_key = canonical_name(base_name)
@@ -51,7 +57,7 @@ def indexed_template_key(lhs):
     return f"{base_key}__{suffix}{index}"
 
 
-def split_inline_comment(text):
+def split_inline_comment(text: str) -> tuple[str, str]:
     """Split a namelist value from an inline comment."""
     quote = None
     for index, char in enumerate(text):
@@ -65,7 +71,7 @@ def split_inline_comment(text):
     return text.rstrip(), ""
 
 
-def split_csv(text):
+def split_csv(text: str) -> list[str]:
     """Split comma-separated namelist values while respecting quotes."""
     parts = []
     current = []
@@ -88,7 +94,7 @@ def split_csv(text):
     return parts
 
 
-def parse_scalar(text):
+def parse_scalar(text: object) -> NamelistValue:
     """Parse one scalar value from a namelist assignment."""
     value = str(text).strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
@@ -108,7 +114,7 @@ def parse_scalar(text):
         return value
 
 
-def parse_value(text):
+def parse_value(text: str) -> NamelistValue:
     """Parse a scalar or comma-separated value from a namelist assignment."""
     value_text, _ = split_inline_comment(text)
     parts = split_csv(value_text)
@@ -119,7 +125,7 @@ def parse_value(text):
     return parse_scalar(parts[0])
 
 
-def template_values(path):
+def template_values(path: str) -> NamelistValues:
     """Read assignment defaults from an existing namelist template."""
     values = {}
     current_block = None
@@ -149,7 +155,7 @@ def template_values(path):
     return values
 
 
-def template_block_order(path):
+def template_block_order(path: str) -> list[str]:
     """Return namelist block names in the order they appear in a template."""
     order = []
     if not os.path.exists(path):
@@ -162,7 +168,7 @@ def template_block_order(path):
     return order
 
 
-def format_scalar(value):
+def format_scalar(value: NamelistValue) -> str:
     """Format one Python value as a namelist scalar."""
     if isinstance(value, bool):
         return ".true." if value else ".false."
@@ -175,7 +181,7 @@ def format_scalar(value):
     return str(value)
 
 
-def format_value(value):
+def format_value(value: NamelistValue) -> str:
     """Format a scalar or list for a namelist assignment."""
     if isinstance(value, (list, tuple)):
         flattened = []
@@ -188,7 +194,10 @@ def format_value(value):
     return format_scalar(value)
 
 
-def indexed_assignment_items(block_values, base_key, suffix):
+def indexed_assignment_items(
+        block_values: NamelistBlockValues,
+        base_key: str,
+        suffix: str) -> list[tuple[int, NamelistValue]]:
     """Return sorted domain/class assignment values for a base key."""
     prefix = f"{base_key}__{suffix}"
     items = []
@@ -202,21 +211,28 @@ def indexed_assignment_items(block_values, base_key, suffix):
     return sorted(items)
 
 
-def geo_param_lhs(template_path, index):
+def geo_param_lhs(template_path: str, index: int) -> str:
     """Return version-specific GeoParam assignment lhs."""
     if "v5.13" in template_path.replace("\\", "/"):
         return f"GeoParam({index},:)"
     return f"GeoParam(:, {index})"
 
 
-def indexed_lhs(template_path, variable_name, suffix, index):
+def indexed_lhs(
+        template_path: str,
+        variable_name: str,
+        suffix: str,
+        index: int) -> str:
     """Return an lhs for a generated indexed assignment."""
     if suffix == "class" and canonical_name(variable_name) == "geoparam":
         return geo_param_lhs(template_path, index)
     return f"{variable_name}(:,{index})"
 
 
-def render_template(template_path, values_by_block, include_blocks=None):
+def render_template(
+        template_path: str,
+        values_by_block: NamelistValues,
+        include_blocks: list[str] | tuple[str, ...] | None = None) -> str:
     """Render a namelist template by replacing known assignment values."""
     include_keys = None
     if include_blocks is not None:
@@ -230,7 +246,7 @@ def render_template(template_path, values_by_block, include_blocks=None):
     current_included = True
     block_buffer = None
 
-    def write_line(line):
+    def write_line(line: str) -> None:
         if include_keys is None:
             rendered.append(line)
         elif current_included and block_buffer is not None:
@@ -309,8 +325,11 @@ def render_template(template_path, values_by_block, include_blocks=None):
     return "".join(rendered) + "\n"
 
 
-def write_rendered_namelist(template_path, output_path, values_by_block,
-                            include_blocks=None):
+def write_rendered_namelist(
+        template_path: str,
+        output_path: str,
+        values_by_block: NamelistValues,
+        include_blocks: list[str] | tuple[str, ...] | None = None) -> str:
     """Render and save a namelist file."""
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     content = render_template(template_path, values_by_block, include_blocks)

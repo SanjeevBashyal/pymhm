@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 """Land-cover helpers for elevation-band detail tables."""
+from __future__ import annotations
+
+from collections.abc import Callable
+
 from ..common import (
     os,
     project_geometry_folder,
@@ -7,12 +11,16 @@ from ..common import (
     QMessageBox,
     processing,
 )
+from ..core.base import BaseProcessingMixin
+from ..core.naming import NamingAndRangeMixin
 
 
-class BandLandCoverHelperMixin:
+class BandLandCoverHelperMixin(BaseProcessingMixin, NamingAndRangeMixin):
     """Land-cover helpers for elevation-band detail tables."""
 
-    def _ensure_land_use_raster(self):
+    def _ensure_land_use_raster(
+            self,
+            process_land_use: Callable[[], object]) -> str | None:
         """Return a processed land-use raster, creating it if required."""
         geometry_folder = project_geometry_folder(self.dialog.project_folder)
         expected_path = os.path.join(geometry_folder, "3_land_use.tif")
@@ -32,7 +40,7 @@ class BandLandCoverHelperMixin:
             return None
 
         self.log_message("Processed land-use raster is missing. Running Land Use first...")
-        self.without_layer_loading(self.process_land_use)
+        self.without_layer_loading(process_land_use)
 
         if self.land_use_layer and os.path.exists(self.land_use_layer):
             return self.land_use_layer
@@ -43,7 +51,7 @@ class BandLandCoverHelperMixin:
         self.log_message("ERROR: Land Use processing did not create 3_land_use.tif.")
         return None
 
-    def _canonical_land_cover_class(self, value):
+    def _canonical_land_cover_class(self, value: object) -> int | float:
         """Canonical numeric class value for stable CSV headers/comparisons."""
         numeric_value = float(value)
         rounded_value = round(numeric_value)
@@ -51,7 +59,10 @@ class BandLandCoverHelperMixin:
             return int(rounded_value)
         return numeric_value
 
-    def _land_cover_class_header(self, class_value, class_names=None):
+    def _land_cover_class_header(
+            self,
+            class_value: int | float,
+            class_names: dict[int, str] | None = None) -> str:
         """Return a CSV-safe raw land-cover class area column name."""
         if isinstance(class_value, int):
             suffix = str(class_value)
@@ -74,7 +85,7 @@ class BandLandCoverHelperMixin:
 
         return f"land_cover_class_{value_suffix}_area"
 
-    def _format_optional_float(self, value):
+    def _format_optional_float(self, value: object) -> str:
         """Format optional float values for CSV output."""
         if value is None:
             return ""

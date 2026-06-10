@@ -7,10 +7,10 @@ from .watershed_delineation import WatershedDelineationMixin
 
 
 class WatershedMixin(
-    DemFillMixin,
-    ChannelNetworkMixin,
-    PourPointMixin,
     WatershedDelineationMixin,
+    PourPointMixin,
+    ChannelNetworkMixin,
+    DemFillMixin,
 ):
     """Compatibility aggregate for watershed morphology mixins."""
 

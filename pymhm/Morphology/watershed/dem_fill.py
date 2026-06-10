@@ -1,16 +1,20 @@
 # -*- coding: utf-8 -*-
 """DEM depression filling workflow."""
+from __future__ import annotations
+
 from ..common import (
     os,
     project_geometry_folder,
     QMessageBox,
 )
+from ..core.dem_inputs import DemInputMixin
+from ..core.raster_io import RasterIOMixin
 
 
-class DemFillMixin:
+class DemFillMixin(DemInputMixin, RasterIOMixin):
     """DEM depression filling workflow."""
 
-    def fill_dem(self):
+    def fill_dem(self) -> None:
         """Step 1: Fill sinks in the DEM using pyflwdir, as in the workshop notebook."""
         self.log_message("\n--- Starting Geometry Step 1: Fill DEM ---")
         if not self.check_prerequisites():

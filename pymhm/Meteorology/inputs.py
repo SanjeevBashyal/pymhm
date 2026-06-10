@@ -20,7 +20,7 @@ class MeteorologyRunInputs:
     crop_bounds: tuple[float, float, float, float] | None
 
 
-def collect_run_inputs(dialog) -> MeteorologyRunInputs:
+def collect_run_inputs(dialog: object) -> MeteorologyRunInputs:
     """Read the dialog and return validated meteorology processing inputs."""
     if not dialog.project_folder:
         raise MeteorologyInputError(

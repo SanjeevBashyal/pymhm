@@ -6,7 +6,6 @@ from .network_snapper import NetworkSnapperMixin
 
 class PourPointMixin(
     PourPointWorkflowMixin,
-    NetworkSnapperMixin,
 ):
     """Compatibility aggregate for pour-point snapping workflows."""
 

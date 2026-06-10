@@ -7,10 +7,10 @@ from .band_landcover_details import BandLandCoverDetailsMixin
 
 
 class BandDetailsMixin(
+    BandLandCoverDetailsMixin,
     BandSummaryMixin,
     RasterAlignmentMixin,
     BandLandCoverHelperMixin,
-    BandLandCoverDetailsMixin,
 ):
     """Compatibility aggregate for elevation-band detail-table helpers."""
 

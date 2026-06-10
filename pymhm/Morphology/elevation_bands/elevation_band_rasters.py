@@ -1,17 +1,27 @@
 # -*- coding: utf-8 -*-
 """Elevation-band raster generation and area summary writing."""
+from __future__ import annotations
+
 from ..common import (
     os,
     project_geometry_folder,
     csv,
     QMessageBox,
 )
+from ..watershed.watershed_delineation import WatershedDelineationMixin
+from .elevation_band_dialog import ElevationBandDialogMixin
+from .raster_masks import RasterMaskMixin
+from .watershed_rasters import WatershedRasterDiscoveryMixin
 
 
-class ElevationBandRasterMixin:
+class ElevationBandRasterMixin(
+        WatershedDelineationMixin,
+        ElevationBandDialogMixin,
+        RasterMaskMixin,
+        WatershedRasterDiscoveryMixin):
     """Elevation-band raster generation and area summary writing."""
 
-    def process_elevation_bands(self):
+    def process_elevation_bands(self) -> None:
         """
         Create elevation-band rasters per subcatchment and a CSV area summary.
 
@@ -56,9 +66,14 @@ class ElevationBandRasterMixin:
             self.log_message("Elevation band creation cancelled by user.")
             return
 
-        if not self._ensure_filled_dem():
+        if not self._ensure_filled_dem(self.fill_dem):
             return
-        if not self._ensure_merged_watershed():
+        if not self._ensure_merged_watershed(
+                self.delineate_watershed,
+                self.snap_points,
+                self.process_channel_network,
+                self.process_flow_accumulation,
+                self.fill_dem):
             return
 
         dem_reference = self._read_raster_array(self.filled_dem_path, as_float=True)

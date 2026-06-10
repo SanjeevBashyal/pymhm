@@ -1,17 +1,20 @@
 # -*- coding: utf-8 -*-
 """Vector dataset cleanup and filtered polygon-copy helpers."""
+from __future__ import annotations
+
 from ..common import (
     os,
     QgsVectorLayer,
     NULL,
     create_vector_file_writer,
 )
+from .base import BaseProcessingMixin
 
 
-class VectorIOMixin:
+class VectorIOMixin(BaseProcessingMixin):
     """Vector dataset cleanup and filtered polygon-copy helpers."""
 
-    def _remove_vector_dataset(self, path):
+    def _remove_vector_dataset(self, path: str) -> None:
         """Remove a shapefile and its sidecar files if they exist."""
         base, _ = os.path.splitext(path)
         for extension in (".shp", ".shx", ".dbf", ".prj", ".cpg", ".qpj", ".fix"):
@@ -22,7 +25,11 @@ class VectorIOMixin:
                 except Exception as e:
                     self.log_message(f"WARNING: Could not remove {sidecar}: {e}")
 
-    def _copy_nonzero_polygons(self, input_path, output_path, field_name="DN"):
+    def _copy_nonzero_polygons(
+            self,
+            input_path: str,
+            output_path: str,
+            field_name: str = "DN") -> bool:
         """Copy polygonized basin features with non-zero IDs to a clean shapefile."""
         source_layer = QgsVectorLayer(input_path, "Watershed_Raw", "ogr")
         if not source_layer.isValid():

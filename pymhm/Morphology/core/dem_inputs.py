@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 """DEM validation, reprojection, and ASCII preparation."""
+from __future__ import annotations
+
+from typing import Any
+
 from ..common import (
     os,
     QMessageBox,
@@ -8,12 +12,13 @@ from ..common import (
     morph_folder,
     processing,
 )
+from .base import BaseProcessingMixin
 
 
-class DemInputMixin:
+class DemInputMixin(BaseProcessingMixin):
     """DEM validation, reprojection, and ASCII preparation."""
 
-    def check_and_reproject_dem(self, dem_layer):
+    def check_and_reproject_dem(self, dem_layer: Any) -> Any:
         """
         Check if DEM CRS matches input CRS, and reproject if needed.
         Stores the reprojected layer in self.dem_layer attribute.
@@ -102,7 +107,7 @@ class DemInputMixin:
             self.dem_layer = dem_layer
             return dem_layer
 
-    def convert_dem_to_asc(self):
+    def convert_dem_to_asc(self) -> None:
         """Convert DEM from TIF to ASC format. First reprojects to input CRS, then converts to ASC."""
         self.log_message("\n--- Converting DEM to ASC format ---")
         if not self.check_prerequisites():
@@ -235,7 +240,7 @@ class DemInputMixin:
         else:
             self.log_message("ERROR: Failed to convert DEM to ASC format.")
 
-    def _slope_scale_for_dem(self, dem_layer):
+    def _slope_scale_for_dem(self, dem_layer: Any) -> float:
         """Match the notebook's gdaldem scale choice for geographic DEMs."""
         crs = dem_layer.crs()
         if crs.isValid() and crs.isGeographic():

@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
 """mHM soil classdefinition writer."""
+from __future__ import annotations
+
 from ..common import (
     os,
     QMessageBox,
     morph_folder,
 )
+from ..core.base import BaseProcessingMixin
 
 
-class SoilClassificationWriterMixin:
+class SoilClassificationWriterMixin(BaseProcessingMixin):
     """mHM soil classdefinition writer."""
 
-    def soil_classdefinition_writer(self):
+    def soil_classdefinition_writer(self) -> str | None:
         """
         Read soil lookup file and produce soil_classdefinition.txt.
         

@@ -1,19 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Compatibility aggregate for hydrological morphology mixins."""
-from .terrain import TerrainAnalysisMixin
-from .flow import FlowAnalysisMixin
-from .gauge import GaugePositionMixin
-from .outlets import OutletCountMixin
-from .discharge import DischargeAssignmentMixin
+"""Hydrological morphology mixins."""
+
+__all__ = ["HydrologyMixin"]
 
 
-class HydrologyMixin(
-    TerrainAnalysisMixin,
-    FlowAnalysisMixin,
-    GaugePositionMixin,
-    OutletCountMixin,
-    DischargeAssignmentMixin,
-):
-    """Compatibility aggregate for hydrological morphology mixins."""
-
-    pass
+def __getattr__(name):
+    """Load the aggregate mixin lazily to avoid submodule import cycles."""
+    if name == "HydrologyMixin":
+        from .aggregate import HydrologyMixin
+        return HydrologyMixin
+    raise AttributeError(name)

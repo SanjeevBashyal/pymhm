@@ -3,15 +3,17 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from .namelist import canonical_name
 
 
-def repeat(value, count):
+def repeat(value: Any, count: int) -> list[Any]:
     """Return a domain-length list."""
     return [value for _ in range(max(1, int(count)))]
 
 
-def configuration_path_defaults(domain_count):
+def configuration_path_defaults(domain_count: int) -> dict[str, dict[str, Any]]:
     """Return generated configuration defaults keyed by canonical block/name."""
     count = max(1, int(domain_count or 1))
 

@@ -5,8 +5,8 @@ from .execute_all import ExecuteAllMixin
 
 
 class OrchestrationMixin(
-    ResetGeometryMixin,
     ExecuteAllMixin,
+    ResetGeometryMixin,
 ):
     """Compatibility aggregate for reset and execute-all morphology workflows."""
 

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Channel network extraction from flow accumulation."""
+from __future__ import annotations
+
 from ..common import (
     os,
     project_geometry_folder,
@@ -13,19 +15,23 @@ from ..common import (
     qgs_field,
     processing,
 )
+from ..core.vector_io import VectorIOMixin
+from ..hydrology.flow import FlowAnalysisMixin
 
 
-class ChannelNetworkMixin:
+class ChannelNetworkMixin(FlowAnalysisMixin, VectorIOMixin):
     """Channel network extraction from flow accumulation."""
 
-    def process_channel_network(self):
+    def process_channel_network(self) -> None:
         """Create a stream network vector from pyflwdir flow accumulation."""
-        if not self._ensure_filled_dem():
+        if not self._ensure_filled_dem(self.fill_dem):
             return
 
         # Keep the UI workflow consistent with the notebook: filled DEM,
         # flow accumulation, then stream extraction.
-        if not self._ensure_flow_accumulation():
+        if not self._ensure_flow_accumulation(
+                self.process_flow_accumulation,
+                self.fill_dem):
             return
 
         geometry_folder = project_geometry_folder(self.dialog.project_folder)

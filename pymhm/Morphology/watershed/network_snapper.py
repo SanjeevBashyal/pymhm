@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 """Custom high-order stream-network snapping implementation."""
+from __future__ import annotations
+
+from typing import Any
+
 from ..common import (
     os,
     QMessageBox,
@@ -13,13 +17,20 @@ from ..common import (
     qgs_field,
     processing,
 )
+from ..core.vector_io import VectorIOMixin
 
 
-class NetworkSnapperMixin:
+class NetworkSnapperMixin(VectorIOMixin):
     """Custom high-order stream-network snapping implementation."""
 
-    def snap_points_to_network(self, pour_points_layer, channel_network_layer, output_path,
-                               order_field_name='Order', high_order_distance=1000.0, max_snap_distance=5000.0):
+    def snap_points_to_network(
+            self,
+            pour_points_layer: Any,
+            channel_network_layer: Any,
+            output_path: str,
+            order_field_name: str = 'Order',
+            high_order_distance: float = 1000.0,
+            max_snap_distance: float = 5000.0) -> str | None:
         """
         Snaps pour points to a channel network based on stream order and proximity.
 

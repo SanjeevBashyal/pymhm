@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Lat/lon grid metadata processing for mHM."""
+from __future__ import annotations
+
 from ..common import (
     os,
     QMessageBox,
@@ -8,12 +10,14 @@ from ..common import (
     processing,
 )
 from ...project_layout import data_folder
+from ..layers.masking import MaskingMixin
+from .latlon_netcdf import LatLonNetcdfMixin
 
 
-class LatLonProcessingMixin:
+class LatLonProcessingMixin(MaskingMixin, LatLonNetcdfMixin):
     """Lat/lon grid metadata processing for mHM."""
 
-    def process_lat_lon(self):
+    def process_lat_lon(self) -> None:
         """
         Process lat/lon information by reading dem_masked_layer and creating header files
         for L0, L1, L11, and L2 levels. This prepares data for latlon.nc file creation.

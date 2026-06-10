@@ -5,11 +5,12 @@ from __future__ import annotations
 
 import os
 import re
+from typing import Any
 
 from ..project_layout import morph_folder
 
 
-def _field_name(layer, wanted):
+def _field_name(layer: Any, wanted: str) -> str | None:
     """Return a field name by case-insensitive lookup."""
     if not layer:
         return None
@@ -20,7 +21,7 @@ def _field_name(layer, wanted):
     return None
 
 
-def _truthy(value):
+def _truthy(value: Any) -> bool:
     """Return True for common boolean-ish attribute values."""
     if isinstance(value, bool):
         return value
@@ -28,7 +29,7 @@ def _truthy(value):
     return text in ("1", "true", "t", "yes", "y")
 
 
-def domain_infos(dialog):
+def domain_infos(dialog: Any) -> list[dict[str, int | str]]:
     """
     Return domain labels from pour points where IS_DOMAIN is true.
 
@@ -62,12 +63,12 @@ def domain_infos(dialog):
     return domains or [{"station_id": "1", "label": "1", "index": 1}]
 
 
-def domain_count(dialog):
+def domain_count(dialog: Any) -> int:
     """Return the current domain count."""
     return len(domain_infos(dialog))
 
 
-def geology_class_count(dialog, default=16):
+def geology_class_count(dialog: Any, default: int = 16) -> int:
     """Return the number of geological classes from prepared morphology data."""
     if not getattr(dialog, "project_folder", None):
         return default

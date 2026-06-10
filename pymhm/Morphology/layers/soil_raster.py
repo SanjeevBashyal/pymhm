@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Soil raster preparation and class rasterization."""
+from __future__ import annotations
+
 from ..common import (
     os,
     project_geometry_folder,
@@ -12,19 +14,27 @@ from ..common import (
     qgs_field,
     processing,
 )
+from ..watershed.dem_fill import DemFillMixin
+from ..core.predecessors import PredecessorMixin
+from ..core.layer_preparation import LayerPreparationMixin
+from .soil_lookup import SoilLookupMixin
 
 
-class SoilRasterMixin:
+class SoilRasterMixin(
+        LayerPreparationMixin,
+        SoilLookupMixin,
+        DemFillMixin,
+        PredecessorMixin):
     """Soil raster preparation and class rasterization."""
 
-    def process_soil(self):
+    def process_soil(self) -> None:
         """Process Soil layer by rasterizing using GDAL with filled DEM extent and resolution"""
         # Check prerequisites
         if not self.check_prerequisites():
             return
         
         # Check if filled DEM exists
-        if not self._ensure_filled_dem():
+        if not self._ensure_filled_dem(self.fill_dem):
             return
         
         # Get soil layer

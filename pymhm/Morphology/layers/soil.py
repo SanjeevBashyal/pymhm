@@ -5,8 +5,8 @@ from .soil_raster import SoilRasterMixin
 
 
 class SoilProcessingMixin(
-    SoilLookupMixin,
     SoilRasterMixin,
+    SoilLookupMixin,
 ):
     """Compatibility aggregate for soil lookup and raster processing."""
 

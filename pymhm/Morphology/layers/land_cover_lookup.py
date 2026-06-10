@@ -6,9 +6,9 @@ from .land_cover_class_names import LandCoverClassNameMixin
 
 
 class LandCoverLookupMixin(
-    LookupFieldMixin,
     LandCoverLookupTableMixin,
     LandCoverClassNameMixin,
+    LookupFieldMixin,
 ):
     """Compatibility aggregate for land-cover lookup helpers."""
 
