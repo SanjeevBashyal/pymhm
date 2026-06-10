@@ -14,30 +14,30 @@ class GeologyClassificationWriterMixin(BaseProcessingMixin):
     """mHM geology classdefinition writer."""
 
     def geology_classification_writer(self) -> str | None:
-        """
-        Read geological lookup file and produce geology_classdefinition.txt.
-        
-        Input CSV format:
-        Geo-Class,Karstic,Default_Parameter_Value
-        1,0,100
-        2,0,100
-        ...
-        
-        Output format:
-        nGeo_Formations  <count>
-        GeoParam(i)   ClassUnit     Karstic      Description
-             1	          1           0      GeoUnit-1
-             2     	      2           0      GeoUnit-2
-        ...
-        !<-END
-        !***********************************
-        ! NOTES
-        !***********************************
-        1 = Karstic
-        0 = Non-karstic
-        IMPORTANT ::
-           Ordering has to be according to the ordering in mhm_parameter.nml
-           (namelist: geoparameter)
+        """Read the geology lookup CSV and write ``geology_classdefinition.txt``.
+
+        Expected input CSV columns::
+
+            Geo-Class,Karstic,Default_Parameter_Value
+            1,0,100
+            2,0,100
+
+        Generated output format::
+
+            nGeo_Formations  <count>
+            GeoParam(i)   ClassUnit     Karstic      Description
+                     1          1           0      GeoUnit-1
+                     2          2           0      GeoUnit-2
+            ...
+            !<-END
+            !***********************************
+            ! NOTES
+            !***********************************
+            1 = Karstic
+            0 = Non-karstic
+
+        The generated classes must follow the ``geoparameter`` ordering in
+        ``mhm_parameter.nml``.
         """
         self.log_message("\n--- Writing Geology Classification Definition File ---")
         

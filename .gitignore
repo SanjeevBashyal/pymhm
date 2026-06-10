@@ -1,6 +1,6 @@
 # Doxy files
-pymhm/sphinx/
-pymhm/doxy/
+pymhm/docs/sphinx/
+pymhm/docs/doxy/
 pymhm/html/
 pymhm/latex/
 pymhm/xml/
