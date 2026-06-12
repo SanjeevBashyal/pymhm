@@ -7,6 +7,7 @@ from ..common import (
     QMessageBox,
     morph_folder,
     QgsVectorLayer,
+    NULL,
 )
 from ..core.base import BaseProcessingMixin
 
@@ -14,221 +15,90 @@ from ..core.base import BaseProcessingMixin
 class SoilClassificationWriterMixin(BaseProcessingMixin):
     """mHM soil classdefinition writer."""
 
-    def soil_classdefinition_writer(self) -> str | None:
-        """
-        Read the selected soil lookup table layer and produce soil_classdefinition.txt.
-
-        Required lookup fields:
-        CLASS,SNAM,NLAYERS,...,SOL_Z1,SOL_BD1,CLAY1,SAND1,...,SOL_Z2,SOL_BD2,CLAY2,SAND2,...
-        
-        Output format:
-        nSoil_Types  <total_rows>
-        MU_GLOBAL	HORIZON	UD[mm]	LD[mm]	CLAY[%]	SAND[%]	BD[gcm-3]
-        1	1	0	300	50.0	25.0	1.75
-        1	2	300	1000	50.0	25.0	1.75
-        2	1	0	300	19.85	53.45	1.41
-        2	2	300	1000	31.33	45.22	1.5
-        ...
-        """
+    def soil_classdefinition_writer(self, show_success=False) -> str | None:
+        """Write soil_classdefinition.txt from the selected soil lookup table layer."""
         self.log_message("\n--- Writing Soil Classification Definition File ---")
-        
-        # Check prerequisites
+
         if not self.check_prerequisites():
-            return
-        
+            return None
+
         lookup_layer_combo = getattr(
             self.dialog, "mMapLayerComboBox_soilLookup", None)
         lookup_layer = (
             lookup_layer_combo.currentLayer()
             if lookup_layer_combo is not None else None
         )
-
         if not lookup_layer:
-            self.log_message(
-                "ERROR: Soil lookup table layer not selected.")
+            self.log_message("ERROR: Soil lookup table layer not selected.")
             QMessageBox.warning(
                 self.dialog, "Input Error",
                 "Please select a Soil lookup table layer.")
-            return
-        
+            return None
+
+        if not isinstance(lookup_layer, QgsVectorLayer) or not lookup_layer.isValid():
+            self.log_message("ERROR: Selected soil lookup layer is not valid.")
+            QMessageBox.warning(
+                self.dialog, "Input Error",
+                "Please select a valid Soil lookup table layer.")
+            return None
+
         morph_output_folder = morph_folder(self.dialog.project_folder)
         os.makedirs(morph_output_folder, exist_ok=True)
         output_file = os.path.join(
             morph_output_folder, "soil_classdefinition.txt")
-        
+
         try:
-            import pandas as pd
-            
-            df = self._lookup_layer_to_dataframe(
-                lookup_layer, pd, "soil")
-            
-            if df is None or df.empty:
-                self.log_message("ERROR: Soil lookup table layer is empty or could not be read.")
-                QMessageBox.critical(
-                    self.dialog, "Error",
-                    "Soil lookup table layer is empty or could not be read.")
-                return None
-            
-            # Log column names found
-            self.log_message(f"Soil lookup fields found: {', '.join(df.columns.tolist())}")
-            
-            # Check if required columns exist (case-insensitive)
-            column_names_lower = {col.lower(): col for col in df.columns}
-            class_col = column_names_lower.get('class')
-            nlayers_col = column_names_lower.get('nlayers')
-            
-            if not class_col:
-                self.log_message("ERROR: 'CLASS' field not found in soil lookup table.")
-                QMessageBox.warning(
-                    self.dialog, "Input Error",
-                    f"Soil lookup table must contain a 'CLASS' field.\nFound fields: {', '.join(df.columns.tolist())}")
-                return None
-            
-            if not nlayers_col:
-                self.log_message("ERROR: 'NLAYERS' field not found in soil lookup table.")
-                QMessageBox.warning(
-                    self.dialog, "Input Error",
-                    f"Soil lookup table must contain a 'NLAYERS' field.\nFound fields: {', '.join(df.columns.tolist())}")
-                return None
-            
-            # Check for horizon columns (SOL_Z1, CLAY1, SAND1, SOL_BD1, etc.)
-            horizon_columns = {}
-            for i in range(1, 11):  # Check horizons 1-10
-                sol_z_col = column_names_lower.get(f'sol_z{i}')
-                clay_col = column_names_lower.get(f'clay{i}')
-                sand_col = column_names_lower.get(f'sand{i}')
-                sol_bd_col = column_names_lower.get(f'sol_bd{i}')
-                
-                if sol_z_col and clay_col and sand_col and sol_bd_col:
-                    horizon_columns[i] = {
-                        'sol_z': sol_z_col,
-                        'clay': clay_col,
-                        'sand': sand_col,
-                        'sol_bd': sol_bd_col
-                    }
-            
-            if not horizon_columns:
-                self.log_message("ERROR: No horizon columns found (SOL_Z1, CLAY1, SAND1, SOL_BD1, etc.).")
-                QMessageBox.warning(
-                    self.dialog, "Input Error",
-                    "Soil lookup table must contain horizon fields (SOL_Z1, CLAY1, SAND1, SOL_BD1, etc.).")
-                return None
-            
-            self.log_message(f"Found horizon columns for horizons: {sorted(horizon_columns.keys())}")
-            
-            # Clean data
-            df_clean = df[[class_col, nlayers_col] + 
-                         [col for h in horizon_columns.values() for col in h.values()]].dropna(subset=[class_col, nlayers_col])
-            
-            # Sort by CLASS to ensure proper ordering
-            df_clean = df_clean.sort_values(by=class_col)
-            
-            # Build output rows
-            output_rows = []
-            
-            for idx, row in df_clean.iterrows():
-                mu_global = int(float(row[class_col])) if pd.notna(row[class_col]) else 0
-                nlayers = int(float(row[nlayers_col])) if pd.notna(row[nlayers_col]) else 1
-                
-                # Limit nlayers to available horizons
-                nlayers = min(nlayers, max(horizon_columns.keys()))
-                
-                prev_depth = 0  # Upper depth starts at 0 for first horizon
-                
-                for horizon in range(1, nlayers + 1):
-                    if horizon not in horizon_columns:
-                        self.log_message(f"WARNING: Horizon {horizon} data not available for CLASS {mu_global}. Skipping.")
-                        continue
-                    
-                    cols = horizon_columns[horizon]
-                    
-                    # Get values
-                    sol_z = float(row[cols['sol_z']]) if pd.notna(row[cols['sol_z']]) else 0
-                    clay = float(row[cols['clay']]) if pd.notna(row[cols['clay']]) else 0
-                    sand = float(row[cols['sand']]) if pd.notna(row[cols['sand']]) else 0
-                    sol_bd = float(row[cols['sol_bd']]) if pd.notna(row[cols['sol_bd']]) else 0
-                    
-                    # Upper depth is previous horizon's lower depth (or 0 for first horizon)
-                    ud = prev_depth
-                    # Lower depth is SOL_Z for this horizon
-                    ld = sol_z
-                    
-                    output_rows.append({
-                        'mu_global': mu_global,
-                        'horizon': horizon,
-                        'ud': ud,
-                        'ld': ld,
-                        'clay': clay,
-                        'sand': sand,
-                        'bd': sol_bd
-                    })
-                    
-                    # Update previous depth for next horizon
-                    prev_depth = ld
-            
+            field_names, rows = self._lookup_layer_rows(lookup_layer)
+            output_rows = self._soil_classdefinition_rows(field_names, rows)
             if not output_rows:
-                self.log_message("ERROR: No valid soil horizon data found.")
-                QMessageBox.warning(
-                    self.dialog, "Input Error",
-                    "No valid soil horizon data found in the lookup table.")
-                return None
-            
-            n_soil_types = len(output_rows)
-            self.log_message(f"Found {n_soil_types} soil horizon entries")
-            
-            # Write output file
-            with open(output_file, 'w', encoding='utf-8') as f:
-                # Write header
-                f.write(f"nSoil_Types  {n_soil_types}\n")
-                f.write("\n")
-                f.write("MU_GLOBAL\tHORIZON\tUD[mm]\tLD[mm]\tCLAY[%]\tSAND[%]\tBD[gcm-3]\n")
-                
-                # Write data rows
-                for row_data in output_rows:
-                    f.write(f"{row_data['mu_global']}\t"
-                           f"{row_data['horizon']}\t"
-                           f"{row_data['ud']:.0f}\t"
-                           f"{row_data['ld']:.0f}\t"
-                           f"{row_data['clay']:.2f}\t"
-                           f"{row_data['sand']:.2f}\t"
-                           f"{row_data['bd']:.2f}\n")
-            
-            self.log_message(f"Soil classification definition file written successfully: {output_file}")
+                raise ValueError("No valid soil horizon rows were found.")
+
+            unique_soil_classes = sorted({
+                row["soil_class"] for row in output_rows
+            })
+
+            with open(output_file, "w", encoding="utf-8") as output:
+                output.write(f"nSoil_Types {len(unique_soil_classes)}\n")
+                output.write(
+                    "SOIL_NR\tHORIZON\tUD[mm]\tLD[mm]\t"
+                    "Clay[%]\tSAND[%]\tBd[gcm-3]\tSilt[%]\n"
+                )
+                for row in output_rows:
+                    output.write(
+                        f"{row['soil_class']}\t"
+                        f"{row['horizon']}\t"
+                        f"{self._format_soil_value(row['upper_depth'])}\t"
+                        f"{self._format_soil_value(row['lower_depth'])}\t"
+                        f"{self._format_soil_value(row['clay'])}\t"
+                        f"{self._format_soil_value(row['sand'])}\t"
+                        f"{self._format_soil_value(row['bulk_density'])}\t"
+                        f"{self._format_soil_value(row['silt'])}\n"
+                    )
+
+            self.log_message(
+                f"Soil classification definition file written successfully: {output_file}")
             self.mark_output_prepared(
                 output_file,
                 name="soil_classdefinition.txt",
                 loaded=False
             )
-            QMessageBox.information(
-                self.dialog, "Success",
-                f"Soil classification definition file created successfully.\n{output_file}")
+            if show_success:
+                QMessageBox.information(
+                    self.dialog, "Success",
+                    f"Soil classification definition file created successfully.\n{output_file}")
             return output_file
-            
-        except ImportError:
-            self.log_message("ERROR: pandas library is not installed.")
-            QMessageBox.critical(
-                self.dialog, "Error",
-                "pandas library is required but not installed.\nPlease install it using: pip install pandas")
-            return None
+
         except Exception as e:
             import traceback
-            error_details = traceback.format_exc()
             self.log_message(
-                f"ERROR writing soil classification file: {e}\n{error_details}")
+                f"ERROR writing soil classification file: {e}\n{traceback.format_exc()}")
             QMessageBox.critical(
                 self.dialog, "Error",
-                f"Error writing soil classification file:\n{str(e)}")
+                f"Error writing soil classification file:\n{e}")
             return None
 
-    def _lookup_layer_to_dataframe(self, lookup_layer, pd, layer_label):
-        """Convert a selected QGIS lookup table layer to a pandas DataFrame."""
-        if not isinstance(lookup_layer, QgsVectorLayer) or not lookup_layer.isValid():
-            self.log_message(f"ERROR: Selected {layer_label} lookup layer is not valid.")
-            QMessageBox.warning(
-                self.dialog, "Input Error",
-                f"Please select a valid {layer_label} lookup table layer.")
-            return None
-
+    def _lookup_layer_rows(self, lookup_layer):
+        """Return lookup field names and feature rows from a QGIS table layer."""
         field_names = lookup_layer.fields().names()
         rows = []
         for feature in lookup_layer.getFeatures():
@@ -238,5 +108,178 @@ class SoilClassificationWriterMixin(BaseProcessingMixin):
             })
 
         self.log_message(
-            f"Read {len(rows)} rows from {layer_label} lookup layer '{lookup_layer.name()}'.")
-        return pd.DataFrame(rows, columns=field_names)
+            f"Read {len(rows)} rows from soil lookup layer '{lookup_layer.name()}'.")
+        self.log_message(f"Soil lookup fields found: {', '.join(field_names)}")
+        return field_names, rows
+
+    def _soil_classdefinition_rows(self, field_names, rows):
+        """Build classdefinition rows from either supported soil lookup layout."""
+        field_lookup = self._soil_field_lookup(field_names)
+        soil_class_field = self._required_soil_field(
+            field_lookup, "SOIL_CLASS")
+
+        rowwise_fields = (
+            "HORIZON",
+            "UPPER_DEPTH",
+            "LOWER_DEPTH",
+            "CLAY",
+            "SAND",
+            "SILT",
+            "BULK_DENSITY",
+        )
+        if all(self._soil_field(field_lookup, name) for name in rowwise_fields):
+            return self._rowwise_soil_rows(
+                rows,
+                soil_class_field,
+                {
+                    name.lower(): self._required_soil_field(field_lookup, name)
+                    for name in rowwise_fields
+                },
+            )
+
+        horizons_field = self._soil_field(field_lookup, "HORIZONS")
+        if horizons_field:
+            return self._wide_soil_rows(rows, field_lookup, soil_class_field, horizons_field)
+
+        raise ValueError(
+            "Soil lookup table must use either the row-per-horizon layout "
+            "(HORIZON, UPPER_DEPTH, LOWER_DEPTH, CLAY, SAND, SILT, BULK_DENSITY) "
+            "or the wide layout (HORIZONS, DEPTH1, BULK_DENSITY1, CLAY1, SILT1, SAND1, ...)."
+        )
+
+    def _rowwise_soil_rows(self, rows, soil_class_field, fields):
+        """Parse a lookup table with one row per soil horizon."""
+        output_rows = []
+        for row_number, row in enumerate(rows, start=2):
+            soil_class = self._required_int(
+                row.get(soil_class_field), row_number, soil_class_field)
+            horizon = self._required_int(
+                row.get(fields["horizon"]), row_number, fields["horizon"])
+            output_rows.append({
+                "soil_class": soil_class,
+                "horizon": horizon,
+                "upper_depth": self._required_float(
+                    row.get(fields["upper_depth"]), row_number, fields["upper_depth"]),
+                "lower_depth": self._required_float(
+                    row.get(fields["lower_depth"]), row_number, fields["lower_depth"]),
+                "clay": self._required_float(
+                    row.get(fields["clay"]), row_number, fields["clay"]),
+                "sand": self._required_float(
+                    row.get(fields["sand"]), row_number, fields["sand"]),
+                "silt": self._required_float(
+                    row.get(fields["silt"]), row_number, fields["silt"]),
+                "bulk_density": self._required_float(
+                    row.get(fields["bulk_density"]), row_number, fields["bulk_density"]),
+            })
+
+        return sorted(output_rows, key=lambda item: (
+            item["soil_class"], item["horizon"]))
+
+    def _wide_soil_rows(self, rows, field_lookup, soil_class_field, horizons_field):
+        """Parse a lookup table with one row per soil class and horizon suffixes."""
+        output_rows = []
+        for row_number, row in enumerate(rows, start=2):
+            soil_class = self._required_int(
+                row.get(soil_class_field), row_number, soil_class_field)
+            horizons = self._required_int(
+                row.get(horizons_field), row_number, horizons_field)
+            upper_depth = 0.0
+
+            for horizon in range(1, horizons + 1):
+                depth_field = self._required_soil_field(
+                    field_lookup, f"DEPTH{horizon}")
+                bulk_density_field = self._required_soil_field(
+                    field_lookup, f"BULK_DENSITY{horizon}")
+                clay_field = self._required_soil_field(
+                    field_lookup, f"CLAY{horizon}")
+                silt_field = self._required_soil_field(
+                    field_lookup, f"SILT{horizon}")
+                sand_field = self._required_soil_field(
+                    field_lookup, f"SAND{horizon}")
+
+                lower_depth = self._required_float(
+                    row.get(depth_field), row_number, depth_field)
+                output_rows.append({
+                    "soil_class": soil_class,
+                    "horizon": horizon,
+                    "upper_depth": upper_depth,
+                    "lower_depth": lower_depth,
+                    "clay": self._required_float(
+                        row.get(clay_field), row_number, clay_field),
+                    "sand": self._required_float(
+                        row.get(sand_field), row_number, sand_field),
+                    "silt": self._required_float(
+                        row.get(silt_field), row_number, silt_field),
+                    "bulk_density": self._required_float(
+                        row.get(bulk_density_field), row_number, bulk_density_field),
+                })
+                upper_depth = lower_depth
+
+        return sorted(output_rows, key=lambda item: (
+            item["soil_class"], item["horizon"]))
+
+    def _soil_field_lookup(self, field_names):
+        """Map normalized soil lookup field names to original QGIS field names."""
+        lookup = {}
+        for field_name in field_names:
+            lookup.setdefault(
+                self._normalise_soil_field_name(field_name),
+                field_name,
+            )
+        return lookup
+
+    def _soil_field(self, field_lookup, field_name):
+        """Return a soil lookup field by normalized template name."""
+        return field_lookup.get(self._normalise_soil_field_name(field_name))
+
+    def _required_soil_field(self, field_lookup, field_name):
+        """Return a required soil lookup field or raise a readable error."""
+        field = self._soil_field(field_lookup, field_name)
+        if not field:
+            raise ValueError(f"Soil lookup table is missing required field '{field_name}'.")
+        return field
+
+    def _normalise_soil_field_name(self, field_name):
+        """Normalize template field names by removing optional marks and units."""
+        field_text = str(field_name).strip().lstrip("*").strip()
+        if "[" in field_text:
+            field_text = field_text.split("[", 1)[0].strip()
+        return "".join(char.lower() for char in field_text if char.isalnum())
+
+    def _required_int(self, value, row_number, field_name):
+        """Read a required integer value from a lookup row."""
+        number = self._required_float(value, row_number, field_name)
+        if not number.is_integer():
+            raise ValueError(
+                f"Row {row_number} has non-integer value '{value}' "
+                f"for required field '{field_name}'.")
+        return int(number)
+
+    def _required_float(self, value, row_number, field_name):
+        """Read a required numeric value from a lookup row."""
+        if self._is_blank(value):
+            raise ValueError(
+                f"Row {row_number} has an empty value for required field '{field_name}'.")
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"Row {row_number} has invalid numeric value '{value}' "
+                f"for required field '{field_name}'.")
+
+    def _is_blank(self, value):
+        """Return True when a lookup value is empty."""
+        return value in (None, NULL, "") or str(value).strip() == ""
+
+    def _format_soil_value(self, value):
+        """Format numbers like the soil classdefinition template."""
+        if value is None:
+            return ""
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return str(value)
+
+        if number.is_integer():
+            return str(int(number))
+        return f"{number:.6g}"

@@ -72,7 +72,7 @@ class ExecuteAllMixin(
             
             # Step 5: Soil
             self.log_message("\n--- Step 5/17: Process Soil ---")
-            self.process_soil()
+            self.process_soil(write_classdefinition=False)
             
             # Step 6: Geology
             self.log_message("\n--- Step 6/17: Process Geology ---")

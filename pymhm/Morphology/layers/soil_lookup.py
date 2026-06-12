@@ -47,13 +47,13 @@ class SoilLookupMixin(LookupFieldMixin):
                 "Please select the soil lookup field that maps the soil layer to the lookup table.")
             return None
 
-        class_field = self._required_lookup_field(field_names, "CLASS")
+        class_field = self._required_lookup_field(field_names, "SOIL_CLASS")
         if not class_field:
-            self.log_message("ERROR: Soil lookup layer must contain a CLASS field.")
+            self.log_message("ERROR: Soil lookup layer must contain a SOIL_CLASS field.")
             self.log_message(f"Fields found: {', '.join(field_names)}")
             QMessageBox.warning(
                 self.dialog, "Input Error",
-                "Soil lookup layer must contain a CLASS field.")
+                "Soil lookup layer must contain a SOIL_CLASS field.")
             return None
 
         self.soil_lookup_key_field = key_field
@@ -72,7 +72,7 @@ class SoilLookupMixin(LookupFieldMixin):
                 class_code = self._coerce_lookup_int(feature[class_field])
                 if class_code is None or class_code <= 0:
                     self.log_message(
-                        f"WARNING: Soil lookup row {feature_index} has invalid CLASS '{feature[class_field]}'. Skipping.")
+                        f"WARNING: Soil lookup row {feature_index} has invalid SOIL_CLASS '{feature[class_field]}'. Skipping.")
                     continue
 
                 lookup_mapping[lookup_key] = class_code

@@ -8,8 +8,11 @@ class LookupFieldMixin:
 
     def _normalise_lookup_field_name(self, field_name):
         """Normalise a lookup-table field name for case-insensitive matching."""
+        field_text = str(field_name).strip().lstrip("*").strip()
+        if "[" in field_text:
+            field_text = field_text.split("[", 1)[0].strip()
         return "".join(
-            char.lower() for char in str(field_name) if char.isalnum())
+            char.lower() for char in field_text if char.isalnum())
 
     def _first_lookup_field(self, normalised_fields, candidates):
         """Return the original field name for the first matching candidate."""
@@ -69,7 +72,10 @@ class LookupFieldMixin:
         """Convert a table value to int, treating NULL/blank as missing."""
         if value in (None, NULL, ""):
             return None
-        return int(float(value))
+        number = float(value)
+        if not number.is_integer():
+            return None
+        return int(number)
 
     def _coerce_land_cover_type(self, value):
         """Convert land-cover type strings or numeric codes to mHM class IDs."""

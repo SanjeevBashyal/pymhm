@@ -1459,6 +1459,12 @@
            <layout class="QHBoxLayout" name="horizontalLayout_landCoverLookup" stretch="2,1">
             <item>
              <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_landCoverLookup">
+              <property name="minimumSize">
+               <size>
+                <width>75</width>
+                <height>0</height>
+               </size>
+              </property>
               <property name="statusTip">
                <string>Lookup table...</string>
               </property>
@@ -1493,6 +1499,12 @@
            <layout class="QHBoxLayout" name="horizontalLayout_soilLookup" stretch="2,1">
             <item>
              <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_soilLookup">
+              <property name="minimumSize">
+               <size>
+                <width>75</width>
+                <height>0</height>
+               </size>
+              </property>
               <property name="statusTip">
                <string>Lookup table...</string>
               </property>
@@ -1513,6 +1525,12 @@
            <layout class="QHBoxLayout" name="horizontalLayout_lai_time" stretch="2,1">
             <item>
              <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_laiLookup">
+              <property name="minimumSize">
+               <size>
+                <width>75</width>
+                <height>0</height>
+               </size>
+              </property>
               <property name="statusTip">
                <string>Lookup table...</string>
               </property>
@@ -1621,6 +1639,12 @@
            <layout class="QHBoxLayout" name="horizontalLayout_geologyLookup" stretch="2,1">
             <item>
              <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_geologyLookup">
+              <property name="minimumSize">
+               <size>
+                <width>75</width>
+                <height>0</height>
+               </size>
+              </property>
               <property name="statusTip">
                <string>Lookup table...</string>
               </property>

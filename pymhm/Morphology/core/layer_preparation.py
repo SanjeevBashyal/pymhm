@@ -35,6 +35,11 @@ class LayerPreparationMixin(DemInputMixin):
         Returns:
             QgsVectorLayer: Reprojected layer or None if failed
         """
+        self._remove_vector_output(output_path)
+        output_folder = os.path.dirname(output_path)
+        if output_folder:
+            os.makedirs(output_folder, exist_ok=True)
+
         params_reproject = {
             'INPUT': vector_layer,
             'SOURCE_CRS': None,  # Auto-detect
@@ -52,9 +57,13 @@ class LayerPreparationMixin(DemInputMixin):
 
         result = self.run_processing_algorithm(
             "native:reprojectlayer", params_reproject)
-        if result and os.path.exists(output_path):
+        result_path = output_path
+        if isinstance(result, dict) and result.get("OUTPUT"):
+            result_path = result.get("OUTPUT")
+
+        if result and os.path.exists(result_path):
             reprojected_layer = QgsVectorLayer(
-                output_path, f"{vector_layer.name()}_reprojected", "ogr")
+                result_path, f"{vector_layer.name()}_reprojected", "ogr")
             if reprojected_layer.isValid():
                 self.log_message(
                     f"Vector layer reprojected successfully to {target_crs.authid()}")
@@ -66,6 +75,37 @@ class LayerPreparationMixin(DemInputMixin):
         else:
             self.log_message("ERROR: Vector layer reprojection failed.")
             return None
+
+    def _remove_vector_output(self, path: str) -> None:
+        """Remove an existing temporary vector dataset before it is recreated."""
+        if not path:
+            return
+
+        try:
+            import shutil
+
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+                return
+
+            root, extension = os.path.splitext(path)
+            if extension.lower() == ".shp":
+                for sidecar_extension in (
+                        ".shp", ".shx", ".dbf", ".prj", ".cpg", ".qpj", ".fix"):
+                    sidecar_path = root + sidecar_extension
+                    if os.path.exists(sidecar_path):
+                        os.remove(sidecar_path)
+                return
+
+            for candidate_path in (
+                    path,
+                    f"{path}-wal",
+                    f"{path}-shm"):
+                if os.path.exists(candidate_path):
+                    os.remove(candidate_path)
+        except Exception as e:
+            self.log_message(
+                f"WARNING: Could not remove existing vector output '{path}': {e}")
 
     def process_layer_with_dem_clipping(
             self,
