@@ -76,7 +76,7 @@ class ExecuteAllMixin(
             
             # Step 6: Geology
             self.log_message("\n--- Step 6/17: Process Geology ---")
-            self.process_geology()
+            self.process_geology(write_classdefinition=False)
             
             # Step 7: Flow Accumulation
             self.log_message("\n--- Step 7/17: Process Flow Accumulation ---")

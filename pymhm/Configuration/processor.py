@@ -17,7 +17,13 @@ from .constants import (
     STATUS_TITLES,
 )
 from .dialogs import NamelistEditorDialog
-from .domain_info import domain_count, domain_infos, geology_class_count
+from .domain_info import (
+    domain_count,
+    domain_infos,
+    geology_class_count,
+    geology_class_rows,
+    geology_parameter_values,
+)
 from .namelist import (
     canonical_name,
     template_block_order,
@@ -216,10 +222,9 @@ class ConfigurationProcessor(SimulationProcessor):
             self._last_mhm_values = config_values
 
             parameter_pages = self.build_parameter_pages(config_values)
-            parameter_values = (
-                self.kind_state("parameters")
-                or self.default_values_from_pages(
-                    parameter_pages, parameter_mode=True)
+            parameter_values = self.default_values_from_pages(
+                parameter_pages,
+                parameter_mode=True,
             )
             self.set_kind_state("parameters", parameter_values)
             self.write_kind(
@@ -344,6 +349,13 @@ class ConfigurationProcessor(SimulationProcessor):
             block_defaults = defaults.get(canonical_name(block), {})
             block_generated = generated.get(canonical_name(block), {})
             block_saved = saved.get(canonical_name(block), {})
+            geology_rows = []
+            if kind == "parameters" and canonical_name(block) == "geoparameter":
+                geology_rows = geology_class_rows(self.dialog)
+                block_generated = self.generated_geoparameter_defaults(
+                    block_defaults,
+                    schema.get("properties", {}).get("GeoParam", {}),
+                )
             page_defaults = {}
             for name in schema.get("properties", {}):
                 page_defaults[name] = self.default_for_property(
@@ -360,7 +372,11 @@ class ConfigurationProcessor(SimulationProcessor):
                 "defaults": page_defaults,
             })
             if canonical_name(block) == "geoparameter":
-                pages[-1]["geo_class_count"] = geology_class_count(self.dialog)
+                if not geology_rows:
+                    geology_rows = geology_class_rows(self.dialog)
+                pages[-1]["geo_classes"] = geology_rows
+                pages[-1]["geo_class_count"] = (
+                    len(geology_rows) or geology_class_count(self.dialog))
         return pages
 
     def default_for_property(
@@ -379,6 +395,8 @@ class ConfigurationProcessor(SimulationProcessor):
         if canonical_name(name) == "geoparam":
             rows = self.indexed_defaults(
                 template_defaults, base_key, "class")
+            rows.update(self.indexed_defaults(
+                generated_defaults, base_key, "class"))
             rows.update(self.indexed_defaults(
                 saved_defaults, base_key, "class"))
             return rows
@@ -408,6 +426,30 @@ class ConfigurationProcessor(SimulationProcessor):
                 found[index] = value
         return found
 
+    def generated_geoparameter_defaults(
+            self,
+            template_defaults: dict[str, Any],
+            prop_schema: dict[str, Any]) -> dict[str, Any]:
+        """Return GeoParam defaults generated from geology lookup metadata."""
+        parameter_values = geology_parameter_values(self.dialog)
+        if not parameter_values:
+            return {}
+
+        generated = {}
+        template_rows = self.indexed_defaults(
+            template_defaults,
+            canonical_name("GeoParam"),
+            "class",
+        )
+        for class_index, parameter_value in parameter_values.items():
+            default = self.parameter_default(
+                template_rows.get(str(class_index)),
+                prop_schema,
+            )
+            default[2] = parameter_value
+            generated[f"geoparam__class{class_index}"] = default
+        return generated
+
     def default_values_from_pages(
             self,
             pages: list[ConfigPage],
@@ -421,8 +463,7 @@ class ConfigurationProcessor(SimulationProcessor):
                 prop_schema = page["schema"].get("properties", {}).get(
                     "GeoParam", {})
                 default_rows = page["defaults"].get("GeoParam") or {}
-                class_count = int(page.get("geo_class_count") or 16)
-                for class_index in range(1, class_count + 1):
+                for class_index in self.geoparam_class_indices(page):
                     values[block_key][f"geoparam__class{class_index}"] = (
                         self.parameter_default(
                             default_rows.get(str(class_index)), prop_schema))
@@ -454,6 +495,20 @@ class ConfigurationProcessor(SimulationProcessor):
                 for index, value in default["__indexed__"].items()
             }
         return {base_key: self.general_default(default, prop_schema)}
+
+    def geoparam_class_indices(self, page: ConfigPage) -> list[int]:
+        """Return GeoParam row indices from geology metadata or class count."""
+        indices = []
+        for row in page.get("geo_classes", []) or []:
+            try:
+                indices.append(int(row.get("geo_param")))
+            except (AttributeError, TypeError, ValueError):
+                continue
+        if indices:
+            return indices
+
+        class_count = int(page.get("geo_class_count") or 16)
+        return list(range(1, class_count + 1))
 
     def general_default(self, value: Any, prop_schema: dict[str, Any]) -> Any:
         """Return a non-parameter default from template, schema, or type."""

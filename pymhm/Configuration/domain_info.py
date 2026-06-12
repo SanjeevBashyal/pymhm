@@ -3,11 +3,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from typing import Any
 
-from ..project_layout import morph_folder
+from ..project_layout import geometry_folder, morph_folder
 
 
 def _field_name(layer: Any, wanted: str) -> str | None:
@@ -70,6 +71,86 @@ def domain_count(dialog: Any) -> int:
 
 def geology_class_count(dialog: Any, default: int = 16) -> int:
     """Return the number of geological classes from prepared morphology data."""
+    return len(geology_class_rows(dialog, default))
+
+
+def geology_class_rows(dialog: Any, default: int = 16) -> list[dict[str, Any]]:
+    """Return GeoParam-indexed geology class rows for Configuration."""
+    metadata = geology_class_metadata(dialog)
+    rows = []
+    for row in metadata.get("classes", []):
+        if not isinstance(row, dict):
+            continue
+        try:
+            geo_param = int(row.get("geo_param"))
+            geology_class = int(row.get("geology_class"))
+        except (TypeError, ValueError):
+            continue
+        rows.append({
+            "geo_param": geo_param,
+            "geology_class": geology_class,
+            "karstic": row.get("karstic"),
+            "parameter_value": row.get("parameter_value"),
+        })
+
+    if rows:
+        return sorted(rows, key=lambda item: (
+            item["geo_param"], item["geology_class"]))
+
+    count = _geology_classdefinition_count(dialog, default)
+    return [
+        {
+            "geo_param": index,
+            "geology_class": index,
+            "karstic": None,
+            "parameter_value": None,
+        }
+        for index in range(1, count + 1)
+    ]
+
+
+def geology_class_metadata(dialog: Any) -> dict[str, Any]:
+    """Return saved geology class metadata for Configuration defaults."""
+    if not getattr(dialog, "project_folder", None):
+        return {}
+
+    metadata_path = os.path.join(
+        geometry_folder(dialog.project_folder),
+        "geology_class_metadata.json",
+    )
+    if not os.path.exists(metadata_path):
+        return {}
+
+    try:
+        with open(metadata_path, "r", encoding="utf-8") as metadata_file:
+            metadata = json.load(metadata_file)
+        if isinstance(metadata, dict):
+            classes = metadata.get("classes")
+            if isinstance(classes, list):
+                return metadata
+    except Exception:
+        pass
+    return {}
+
+
+def geology_parameter_values(dialog: Any) -> dict[str, Any]:
+    """Return GeoParam-indexed PARAMETER_VALUE defaults from geology metadata."""
+    values = {}
+    for row in geology_class_rows(dialog):
+        geo_param = row.get("geo_param")
+        parameter_value = row.get("parameter_value")
+        try:
+            geo_param = int(geo_param)
+        except (TypeError, ValueError):
+            continue
+        if parameter_value is None:
+            continue
+        values[str(geo_param)] = parameter_value
+    return values
+
+
+def _geology_classdefinition_count(dialog: Any, default: int = 16) -> int:
+    """Return geology class count from the classdefinition text file."""
     if not getattr(dialog, "project_folder", None):
         return default
 

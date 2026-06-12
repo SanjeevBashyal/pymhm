@@ -173,19 +173,23 @@ class NamelistEditorDialog(QtWidgets.QDialog):
         ])
         table.verticalHeader().setVisible(False)
         table.setAlternatingRowColors(True)
-        class_count = int(page.get("geo_class_count") or 16)
-        table.setRowCount(class_count)
+        geo_rows = self.geoparam_rows(page)
+        table.setRowCount(len(geo_rows))
         default_rows = page["defaults"].get("GeoParam") or {}
 
         prop_schema = page["schema"].get("properties", {}).get("GeoParam", {})
-        for row in range(class_count):
-            class_index = row + 1
+        for row, geo_row in enumerate(geo_rows):
+            class_index = geo_row["geo_param"]
             default = self.parameter_default(
                 default_rows.get(str(class_index)),
                 prop_schema,
             )
             lower, upper, value, flag, scaling = default
-            class_item = QtWidgets.QTableWidgetItem(str(class_index))
+            geology_class = geo_row.get("geology_class", class_index)
+            class_item = QtWidgets.QTableWidgetItem(str(geology_class))
+            class_item.setToolTip(
+                f"GeoParam index: {class_index}\n"
+                f"GEOLOGY_CLASS: {geology_class}")
             class_item.setFlags(
                 class_item.flags() & ~QtCore.Qt.ItemIsEditable)
             table.setItem(row, 0, class_item)
@@ -215,6 +219,26 @@ class NamelistEditorDialog(QtWidgets.QDialog):
 
         self.configure_parameter_table(table)
         return table
+
+    def geoparam_rows(self, page):
+        """Return Geological-parameters table rows from page metadata."""
+        rows = []
+        for row in page.get("geo_classes", []) or []:
+            try:
+                rows.append({
+                    "geo_param": int(row.get("geo_param")),
+                    "geology_class": int(row.get("geology_class")),
+                })
+            except (AttributeError, TypeError, ValueError):
+                continue
+        if rows:
+            return rows
+
+        class_count = int(page.get("geo_class_count") or 16)
+        return [
+            {"geo_param": index, "geology_class": index}
+            for index in range(1, class_count + 1)
+        ]
 
     def configure_parameter_table(self, table):
         """Make parameter table columns fit inside the dialog width."""
