@@ -1,148 +1,94 @@
 # -*- coding: utf-8 -*-
 """Soil lookup table parsing."""
 from ..common import (
-    os,
     QMessageBox,
+    QgsVectorLayer,
 )
+from .lookup_fields import LookupFieldMixin
 
 
-class SoilLookupMixin:
+class SoilLookupMixin(LookupFieldMixin):
     """Soil lookup table parsing."""
 
     def load_soil_lookup_table(self):
-        """
-        Load soil lookup table from CSV file using pandas.
-        Maps Dominant_S to CLASS (soil class code).
-
-        Returns:
-            dict: Mapping of Dominant_S to CLASS, or None if failed
-        """
-        lookup_file = self.dialog.lineEdit_soil_lookup.text()
-
-        if not lookup_file or not os.path.exists(lookup_file):
+        """Load soil lookup table from the selected QGIS table layer."""
+        self.soil_lookup_key_field = None
+        lookup_layer_combo = getattr(
+            self.dialog, "mMapLayerComboBox_soilLookup", None)
+        lookup_layer = (
+            lookup_layer_combo.currentLayer()
+            if lookup_layer_combo is not None else None
+        )
+        if not lookup_layer:
             self.log_message(
-                "ERROR: Soil lookup table file not found or not specified.")
+                "ERROR: Soil lookup table layer not selected.")
             QMessageBox.warning(
                 self.dialog, "Input Error",
-                "Please select a Soil lookup table file.")
+                "Please select a Soil lookup table layer.")
             return None
 
-        try:
-            import pandas as pd
-            
-            # Try different encodings
-            encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
-            df = None
-            used_encoding = None
-            
-            for encoding in encodings:
-                try:
-                    df = pd.read_csv(lookup_file, encoding=encoding)
-                    used_encoding = encoding
-                    self.log_message(f"Successfully read file with encoding: {encoding}")
-                    break
-                except (UnicodeDecodeError, pd.errors.EmptyDataError) as e:
-                    continue
-            
-            if df is None or df.empty:
-                self.log_message("ERROR: Could not read file with any encoding or file is empty.")
-                QMessageBox.critical(
-                    self.dialog, "Error",
-                    "Could not read soil lookup table file. Encoding issue or file is empty.")
-                return None
-            
-            # Log column names found
-            self.log_message(f"CSV columns found: {', '.join(df.columns.tolist())}")
-            
-            # Check if required columns exist (case-insensitive)
-            column_names_lower = {col.lower(): col for col in df.columns}
-            dominant_s_col = column_names_lower.get('dominant_s')
-            class_col = column_names_lower.get('class')
-            
-            if not dominant_s_col:
-                self.log_message("ERROR: 'Dominant_S' column not found in CSV file.")
-                QMessageBox.warning(
-                    self.dialog, "Input Error",
-                    f"CSV file must contain a 'Dominant_S' column.\nFound columns: {', '.join(df.columns.tolist())}")
-                return None
-            
-            if not class_col:
-                self.log_message("ERROR: 'CLASS' column not found in CSV file.")
-                QMessageBox.warning(
-                    self.dialog, "Input Error",
-                    f"CSV file must contain a 'CLASS' column.\nFound columns: {', '.join(df.columns.tolist())}")
-                return None
-            
-            self.log_message(f"Using column '{dominant_s_col}' for Dominant_S and '{class_col}' for CLASS")
-            
-            # Create lookup mapping
-            lookup_mapping = {}
-            
-            # Remove rows with missing values in required columns
-            df_clean = df[[dominant_s_col, class_col]].dropna()
-            
-            # Process each row
-            for idx, row in df_clean.iterrows():
-                try:
-                    # Get Dominant_S value (strip whitespace and convert to string)
-                    dominant_s = str(row[dominant_s_col]).strip() if pd.notna(row[dominant_s_col]) else ''
-                    
-                    # Get CLASS value
-                    class_value = row[class_col]
-                    
-                    if not dominant_s:
-                        self.log_message(f"WARNING: Row {idx + 2} (header + 1-based) has empty Dominant_S value. Skipping.")
-                        continue
-                    
-                    if pd.isna(class_value):
-                        self.log_message(f"WARNING: Row {idx + 2} has empty CLASS value. Skipping.")
-                        continue
-                    
-                    # Convert CLASS to integer
-                    try:
-                        class_code = int(float(class_value))  # Use float first to handle numeric strings
-                    except (ValueError, TypeError):
-                        self.log_message(
-                            f"WARNING: Row {idx + 2} has invalid CLASS value '{class_value}'. Skipping.")
-                        continue
-                    
-                    if class_code > 0:
-                        lookup_mapping[dominant_s] = class_code
-                        if len(lookup_mapping) <= 10:  # Only log first 10 mappings
-                            self.log_message(f"  Mapped: {dominant_s} -> {class_code}")
-                    else:
-                        self.log_message(
-                            f"WARNING: Row {idx + 2} has CLASS <= 0 ({class_code}). Skipping.")
-                except Exception as e:
-                    self.log_message(
-                        f"WARNING: Error parsing lookup table row {idx + 2}: {e}")
-                    continue
+        return self._read_soil_lookup_layer(lookup_layer)
 
-            self.log_message(f"Processed {len(df)} rows from CSV file.")
-            
-            if lookup_mapping:
-                self.log_message(
-                    f"Loaded {len(lookup_mapping)} entries from soil lookup table.")
-                return lookup_mapping
-            else:
-                self.log_message(
-                    "ERROR: Soil lookup table is empty or could not be parsed.")
-                QMessageBox.warning(
-                    self.dialog, "Input Error",
-                    f"Soil lookup table is empty or could not be parsed.\nProcessed {len(df)} rows but found no valid mappings.")
-                return None
-        except ImportError:
-            self.log_message("ERROR: pandas library is not installed.")
-            QMessageBox.critical(
-                self.dialog, "Error",
-                "pandas library is required but not installed.\nPlease install it using: pip install pandas")
+    def _read_soil_lookup_layer(self, lookup_layer):
+        """Read soil lookup mappings from a selected QGIS table layer."""
+        if not isinstance(lookup_layer, QgsVectorLayer) or not lookup_layer.isValid():
+            self.log_message("ERROR: Soil lookup layer is not valid.")
             return None
-        except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
+
+        field_names = lookup_layer.fields().names()
+        key_field = self._selected_lookup_field(
+            "comboBox_soilLookupField", field_names)
+        if not key_field:
             self.log_message(
-                f"ERROR reading soil lookup table: {e}\n{error_details}")
-            QMessageBox.critical(
-                self.dialog, "Error",
-                f"Error reading soil lookup table:\n{str(e)}")
+                "ERROR: Please select a soil lookup field.")
+            self.log_message(f"Fields found: {', '.join(field_names)}")
+            QMessageBox.warning(
+                self.dialog, "Input Error",
+                "Please select the soil lookup field that maps the soil layer to the lookup table.")
             return None
+
+        class_field = self._required_lookup_field(field_names, "CLASS")
+        if not class_field:
+            self.log_message("ERROR: Soil lookup layer must contain a CLASS field.")
+            self.log_message(f"Fields found: {', '.join(field_names)}")
+            QMessageBox.warning(
+                self.dialog, "Input Error",
+                "Soil lookup layer must contain a CLASS field.")
+            return None
+
+        self.soil_lookup_key_field = key_field
+        self.log_message(
+            f"Using soil lookup fields '{key_field}' -> '{class_field}'")
+
+        lookup_mapping = {}
+        for feature_index, feature in enumerate(lookup_layer.getFeatures(), start=1):
+            try:
+                lookup_key = self._normalise_lookup_key(feature[key_field])
+                if not lookup_key:
+                    self.log_message(
+                        f"WARNING: Soil lookup row {feature_index} has an empty key. Skipping.")
+                    continue
+
+                class_code = self._coerce_lookup_int(feature[class_field])
+                if class_code is None or class_code <= 0:
+                    self.log_message(
+                        f"WARNING: Soil lookup row {feature_index} has invalid CLASS '{feature[class_field]}'. Skipping.")
+                    continue
+
+                lookup_mapping[lookup_key] = class_code
+                if len(lookup_mapping) <= 10:
+                    self.log_message(f"  Mapped: {lookup_key} -> {class_code}")
+            except Exception as e:
+                self.log_message(
+                    f"WARNING: Error parsing soil lookup feature {feature_index}: {e}")
+
+        if lookup_mapping:
+            self.log_message(
+                f"Loaded {len(lookup_mapping)} entries from soil lookup layer.")
+            return lookup_mapping
+
+        self.log_message("ERROR: Soil lookup layer is empty or could not be parsed.")
+        QMessageBox.warning(
+            self.dialog, "Input Error",
+            "Soil lookup layer is empty or could not be parsed.")
+        return None

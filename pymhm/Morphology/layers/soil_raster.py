@@ -22,9 +22,9 @@ from .soil_lookup import SoilLookupMixin
 
 class SoilRasterMixin(
         LayerPreparationMixin,
-        SoilLookupMixin,
         DemFillMixin,
-        PredecessorMixin):
+        PredecessorMixin,
+        SoilLookupMixin):
     """Soil raster preparation and class rasterization."""
 
     def process_soil(self) -> None:
@@ -115,18 +115,19 @@ class SoilRasterMixin(
                     pass
             return
         
-        # Check if Dominant_S field exists in the layer
+        # The selected lookup field must also exist on the soil GIS layer.
         fields = layer_to_process.fields()
-        dominant_s_field = None
-        for field_name in ['Dominant_S', 'dominant_s', 'DOMINANT_S']:
-            if field_name in [f.name() for f in fields]:
-                dominant_s_field = field_name
-                break
+        field_names = [f.name() for f in fields]
+        lookup_key_field = getattr(self, "soil_lookup_key_field", None)
+        soil_key_field = (
+            self._required_lookup_field(field_names, lookup_key_field)
+            if lookup_key_field else None
+        )
         
-        if not dominant_s_field:
+        if not soil_key_field:
             QMessageBox.warning(
                 self.dialog, "Input Error",
-                "Soil layer must have a 'Dominant_S' attribute field.")
+                f"Soil layer must contain the selected lookup field '{lookup_key_field}'.")
             # Clean up temporary file if it was created
             if temp_reprojected_path and os.path.exists(temp_reprojected_path):
                 try:
@@ -139,7 +140,7 @@ class SoilRasterMixin(
                     pass
             return
         
-        self.log_message(f"Using field '{dominant_s_field}' for soil class lookup")
+        self.log_message(f"Using field '{soil_key_field}' for soil class lookup")
         
         # Create a temporary layer with CLASS field
         temp_soil_with_class_path = os.path.join(
@@ -208,21 +209,20 @@ class SoilRasterMixin(
                 if i < len(output_fields) - 1:  # Exclude the last field (CLASS)
                     new_feat.setAttribute(i, attr)
             
-            # Get Dominant_S value and lookup CLASS
-            dominant_s_value = feature.attribute(dominant_s_field)
+            # Get selected lookup value and map it to CLASS.
+            soil_key_value = feature.attribute(soil_key_field)
             class_code = None
             
-            if dominant_s_value:
-                dominant_s_str = str(dominant_s_value).strip()
-                class_code = lookup_mapping.get(dominant_s_str)
+            soil_key = self._normalise_lookup_key(soil_key_value)
+            if soil_key:
+                class_code = lookup_mapping.get(soil_key)
             
             if class_code is not None:
                 new_feat.setAttribute("CLASS", class_code)
                 features_mapped += 1
             else:
-                # If no mapping found, use 0 or a default value
                 self.log_message(
-                    f"WARNING: No CLASS found for Dominant_S='{dominant_s_value}'. Using 0.")
+                    f"ERROR: No CLASS mapping found for {soil_key_field}='{soil_key_value}'.")
                 new_feat.setAttribute("CLASS", 0)
                 features_unmapped += 1
             
@@ -235,10 +235,10 @@ class SoilRasterMixin(
             f"Processed {features_processed} features. "
             f"Mapped: {features_mapped}, Unmapped: {features_unmapped}")
         
-        if features_mapped == 0:
+        if features_mapped == 0 or features_unmapped > 0:
             QMessageBox.warning(
                 self.dialog, "Mapping Error",
-                "No features were successfully mapped to CLASS values. Please check your lookup table.")
+                "Soil mapping failed. Every soil feature must map to a CLASS value in the lookup table.")
             # Clean up temporary files
             if temp_reprojected_path and os.path.exists(temp_reprojected_path):
                 try:

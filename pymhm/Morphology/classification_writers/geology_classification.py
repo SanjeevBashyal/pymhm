@@ -6,6 +6,7 @@ from ..common import (
     os,
     QMessageBox,
     morph_folder,
+    QgsVectorLayer,
 )
 from ..core.base import BaseProcessingMixin
 
@@ -14,9 +15,9 @@ class GeologyClassificationWriterMixin(BaseProcessingMixin):
     """mHM geology classdefinition writer."""
 
     def geology_classification_writer(self) -> str | None:
-        """Read the geology lookup CSV and write ``geology_classdefinition.txt``.
+        """Read the selected geology lookup table layer and write ``geology_classdefinition.txt``.
 
-        Expected input CSV columns::
+        Required lookup fields::
 
             Geo-Class,Karstic,Default_Parameter_Value
             1,0,100
@@ -45,15 +46,19 @@ class GeologyClassificationWriterMixin(BaseProcessingMixin):
         if not self.check_prerequisites():
             return
         
-        # Get geology lookup file path
-        lookup_file = self.dialog.lineEdit_geology_lookup.text()
-        
-        if not lookup_file or not os.path.exists(lookup_file):
+        lookup_layer_combo = getattr(
+            self.dialog, "mMapLayerComboBox_geologyLookup", None)
+        lookup_layer = (
+            lookup_layer_combo.currentLayer()
+            if lookup_layer_combo is not None else None
+        )
+
+        if not lookup_layer:
             self.log_message(
-                "ERROR: Geology lookup table file not found or not specified.")
+                "ERROR: Geology lookup table layer not selected.")
             QMessageBox.warning(
                 self.dialog, "Input Error",
-                "Please select a Geology lookup table file.")
+                "Please select a Geology lookup table layer.")
             return
         
         morph_output_folder = morph_folder(self.dialog.project_folder)
@@ -64,55 +69,44 @@ class GeologyClassificationWriterMixin(BaseProcessingMixin):
         try:
             import pandas as pd
             
-            # Try different encodings
-            encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
-            df = None
-            used_encoding = None
-            
-            for encoding in encodings:
-                try:
-                    df = pd.read_csv(lookup_file, encoding=encoding)
-                    used_encoding = encoding
-                    self.log_message(f"Successfully read file with encoding: {encoding}")
-                    break
-                except (UnicodeDecodeError, pd.errors.EmptyDataError) as e:
-                    continue
+            df = self._lookup_layer_to_dataframe(
+                lookup_layer, pd, "geology")
             
             if df is None or df.empty:
-                self.log_message("ERROR: Could not read file with any encoding or file is empty.")
+                self.log_message("ERROR: Geology lookup table layer is empty or could not be read.")
                 QMessageBox.critical(
                     self.dialog, "Error",
-                    "Could not read geology lookup table file. Encoding issue or file is empty.")
+                    "Geology lookup table layer is empty or could not be read.")
                 return None
             
             # Log column names found
-            self.log_message(f"CSV columns found: {', '.join(df.columns.tolist())}")
+            self.log_message(f"Geology lookup fields found: {', '.join(df.columns.tolist())}")
             
             # Check if required columns exist (case-insensitive)
             column_names_lower = {col.lower(): col for col in df.columns}
-            geo_class_col = column_names_lower.get('geo-class') or column_names_lower.get('geo_class')
+            geo_class_col = column_names_lower.get('geo-class')
             karstic_col = column_names_lower.get('karstic')
-            default_param_col = column_names_lower.get('default_parameter_value') or column_names_lower.get('default parameter value')
+            default_param_col = column_names_lower.get('default_parameter_value')
             
             if not geo_class_col:
-                self.log_message("ERROR: 'Geo-Class' column not found in CSV file.")
+                self.log_message("ERROR: 'Geo-Class' field not found in geology lookup table.")
                 QMessageBox.warning(
                     self.dialog, "Input Error",
-                    f"CSV file must contain a 'Geo-Class' column.\nFound columns: {', '.join(df.columns.tolist())}")
+                    f"Geology lookup table must contain a 'Geo-Class' field.\nFound fields: {', '.join(df.columns.tolist())}")
                 return None
             
             if not karstic_col:
-                self.log_message("ERROR: 'Karstic' column not found in CSV file.")
+                self.log_message("ERROR: 'Karstic' field not found in geology lookup table.")
                 QMessageBox.warning(
                     self.dialog, "Input Error",
-                    f"CSV file must contain a 'Karstic' column.\nFound columns: {', '.join(df.columns.tolist())}")
+                    f"Geology lookup table must contain a 'Karstic' field.\nFound fields: {', '.join(df.columns.tolist())}")
                 return None
             
             if not default_param_col:
-                self.log_message("ERROR: 'Default_Parameter_Value' column not found in CSV file.")
+                self.log_message("ERROR: 'Default_Parameter_Value' field not found in geology lookup table.")
                 QMessageBox.warning(
                     self.dialog, "Input Error",
-                    f"CSV file must contain a 'Default_Parameter_Value' column.\nFound columns: {', '.join(df.columns.tolist())}")
+                    f"Geology lookup table must contain a 'Default_Parameter_Value' field.\nFound fields: {', '.join(df.columns.tolist())}")
                 return None
             
             self.log_message(f"Using columns: '{geo_class_col}', '{karstic_col}', '{default_param_col}'")
@@ -184,3 +178,24 @@ class GeologyClassificationWriterMixin(BaseProcessingMixin):
                 self.dialog, "Error",
                 f"Error writing geology classification file:\n{str(e)}")
             return None
+
+    def _lookup_layer_to_dataframe(self, lookup_layer, pd, layer_label):
+        """Convert a selected QGIS lookup table layer to a pandas DataFrame."""
+        if not isinstance(lookup_layer, QgsVectorLayer) or not lookup_layer.isValid():
+            self.log_message(f"ERROR: Selected {layer_label} lookup layer is not valid.")
+            QMessageBox.warning(
+                self.dialog, "Input Error",
+                f"Please select a valid {layer_label} lookup table layer.")
+            return None
+
+        field_names = lookup_layer.fields().names()
+        rows = []
+        for feature in lookup_layer.getFeatures():
+            rows.append({
+                field_name: feature[field_name]
+                for field_name in field_names
+            })
+
+        self.log_message(
+            f"Read {len(rows)} rows from {layer_label} lookup layer '{lookup_layer.name()}'.")
+        return pd.DataFrame(rows, columns=field_names)

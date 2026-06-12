@@ -1302,12 +1302,340 @@
           <property name="verticalSpacing">
            <number>3</number>
           </property>
+          <item row="4" column="1">
+           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_soil">
+            <property name="toolTip">
+             <string>Select the soil layer</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="0">
+           <widget class="QLabel" name="label_lai_file">
+            <property name="text">
+             <string>Leaf Area Index File:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_lai" stretch="1,4">
+            <item>
+             <widget class="QComboBox" name="comboBox_laiInputType">
+              <property name="currentIndex">
+               <number>-1</number>
+              </property>
+              <item>
+               <property name="text">
+                <string>Long Term Mean Monthly Gridded Data (NetCDF)</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>LAI Classes and Lookup Table</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Daily Gridded Data (NetCDF)</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Monthly Gridded Data (NetCDF)</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Yearly Gridded Data (NetCDF)</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+            <item>
+             <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_LAI_Class"/>
+            </item>
+           </layout>
+          </item>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_crs">
+            <property name="text">
+             <string>CRS:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="2">
+           <layout class="QHBoxLayout" name="horizontalLayout_L2">
+            <item>
+             <widget class="QLabel" name="label_L2">
+              <property name="minimumSize">
+               <size>
+                <width>20</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>20</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>L2</string>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="lineEdit_L2">
+              <property name="minimumSize">
+               <size>
+                <width>0</width>
+                <height>0</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboBox_L2">
+              <property name="minimumSize">
+               <size>
+                <width>40</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>50</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="currentIndex">
+               <number>-1</number>
+              </property>
+              <item>
+               <property name="text">
+                <string>m</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>°</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+           </layout>
+          </item>
           <item row="0" column="1">
            <widget class="QgsProjectionSelectionWidget" name="mProjectionSelectionWidget_crs">
             <property name="toolTip">
              <string>Select the Coordinate Reference System for processing</string>
             </property>
            </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_pour_points">
+            <property name="toolTip">
+             <string>Select the vector layer containing pour points (outlets)</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="label_soil_layer">
+            <property name="text">
+             <string>Soil Layer:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_land_cover">
+            <property name="toolTip">
+             <string>Select the land cover layer</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="2">
+           <layout class="QHBoxLayout" name="horizontalLayout_landCoverLookup" stretch="2,1">
+            <item>
+             <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_landCoverLookup">
+              <property name="statusTip">
+               <string>Lookup table...</string>
+              </property>
+              <property name="currentText">
+               <string extracomment="Lookup table..."/>
+              </property>
+              <property name="placeholderText">
+               <string>Lookup table...</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboBox_landCoverLookupField"/>
+            </item>
+           </layout>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_dem">
+            <property name="text">
+             <string>DEM Raster Layer:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_dem">
+            <property name="toolTip">
+             <string>Select the Digital Elevation Model (DEM) raster layer</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="2">
+           <layout class="QHBoxLayout" name="horizontalLayout_soilLookup" stretch="2,1">
+            <item>
+             <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_soilLookup">
+              <property name="statusTip">
+               <string>Lookup table...</string>
+              </property>
+              <property name="currentText">
+               <string extracomment="Lookup table..."/>
+              </property>
+              <property name="placeholderText">
+               <string>Lookup table...</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboBox_soilLookupField"/>
+            </item>
+           </layout>
+          </item>
+          <item row="6" column="2">
+           <layout class="QHBoxLayout" name="horizontalLayout_lai_time" stretch="2,1">
+            <item>
+             <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_laiLookup">
+              <property name="statusTip">
+               <string>Lookup table...</string>
+              </property>
+              <property name="currentText">
+               <string extracomment="Lookup table..."/>
+              </property>
+              <property name="placeholderText">
+               <string>Lookup table...</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboBox_laiLookupField"/>
+            </item>
+           </layout>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="label_pour_points">
+            <property name="toolTip">
+             <string>Required: STATION_ID in the Attribute Table</string>
+            </property>
+            <property name="text">
+             <string>Pour Points Layer:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="label_geology_layer">
+            <property name="text">
+             <string>Geology Layer:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <layout class="QHBoxLayout" name="horizontalLayout_L1">
+            <item>
+             <widget class="QLabel" name="label_L1">
+              <property name="minimumSize">
+               <size>
+                <width>20</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>20</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="sizeIncrement">
+               <size>
+                <width>0</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>L1</string>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="lineEdit_L1"/>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboBox_L1">
+              <property name="minimumSize">
+               <size>
+                <width>40</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>50</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="currentIndex">
+               <number>-1</number>
+              </property>
+              <item>
+               <property name="text">
+                <string>m</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>°</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="label_land_cover_layer">
+            <property name="text">
+             <string>Land Cover Layer:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="2">
+           <layout class="QHBoxLayout" name="horizontalLayout_geologyLookup" stretch="2,1">
+            <item>
+             <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_geologyLookup">
+              <property name="statusTip">
+               <string>Lookup table...</string>
+              </property>
+              <property name="currentText">
+               <string extracomment="Lookup table..."/>
+              </property>
+              <property name="placeholderText">
+               <string>Lookup table...</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboBox_geologyLookupField"/>
+            </item>
+           </layout>
           </item>
           <item row="0" column="2">
            <layout class="QHBoxLayout" name="horizontalLayout_L0" stretch="1,2,1">
@@ -1376,344 +1704,12 @@
             </item>
            </layout>
           </item>
-          <item row="4" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout_soil_lookup">
-            <item>
-             <widget class="QLineEdit" name="lineEdit_soil_lookup">
-              <property name="toolTip">
-               <string>Path to soil lookup table or database</string>
-              </property>
-              <property name="readOnly">
-               <bool>true</bool>
-              </property>
-              <property name="placeholderText">
-               <string>Lookup table...</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="pushButton_browse_soil_lookup">
-              <property name="maximumSize">
-               <size>
-                <width>40</width>
-                <height>16777215</height>
-               </size>
-              </property>
-              <property name="toolTip">
-               <string>Browse for soil lookup table</string>
-              </property>
-              <property name="text">
-               <string>...</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item row="2" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout_L2">
-            <item>
-             <widget class="QLabel" name="label_L2">
-              <property name="minimumSize">
-               <size>
-                <width>20</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>20</width>
-                <height>16777215</height>
-               </size>
-              </property>
-              <property name="text">
-               <string>L2</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="lineEdit_L2">
-              <property name="minimumSize">
-               <size>
-                <width>0</width>
-                <height>0</height>
-               </size>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QComboBox" name="comboBox_L2">
-              <property name="minimumSize">
-               <size>
-                <width>40</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>50</width>
-                <height>16777215</height>
-               </size>
-              </property>
-              <property name="currentIndex">
-               <number>-1</number>
-              </property>
-              <item>
-               <property name="text">
-                <string>m</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>°</string>
-               </property>
-              </item>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item row="6" column="1">
-           <layout class="QHBoxLayout" name="horizontalLayout_lai">
-            <item>
-             <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_LAI_Class"/>
-            </item>
-           </layout>
-          </item>
-          <item row="5" column="0">
-           <widget class="QLabel" name="label_geology_layer">
-            <property name="text">
-             <string>Geology Layer:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout_lai_time">
-            <item>
-             <widget class="QLineEdit" name="lineEdit_lai_file">
-              <property name="toolTip">
-               <string>Path to the Leaf Area Index file</string>
-              </property>
-              <property name="readOnly">
-               <bool>true</bool>
-              </property>
-              <property name="placeholderText">
-               <string>Select LAI file...</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="pushButton_browse_lai">
-              <property name="maximumSize">
-               <size>
-                <width>40</width>
-                <height>16777215</height>
-               </size>
-              </property>
-              <property name="toolTip">
-               <string>Browse for LAI file</string>
-              </property>
-              <property name="text">
-               <string>...</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item row="2" column="1">
-           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_pour_points">
-            <property name="toolTip">
-             <string>Select the vector layer containing pour points (outlets)</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="label_pour_points">
-            <property name="toolTip">
-             <string>Required: STATION_ID in the Attribute Table</string>
-            </property>
-            <property name="text">
-             <string>Pour Points Layer:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="label_dem">
-            <property name="text">
-             <string>DEM Raster Layer:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="1">
-           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_land_cover">
-            <property name="toolTip">
-             <string>Select the land cover layer</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="0">
-           <widget class="QLabel" name="label_crs">
-            <property name="text">
-             <string>CRS:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout_landCoverLookup">
-            <item>
-             <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_landCoverLookup">
-              <property name="statusTip">
-               <string>Lookup table...</string>
-              </property>
-              <property name="currentText">
-               <string extracomment="Lookup table..."/>
-              </property>
-              <property name="placeholderText">
-               <string>Lookup table...</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
           <item row="5" column="1">
            <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_geology">
             <property name="toolTip">
              <string>Select the geology layer</string>
             </property>
            </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_dem">
-            <property name="toolTip">
-             <string>Select the Digital Elevation Model (DEM) raster layer</string>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="0">
-           <widget class="QLabel" name="label_lai_file">
-            <property name="text">
-             <string>Leaf Area Index File:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="0">
-           <widget class="QLabel" name="label_land_cover_layer">
-            <property name="text">
-             <string>Land Cover Layer:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout_L1">
-            <item>
-             <widget class="QLabel" name="label_L1">
-              <property name="minimumSize">
-               <size>
-                <width>20</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>20</width>
-                <height>16777215</height>
-               </size>
-              </property>
-              <property name="sizeIncrement">
-               <size>
-                <width>0</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="text">
-               <string>L1</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="lineEdit_L1"/>
-            </item>
-            <item>
-             <widget class="QComboBox" name="comboBox_L1">
-              <property name="minimumSize">
-               <size>
-                <width>40</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>50</width>
-                <height>16777215</height>
-               </size>
-              </property>
-              <property name="currentIndex">
-               <number>-1</number>
-              </property>
-              <item>
-               <property name="text">
-                <string>m</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>°</string>
-               </property>
-              </item>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item row="4" column="0">
-           <widget class="QLabel" name="label_soil_layer">
-            <property name="text">
-             <string>Soil Layer:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="1">
-           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_soil">
-            <property name="toolTip">
-             <string>Select the soil layer</string>
-            </property>
-           </widget>
-          </item>
-          <item row="5" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout_geology_lookup">
-            <item>
-             <widget class="QLineEdit" name="lineEdit_geology_lookup">
-              <property name="toolTip">
-               <string>Path to geology lookup table or database</string>
-              </property>
-              <property name="readOnly">
-               <bool>true</bool>
-              </property>
-              <property name="placeholderText">
-               <string>Lookup table...</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="pushButton_browse_geology_lookup">
-              <property name="maximumSize">
-               <size>
-                <width>40</width>
-                <height>16777215</height>
-               </size>
-              </property>
-              <property name="toolTip">
-               <string>Browse for geology lookup table</string>
-              </property>
-              <property name="text">
-               <string>...</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
           </item>
          </layout>
         </widget>

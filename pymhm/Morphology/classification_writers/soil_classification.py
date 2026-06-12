@@ -6,6 +6,7 @@ from ..common import (
     os,
     QMessageBox,
     morph_folder,
+    QgsVectorLayer,
 )
 from ..core.base import BaseProcessingMixin
 
@@ -15,10 +16,10 @@ class SoilClassificationWriterMixin(BaseProcessingMixin):
 
     def soil_classdefinition_writer(self) -> str | None:
         """
-        Read soil lookup file and produce soil_classdefinition.txt.
-        
-        Input CSV format:
-        CLASS,Dominant_S,SNAM,NLAYERS,...,SOL_Z1,SOL_BD1,CLAY1,SAND1,...,SOL_Z2,SOL_BD2,CLAY2,SAND2,...
+        Read the selected soil lookup table layer and produce soil_classdefinition.txt.
+
+        Required lookup fields:
+        CLASS,SNAM,NLAYERS,...,SOL_Z1,SOL_BD1,CLAY1,SAND1,...,SOL_Z2,SOL_BD2,CLAY2,SAND2,...
         
         Output format:
         nSoil_Types  <total_rows>
@@ -35,15 +36,19 @@ class SoilClassificationWriterMixin(BaseProcessingMixin):
         if not self.check_prerequisites():
             return
         
-        # Get soil lookup file path
-        lookup_file = self.dialog.lineEdit_soil_lookup.text()
-        
-        if not lookup_file or not os.path.exists(lookup_file):
+        lookup_layer_combo = getattr(
+            self.dialog, "mMapLayerComboBox_soilLookup", None)
+        lookup_layer = (
+            lookup_layer_combo.currentLayer()
+            if lookup_layer_combo is not None else None
+        )
+
+        if not lookup_layer:
             self.log_message(
-                "ERROR: Soil lookup table file not found or not specified.")
+                "ERROR: Soil lookup table layer not selected.")
             QMessageBox.warning(
                 self.dialog, "Input Error",
-                "Please select a Soil lookup table file.")
+                "Please select a Soil lookup table layer.")
             return
         
         morph_output_folder = morph_folder(self.dialog.project_folder)
@@ -54,29 +59,18 @@ class SoilClassificationWriterMixin(BaseProcessingMixin):
         try:
             import pandas as pd
             
-            # Try different encodings
-            encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
-            df = None
-            used_encoding = None
-            
-            for encoding in encodings:
-                try:
-                    df = pd.read_csv(lookup_file, encoding=encoding)
-                    used_encoding = encoding
-                    self.log_message(f"Successfully read file with encoding: {encoding}")
-                    break
-                except (UnicodeDecodeError, pd.errors.EmptyDataError) as e:
-                    continue
+            df = self._lookup_layer_to_dataframe(
+                lookup_layer, pd, "soil")
             
             if df is None or df.empty:
-                self.log_message("ERROR: Could not read file with any encoding or file is empty.")
+                self.log_message("ERROR: Soil lookup table layer is empty or could not be read.")
                 QMessageBox.critical(
                     self.dialog, "Error",
-                    "Could not read soil lookup table file. Encoding issue or file is empty.")
+                    "Soil lookup table layer is empty or could not be read.")
                 return None
             
             # Log column names found
-            self.log_message(f"CSV columns found: {', '.join(df.columns.tolist())}")
+            self.log_message(f"Soil lookup fields found: {', '.join(df.columns.tolist())}")
             
             # Check if required columns exist (case-insensitive)
             column_names_lower = {col.lower(): col for col in df.columns}
@@ -84,17 +78,17 @@ class SoilClassificationWriterMixin(BaseProcessingMixin):
             nlayers_col = column_names_lower.get('nlayers')
             
             if not class_col:
-                self.log_message("ERROR: 'CLASS' column not found in CSV file.")
+                self.log_message("ERROR: 'CLASS' field not found in soil lookup table.")
                 QMessageBox.warning(
                     self.dialog, "Input Error",
-                    f"CSV file must contain a 'CLASS' column.\nFound columns: {', '.join(df.columns.tolist())}")
+                    f"Soil lookup table must contain a 'CLASS' field.\nFound fields: {', '.join(df.columns.tolist())}")
                 return None
             
             if not nlayers_col:
-                self.log_message("ERROR: 'NLAYERS' column not found in CSV file.")
+                self.log_message("ERROR: 'NLAYERS' field not found in soil lookup table.")
                 QMessageBox.warning(
                     self.dialog, "Input Error",
-                    f"CSV file must contain a 'NLAYERS' column.\nFound columns: {', '.join(df.columns.tolist())}")
+                    f"Soil lookup table must contain a 'NLAYERS' field.\nFound fields: {', '.join(df.columns.tolist())}")
                 return None
             
             # Check for horizon columns (SOL_Z1, CLAY1, SAND1, SOL_BD1, etc.)
@@ -117,7 +111,7 @@ class SoilClassificationWriterMixin(BaseProcessingMixin):
                 self.log_message("ERROR: No horizon columns found (SOL_Z1, CLAY1, SAND1, SOL_BD1, etc.).")
                 QMessageBox.warning(
                     self.dialog, "Input Error",
-                    "CSV file must contain horizon columns (SOL_Z1, CLAY1, SAND1, SOL_BD1, etc.).")
+                    "Soil lookup table must contain horizon fields (SOL_Z1, CLAY1, SAND1, SOL_BD1, etc.).")
                 return None
             
             self.log_message(f"Found horizon columns for horizons: {sorted(horizon_columns.keys())}")
@@ -225,3 +219,24 @@ class SoilClassificationWriterMixin(BaseProcessingMixin):
                 self.dialog, "Error",
                 f"Error writing soil classification file:\n{str(e)}")
             return None
+
+    def _lookup_layer_to_dataframe(self, lookup_layer, pd, layer_label):
+        """Convert a selected QGIS lookup table layer to a pandas DataFrame."""
+        if not isinstance(lookup_layer, QgsVectorLayer) or not lookup_layer.isValid():
+            self.log_message(f"ERROR: Selected {layer_label} lookup layer is not valid.")
+            QMessageBox.warning(
+                self.dialog, "Input Error",
+                f"Please select a valid {layer_label} lookup table layer.")
+            return None
+
+        field_names = lookup_layer.fields().names()
+        rows = []
+        for feature in lookup_layer.getFeatures():
+            rows.append({
+                field_name: feature[field_name]
+                for field_name in field_names
+            })
+
+        self.log_message(
+            f"Read {len(rows)} rows from {layer_label} lookup layer '{lookup_layer.name()}'.")
+        return pd.DataFrame(rows, columns=field_names)

@@ -28,6 +28,7 @@ class DemFillMixin(DemInputMixin, RasterIOMixin):
         if self.filled_dem_path and os.path.exists(self.filled_dem_path):
             self.log_message(
                 "Filled DEM intermediate already exists. Using existing file.")
+            self.load_layer(self.filled_dem_path, "1_DEM_Filled")
             return
 
         original_dem_layer = self.dialog.mMapLayerComboBox_dem.currentLayer()
@@ -80,6 +81,7 @@ class DemFillMixin(DemInputMixin, RasterIOMixin):
                 gdal_type=deps["gdal"].GDT_Float32):
             filled_cells = int(deps["np"].count_nonzero(
                 filled_mask)) if filled_mask is not None else 0
+            self.load_layer(self.filled_dem_path, "1_DEM_Filled")
             self.log_message(
                 f"DEM filled successfully with pyflwdir ({filled_cells} adjusted cells).")
         else:

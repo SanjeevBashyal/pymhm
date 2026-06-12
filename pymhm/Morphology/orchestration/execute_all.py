@@ -53,7 +53,7 @@ class ExecuteAllMixin(
         try:
             # Step 1: Fill DEM
             self.log_message("\n--- Step 1/17: Fill DEM ---")
-            self.fill_dem()
+            self.without_layer_loading(self.fill_dem)
             if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
                 self.log_message("ERROR: Fill DEM failed. Aborting Execute All.")
                 return

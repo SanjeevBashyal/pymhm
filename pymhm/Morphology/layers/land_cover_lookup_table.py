@@ -121,10 +121,13 @@ class LandCoverLookupTableMixin(LookupFieldMixin):
             for field_name in field_names
         }
 
-        grid_field = self._first_lookup_field(
-            normalised_fields,
-            ("gridvalue", "grid", "value", "id", "classvalue", "landcoverid")
-        )
+        grid_field = self._selected_lookup_field(
+            "comboBox_landCoverLookupField", field_names)
+        if not grid_field:
+            grid_field = self._first_lookup_field(
+                normalised_fields,
+                ("gridvalue", "grid", "value", "id", "classvalue", "landcoverid")
+            )
         type_field = self._first_lookup_field(
             normalised_fields,
             ("type", "typeint", "mhmtype", "mhmclass", "class", "landcovertype")

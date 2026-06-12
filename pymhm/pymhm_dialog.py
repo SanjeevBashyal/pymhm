@@ -60,7 +60,21 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.mMapLayerComboBox_landCoverLookup.setFilters(
                 map_layer_filters("VectorLayer")
             )
+        for lookup_combo_name in (
+            "mMapLayerComboBox_soilLookup",
+            "mMapLayerComboBox_geologyLookup",
+            "mMapLayerComboBox_laiLookup",
+        ):
+            lookup_combo = getattr(self, lookup_combo_name, None)
+            if lookup_combo is not None:
+                lookup_combo.setFilters(map_layer_filters("VectorLayer"))
+        if hasattr(self, "mMapLayerComboBox_LAI_Class"):
+            self.mMapLayerComboBox_LAI_Class.setFilters(
+                map_layer_filters("RasterLayer", "VectorLayer")
+            )
         self.configure_input_layer_combo_boxes()
+        self.configure_lookup_field_combo_boxes()
+        self.update_lai_input_controls()
 
         # --- Instance attributes for managing file paths ---
         self.project_folder = None
@@ -102,6 +116,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             layer_combo_boxes.append(self.mMapLayerComboBox_LAI_Class)
         if hasattr(self, "mMapLayerComboBox_landCoverLookup"):
             layer_combo_boxes.append(self.mMapLayerComboBox_landCoverLookup)
+        for combo_name in (
+            "mMapLayerComboBox_soilLookup",
+            "mMapLayerComboBox_geologyLookup",
+            "mMapLayerComboBox_laiLookup",
+        ):
+            combo_box = getattr(self, combo_name, None)
+            if combo_box is not None:
+                layer_combo_boxes.append(combo_box)
 
         for combo_box in layer_combo_boxes:
             if hasattr(combo_box, "setAllowEmptyLayer"):
@@ -242,17 +264,21 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         )
 
         # LAI file browser
-        self.pushButton_browse_lai.clicked.connect(self.browse_lai_file)
+        if hasattr(self, "pushButton_browse_lai"):
+            self.pushButton_browse_lai.clicked.connect(self.browse_lai_file)
 
         # Lookup table browsers
         if hasattr(self, "pushButton_browse_land_cover_lookup"):
             self.pushButton_browse_land_cover_lookup.clicked.connect(
                 self.browse_land_cover_lookup
             )
-        self.pushButton_browse_soil_lookup.clicked.connect(self.browse_soil_lookup)
-        self.pushButton_browse_geology_lookup.clicked.connect(
-            self.browse_geology_lookup
-        )
+        if hasattr(self, "pushButton_browse_soil_lookup"):
+            self.pushButton_browse_soil_lookup.clicked.connect(self.browse_soil_lookup)
+        if hasattr(self, "pushButton_browse_geology_lookup"):
+            self.pushButton_browse_geology_lookup.clicked.connect(
+                self.browse_geology_lookup
+            )
+        self.connect_lookup_field_signals()
 
         # Meteorology folder browser
         self.pushButton_browse_meteo_folder.clicked.connect(self.browse_meteo_folder)
@@ -327,6 +353,27 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 except Exception:
                     pass
 
+        for _, combo_box in self.input_lookup_field_widgets():
+            try:
+                combo_box.currentTextChanged.connect(
+                    lambda text=None: self.save_input_state()
+                )
+            except Exception:
+                try:
+                    combo_box.currentIndexChanged.connect(
+                        lambda index=None: self.save_input_state()
+                    )
+                except Exception:
+                    pass
+
+        if hasattr(self, "comboBox_laiInputType"):
+            try:
+                self.comboBox_laiInputType.currentIndexChanged.connect(
+                    lambda index=None: self.save_input_state()
+                )
+            except Exception:
+                pass
+
         try:
             self.mProjectionSelectionWidget_crs.crsChanged.connect(
                 lambda crs=None: self.save_input_state()
@@ -348,6 +395,147 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.save_input_state()
         callback()
 
+    def lookup_field_specs(self):
+        """Return lookup table layer widgets and their companion field widgets."""
+        return [
+            (
+                "land_cover_lookup_field",
+                "mMapLayerComboBox_landCoverLookup",
+                "comboBox_landCoverLookupField",
+            ),
+            (
+                "soil_lookup_field",
+                "mMapLayerComboBox_soilLookup",
+                "comboBox_soilLookupField",
+            ),
+            (
+                "geology_lookup_field",
+                "mMapLayerComboBox_geologyLookup",
+                "comboBox_geologyLookupField",
+            ),
+            (
+                "lai_lookup_field",
+                "mMapLayerComboBox_laiLookup",
+                "comboBox_laiLookupField",
+            ),
+        ]
+
+    def input_lookup_field_widgets(self):
+        """Return lookup field combo boxes and their state keys."""
+        widgets = []
+        for key, _, field_combo_name in self.lookup_field_specs():
+            field_combo = getattr(self, field_combo_name, None)
+            if field_combo is not None:
+                widgets.append((key, field_combo))
+        return widgets
+
+    def configure_lookup_field_combo_boxes(self):
+        """Populate lookup field dropdowns from their selected table layers."""
+        for _, layer_combo_name, field_combo_name in self.lookup_field_specs():
+            layer_combo = getattr(self, layer_combo_name, None)
+            field_combo = getattr(self, field_combo_name, None)
+            if layer_combo is None or field_combo is None:
+                continue
+            self.populate_lookup_field_combo(
+                field_combo,
+                layer_combo.currentLayer(),
+                field_combo.currentText(),
+            )
+
+    def connect_lookup_field_signals(self):
+        """Refresh lookup field dropdowns when lookup table layers change."""
+        for _, layer_combo_name, field_combo_name in self.lookup_field_specs():
+            layer_combo = getattr(self, layer_combo_name, None)
+            field_combo = getattr(self, field_combo_name, None)
+            if layer_combo is None or field_combo is None:
+                continue
+            try:
+                layer_combo.layerChanged.connect(
+                    lambda layer=None, combo=field_combo: self.populate_lookup_field_combo(
+                        combo, layer
+                    )
+                )
+            except Exception:
+                pass
+
+        if hasattr(self, "comboBox_laiInputType"):
+            try:
+                self.comboBox_laiInputType.currentIndexChanged.connect(
+                    lambda index=None: self.update_lai_input_controls()
+                )
+            except Exception:
+                pass
+
+    def populate_lookup_field_combo(self, field_combo, lookup_layer=None, preferred_field=""):
+        """Load a lookup field combo box with fields from a QGIS table layer."""
+        current_field = preferred_field or field_combo.currentText()
+        try:
+            field_combo.blockSignals(True)
+        except Exception:
+            pass
+
+        field_combo.clear()
+        field_names = []
+        if lookup_layer is not None and isinstance(lookup_layer, QgsVectorLayer):
+            try:
+                field_names = lookup_layer.fields().names()
+            except Exception:
+                field_names = []
+
+        field_combo.addItems(field_names)
+        if current_field and current_field in field_names:
+            field_combo.setCurrentText(current_field)
+        elif field_names:
+            field_combo.setCurrentIndex(0)
+
+        field_combo.setEnabled(bool(field_names))
+        try:
+            field_combo.blockSignals(False)
+        except Exception:
+            pass
+        self.update_lai_input_controls()
+
+    def restore_lookup_fields(self, lookup_fields):
+        """Restore saved lookup table field selections after layers are restored."""
+        for key, layer_combo_name, field_combo_name in self.lookup_field_specs():
+            layer_combo = getattr(self, layer_combo_name, None)
+            field_combo = getattr(self, field_combo_name, None)
+            if layer_combo is None or field_combo is None:
+                continue
+            self.populate_lookup_field_combo(
+                field_combo,
+                layer_combo.currentLayer(),
+                lookup_fields.get(key, ""),
+            )
+
+    def restore_lai_input_type(self, lai_input_type):
+        """Restore the selected LAI input type by text when possible."""
+        combo_box = getattr(self, "comboBox_laiInputType", None)
+        if combo_box is None or not lai_input_type:
+            return
+        index = combo_box.findText(lai_input_type)
+        if index >= 0:
+            combo_box.setCurrentIndex(index)
+
+    def lai_uses_lookup_table(self):
+        """Return True when the LAI workflow uses class and lookup-table inputs."""
+        combo_box = getattr(self, "comboBox_laiInputType", None)
+        if combo_box is None:
+            return False
+        return combo_box.currentText().strip().lower() == "lai classes and lookup table"
+
+    def update_lai_input_controls(self):
+        """Enable LAI lookup controls only for the class-and-lookup workflow."""
+        enabled = self.lai_uses_lookup_table()
+        lookup_combo = getattr(self, "mMapLayerComboBox_laiLookup", None)
+        field_combo = getattr(self, "comboBox_laiLookupField", None)
+        if lookup_combo is not None:
+            lookup_combo.setEnabled(enabled)
+        if field_combo is not None:
+            field_combo.setEnabled(
+                enabled and field_combo.count() > 0
+            )
+
     def input_layer_widgets(self):
         """Return persistent layer input widgets and their state keys."""
         widgets = [
@@ -364,17 +552,30 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             widgets.append(
                 ("land_cover_lookup", self.mMapLayerComboBox_landCoverLookup)
             )
+        for key, combo_name in (
+            ("soil_lookup", "mMapLayerComboBox_soilLookup"),
+            ("geology_lookup", "mMapLayerComboBox_geologyLookup"),
+            ("lai_lookup", "mMapLayerComboBox_laiLookup"),
+        ):
+            combo_box = getattr(self, combo_name, None)
+            if combo_box is not None:
+                widgets.append((key, combo_box))
 
         return widgets
 
     def input_text_widgets(self):
         """Return persistent text/path input widgets and their state keys."""
-        widgets = [
-            ("lai_file", self.lineEdit_lai_file),
-            ("soil_lookup", self.lineEdit_soil_lookup),
-            ("geology_lookup", self.lineEdit_geology_lookup),
-            ("meteo_folder", self.lineEdit_meteo_folder),
-        ]
+        widgets = []
+
+        for key, widget_name in (
+            ("lai_file", "lineEdit_lai_file"),
+            ("soil_lookup_file", "lineEdit_soil_lookup"),
+            ("geology_lookup_file", "lineEdit_geology_lookup"),
+            ("meteo_folder", "lineEdit_meteo_folder"),
+        ):
+            widget = getattr(self, widget_name, None)
+            if widget is not None:
+                widgets.append((key, widget))
 
         if hasattr(self, "lineEdit_land_cover_lookup"):
             widgets.append(("land_cover_lookup_file", self.lineEdit_land_cover_lookup))
@@ -428,12 +629,21 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             }
 
         text_inputs = {key: widget.text() for key, widget in self.input_text_widgets()}
+        lookup_fields = {
+            key: combo_box.currentText()
+            for key, combo_box in self.input_lookup_field_widgets()
+        }
 
         crs = self.get_crs()
         state = {
             "version": 1,
             "layers": layers,
             "text_inputs": text_inputs,
+            "lookup_fields": lookup_fields,
+            "lai_input_type": (
+                self.comboBox_laiInputType.currentText()
+                if hasattr(self, "comboBox_laiInputType") else ""
+            ),
             "crs_authid": crs.authid() if crs and crs.isValid() else "",
             "project_layout": {
                 "data_folder": data_folder(self.project_folder),
@@ -468,8 +678,11 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self._loading_input_state = True
         try:
             self.restore_text_inputs(state.get("text_inputs", {}))
+            self.restore_lai_input_type(state.get("lai_input_type", ""))
             self.restore_input_crs(state.get("crs_authid", ""))
             self.restore_input_layers(state.get("layers", {}))
+            self.restore_lookup_fields(state.get("lookup_fields", {}))
+            self.update_lai_input_controls()
         finally:
             self._loading_input_state = False
 
@@ -579,6 +792,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             layer_inputs.append(
                 ("Land cover lookup", self.mMapLayerComboBox_landCoverLookup)
             )
+        for label, combo_name in (
+            ("Soil lookup", "mMapLayerComboBox_soilLookup"),
+            ("Geology lookup", "mMapLayerComboBox_geologyLookup"),
+            ("LAI lookup", "mMapLayerComboBox_laiLookup"),
+        ):
+            combo_box = getattr(self, combo_name, None)
+            if combo_box is not None:
+                layer_inputs.append((label, combo_box))
 
         for label, combo_box in layer_inputs:
             layer = combo_box.currentLayer()
@@ -587,22 +808,41 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             else:
                 self.log_message(f"{label}: <not selected>")
 
-        self.log_message(
-            f"LAI file: {self.lineEdit_lai_file.text() or '<not selected>'}"
-        )
+        if hasattr(self, "comboBox_laiInputType"):
+            self.log_message(
+                f"LAI input type: {self.comboBox_laiInputType.currentText() or '<not selected>'}"
+            )
+        if hasattr(self, "lineEdit_lai_file"):
+            self.log_message(
+                f"LAI file: {self.lineEdit_lai_file.text() or '<not selected>'}"
+            )
+        for label, combo_name in (
+            ("Land cover lookup field", "comboBox_landCoverLookupField"),
+            ("Soil lookup field", "comboBox_soilLookupField"),
+            ("Geology lookup field", "comboBox_geologyLookupField"),
+            ("LAI lookup field", "comboBox_laiLookupField"),
+        ):
+            combo_box = getattr(self, combo_name, None)
+            if combo_box is not None and combo_box.isEnabled():
+                self.log_message(
+                    f"{label}: {combo_box.currentText() or '<not selected>'}"
+                )
         if hasattr(self, "lineEdit_land_cover_lookup"):
             self.log_message(
                 f"Land cover lookup: {self.lineEdit_land_cover_lookup.text() or '<not selected>'}"
             )
-        self.log_message(
-            f"Soil lookup: {self.lineEdit_soil_lookup.text() or '<not selected>'}"
-        )
-        self.log_message(
-            f"Geology lookup: {self.lineEdit_geology_lookup.text() or '<not selected>'}"
-        )
-        self.log_message(
-            f"Meteorology folder: {self.lineEdit_meteo_folder.text() or '<not selected>'}"
-        )
+        if hasattr(self, "lineEdit_soil_lookup"):
+            self.log_message(
+                f"Soil lookup: {self.lineEdit_soil_lookup.text() or '<not selected>'}"
+            )
+        if hasattr(self, "lineEdit_geology_lookup"):
+            self.log_message(
+                f"Geology lookup: {self.lineEdit_geology_lookup.text() or '<not selected>'}"
+            )
+        if hasattr(self, "lineEdit_meteo_folder"):
+            self.log_message(
+                f"Meteorology folder: {self.lineEdit_meteo_folder.text() or '<not selected>'}"
+            )
 
     # --- Project Management Methods ---
 
@@ -678,6 +918,10 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
     def browse_lai_file(self):
         """Browse for Leaf Area Index file"""
+        if not hasattr(self, "lineEdit_lai_file"):
+            self.log_message("LAI input is now selected from the layer dropdown.")
+            return
+
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Leaf Area Index File",
@@ -710,6 +954,10 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
     def browse_soil_lookup(self):
         """Browse for Soil lookup table or database"""
+        if not hasattr(self, "lineEdit_soil_lookup"):
+            self.log_message("Soil lookup is now selected from the layer dropdown.")
+            return
+
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Soil Lookup Table",
@@ -723,6 +971,10 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
     def browse_geology_lookup(self):
         """Browse for Geology lookup table or database"""
+        if not hasattr(self, "lineEdit_geology_lookup"):
+            self.log_message("Geology lookup is now selected from the layer dropdown.")
+            return
+
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Geology Lookup Table",
