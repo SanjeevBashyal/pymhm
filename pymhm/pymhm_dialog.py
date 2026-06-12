@@ -236,6 +236,12 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             "Hydrogeology",
             self.morphology_processor.process_geology,
         )
+        if hasattr(self, "pushButton_LAI"):
+            self.connect_processor_button(
+                self.pushButton_LAI,
+                "LAI",
+                self.morphology_processor.process_lai,
+            )
 
         # Mask all layers
         self.connect_processor_button(
