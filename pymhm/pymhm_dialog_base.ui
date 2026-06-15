@@ -1320,6 +1320,9 @@
            <layout class="QHBoxLayout" name="horizontalLayout_lai" stretch="1,4">
             <item>
              <widget class="QComboBox" name="comboBox_laiInputType">
+              <property name="toolTip">
+               <string>LAI Input Type</string>
+              </property>
               <property name="currentIndex">
                <number>-1</number>
               </property>

@@ -1069,9 +1069,12 @@ class Ui_pymhmDialog(object):
         self.label_placeholder_execution.setText(_translate("pymhmDialog", "Execution controls and run status will go here."))
         self.label_placeholder_calib.setText(_translate("pymhmDialog", "Calibration settings and observed data inputs will go here."))
         self.label_placeholder_out.setText(_translate("pymhmDialog", "Output configuration and results will be displayed here."))
-from qgsmaplayercombobox import QgsMapLayerComboBox
-from qgsprojectionselectionwidget import QgsProjectionSelectionWidget
-import resources_rc
+from qgis.gui import QgsMapLayerComboBox, QgsProjectionSelectionWidget
+
+try:
+    from . import resources_rc
+except ImportError:
+    import resources_rc
 
 
 if __name__ == "__main__":
