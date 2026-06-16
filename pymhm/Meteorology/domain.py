@@ -46,8 +46,29 @@ def bounds_from_dialog(dialog: object) -> MeteoDomainBounds | None:
     source = ""
 
     if dialog.project_folder:
+        geometry_root = Path(geometry_folder(dialog.project_folder))
+        for watershed_path in (
+                geometry_root / "Watersheds" / "4_watershed_merged_vector.shp",
+                geometry_root / "4_watershed_merged_vector.shp"):
+            if not watershed_path.exists():
+                continue
+            try:
+                from qgis.core import QgsVectorLayer
+
+                candidate = QgsVectorLayer(
+                    str(watershed_path),
+                    "Watershed_Merged",
+                    "ogr",
+                )
+                if candidate.isValid():
+                    layer = candidate
+                    source = str(watershed_path)
+                    break
+            except Exception:
+                pass
+
         masked_dem = Path(geometry_folder(dialog.project_folder)) / "1_dem_filled_masked.tif"
-        if masked_dem.exists():
+        if layer is None and masked_dem.exists():
             candidate = QgsRasterLayer(str(masked_dem), "DEM_Masked")
             if candidate.isValid():
                 layer = candidate

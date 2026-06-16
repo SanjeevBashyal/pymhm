@@ -74,6 +74,22 @@ def force_target_grid(da, target_lat, target_lon, np):
     )
 
 
+def resample_to_target_grid(da, target_lat, target_lon, np):
+    """Nearest-neighbor resample a data array to an explicit target grid."""
+    if target_lat is None or target_lon is None:
+        return da
+
+    target_lat = np.asarray(target_lat, dtype="float64")
+    target_lon = np.asarray(target_lon, dtype="float64")
+    source = da.sortby("lat").sortby("lon")
+    resampled = source.reindex(
+        lat=target_lat,
+        lon=target_lon,
+        method="nearest",
+    )
+    return resampled.transpose("time", "lat", "lon")
+
+
 def _coord_floor(values, target: float) -> float:
     candidates = values[values <= target]
     if len(candidates):

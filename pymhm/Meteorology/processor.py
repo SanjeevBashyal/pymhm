@@ -13,6 +13,7 @@ from .inventory import log_inventory
 from .paths import expected_meteo_outputs
 from .results import log_result_summary, record_forcing_outputs
 from .state import MeteorologyOutputState
+from ..grid_resolution import save_meteo_grid_metadata
 
 
 class MeteorologyProcessor:
@@ -40,6 +41,8 @@ class MeteorologyProcessor:
             self.log_message(
                 "Existing meteorology forcing files found: "
                 + ", ".join(found))
+        if hasattr(self.dialog, "update_l2_resolution_from_metadata"):
+            self.dialog.update_l2_resolution_from_metadata()
 
     def process_meteo_forcing(self) -> bool:
         """Prepare mHM meteo forcing NetCDF files from ERA5-Land inputs."""
@@ -69,11 +72,15 @@ class MeteorologyProcessor:
         log_inventory(inventory, self.log_message)
 
         try:
+            l2_grid = self.dialog.prepare_meteo_l2_grid(run_inputs.nc_folder)
             result = tools.process_to_mhm(
                 nc_folder=run_inputs.nc_folder,
                 output_root=run_inputs.output_root,
-                bounds=run_inputs.crop_bounds,
-                skip_existing=True,
+                bounds=l2_grid.get("bounds", run_inputs.crop_bounds),
+                target_lat=l2_grid["lat"],
+                target_lon=l2_grid["lon"],
+                target_header=l2_grid["header"],
+                skip_existing=False,
                 log=self.log_message,
             )
         except missing_dependency_error as e:
@@ -95,6 +102,12 @@ class MeteorologyProcessor:
 
         record_forcing_outputs(self.state, result)
         log_result_summary(result, self.log_message)
+        save_meteo_grid_metadata(
+            run_inputs.project_folder,
+            l2_grid["metadata"],
+        )
+        if hasattr(self.dialog, "set_meteo_l2_grid_metadata"):
+            self.dialog.set_meteo_l2_grid_metadata(l2_grid["metadata"])
 
         QMessageBox.information(
             self.dialog,

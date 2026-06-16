@@ -53,9 +53,21 @@ def write_netcdf(ds, variable: str, output_file: Path) -> None:
     raise RuntimeError(f"Could not write NetCDF file {output_file}: {last_error}")
 
 
-def write_header(ds, variable: str, header_file: Path) -> None:
+def write_header(ds, variable: str, header_file: Path, header: dict | None = None) -> None:
     """Write the mHM ASCII grid header that accompanies a forcing NetCDF."""
     header_file.parent.mkdir(parents=True, exist_ok=True)
+    if header is not None:
+        header_text = (
+            f"ncols         {int(header['ncols'])}\n"
+            f"nrows         {int(header['nrows'])}\n"
+            f"xllcorner     {header['xllcorner']}\n"
+            f"yllcorner     {header['yllcorner']}\n"
+            f"cellsize      {header['cellsize']}\n"
+            f"NODATA_value  {header.get('nodata_value', -9999.0)}\n"
+        )
+        header_file.write_text(header_text, encoding="utf-8")
+        return
+
     lon = ds["lon"].values
     lat = ds["lat"].values
 

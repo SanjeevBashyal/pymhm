@@ -18,6 +18,9 @@ def process_era5_to_mhm(
     nc_folder,
     output_root,
     bounds: tuple[float, float, float, float] | None = None,
+    target_lat=None,
+    target_lon=None,
+    target_header: dict | None = None,
     skip_existing: bool = True,
     log: Callable[[str], None] | None = None,
 ) -> MeteoForcingResult:
@@ -34,6 +37,11 @@ def process_era5_to_mhm(
     bounds:
         Optional WGS84 bounds as ``(west, east, south, north)``. Bounds are
         snapped outward to the available ERA5-Land grid centers.
+    target_lat, target_lon:
+        Optional target coordinate axes used to nearest-neighbor resample the
+        final daily fields.
+    target_header:
+        Optional projected mHM grid header to write beside each forcing file.
     skip_existing:
         Reuse an output when both ``<var>.nc`` and ``header.txt`` already exist.
     log:
@@ -82,9 +90,21 @@ def process_era5_to_mhm(
             f"{spec.output_variable}: processing {len(files)} file(s) "
             f"from {files[0].name} to {files[-1].name}",
         )
-        ds_out = build_daily_dataset(files, spec, bounds=bounds, log=log)
+        ds_out = build_daily_dataset(
+            files,
+            spec,
+            bounds=bounds,
+            target_lat=target_lat,
+            target_lon=target_lon,
+            log=log,
+        )
         write_netcdf(ds_out, spec.output_variable, output_file)
-        write_header(ds_out, spec.output_variable, header_file)
+        write_header(
+            ds_out,
+            spec.output_variable,
+            header_file,
+            header=target_header,
+        )
 
         outputs[spec.output_variable] = output_file
         headers[spec.output_variable] = header_file

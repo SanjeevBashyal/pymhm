@@ -12,6 +12,7 @@ from .grid import (
     ensure_latitude_descending,
     force_target_grid,
     normalize_spatial_axes,
+    resample_to_target_grid,
     snap_bounds_to_grid,
     subset_dataset,
 )
@@ -24,10 +25,15 @@ def build_daily_dataset(
     files: Iterable[Path],
     spec: ForcingSpec,
     bounds: tuple[float, float, float, float] | None,
-    log: Callable[[str], None] | None,
+    target_lat=None,
+    target_lon=None,
+    log: Callable[[str], None] | None = None,
 ):
     """Build one complete daily forcing dataset from monthly ERA5-Land files."""
     np, pd, xr = import_dependencies()
+    explicit_target_lat = None if target_lat is None else np.asarray(target_lat, dtype="float64")
+    explicit_target_lon = None if target_lon is None else np.asarray(target_lon, dtype="float64")
+    has_explicit_target = explicit_target_lat is not None and explicit_target_lon is not None
     daily_arrays = []
     target_lat = None
     target_lon = None
@@ -65,7 +71,18 @@ def build_daily_dataset(
             daily = ensure_latitude_descending(daily)
             daily = daily.transpose("time", "lat", "lon")
 
-            if target_lat is None or target_lon is None:
+            if has_explicit_target:
+                daily = resample_to_target_grid(
+                    daily,
+                    explicit_target_lat,
+                    explicit_target_lon,
+                    np,
+                )
+                if explicit_target_lat[0] < explicit_target_lat[-1]:
+                    daily = ensure_latitude_descending(daily)
+                target_lat = daily["lat"].values
+                target_lon = daily["lon"].values
+            elif target_lat is None or target_lon is None:
                 target_lat = daily["lat"].values
                 target_lon = daily["lon"].values
             else:

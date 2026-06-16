@@ -33,6 +33,17 @@ from .project_layout import (
     restart_folder,
     z_temp_folder,
 )
+from .grid_resolution import (
+    build_meteo_l2_grid,
+    display_precision_for_unit,
+    format_resolution,
+    header_bounds,
+    header_for_existing_bounds,
+    load_meteo_grid_metadata,
+    possible_resolutions,
+    raster_resolution_info,
+    read_header_file,
+)
 
 
 class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
@@ -81,6 +92,11 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.geometry_folder = None  # Subfolder for geometry outputs
         self.input_state_filename = "pymhm_input_state.json"
         self._loading_input_state = False
+        self._grid_l0_info = None
+        self._grid_l2_metadata = None
+        self._grid_l2_header = None
+        self._preferred_l1_resolution = None
+        self._preferred_l11_resolution = None
 
         # --- Initialize processors ---
         self.morphology_processor = MorphologyProcessor(self)
@@ -91,6 +107,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         # --- Connect signals and slots ---
         self.configure_page_aliases()
         self.connect_signals()
+        self.refresh_grid_resolution_controls()
         self.configuration_processor.refresh_status_indicators()
 
     def configure_page_aliases(self):
@@ -285,6 +302,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 self.browse_geology_lookup
             )
         self.connect_lookup_field_signals()
+        self.connect_grid_resolution_signals()
 
         # Meteorology folder browser
         self.pushButton_browse_meteo_folder.clicked.connect(self.browse_meteo_folder)
@@ -314,6 +332,13 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 "Configure Outputs",
                 self.configuration_processor.configure_outputs,
             )
+        if hasattr(self, "pushButton_createLatLon"):
+            self.connect_processor_button(
+                self.pushButton_createLatLon,
+                "Create LatLon",
+                self.morphology_processor.process_lat_lon,
+            )
+            self.update_latlon_button_state()
         self.connect_processor_button(
             self.pushButton_createNML,
             "Create Namelists",
@@ -336,6 +361,398 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         project_crs = QgsProject.instance().crs()
         if project_crs.isValid():
             self.mProjectionSelectionWidget_crs.setCrs(project_crs)
+
+    def connect_grid_resolution_signals(self):
+        """Refresh derived grid controls when DEM/L1/L11 selections change."""
+        try:
+            self.mMapLayerComboBox_dem.layerChanged.connect(
+                lambda layer=None: self.update_l0_resolution_from_dem(layer)
+            )
+        except Exception:
+            pass
+
+        if hasattr(self, "comboBox_L1"):
+            try:
+                self.comboBox_L1.currentIndexChanged.connect(
+                    lambda index=None: self.handle_l1_resolution_changed()
+                )
+            except Exception:
+                pass
+
+        if hasattr(self, "comboBox_L11"):
+            try:
+                self.comboBox_L11.currentIndexChanged.connect(
+                    lambda index=None: self.update_l11_resolution_label()
+                )
+            except Exception:
+                pass
+
+    def refresh_grid_resolution_controls(self):
+        """Refresh L0, L2, L1, and L11 controls from current project state."""
+        self.update_l0_resolution_from_dem()
+        self.update_l2_resolution_from_metadata()
+        self.refresh_l1_l11_resolution_options()
+
+    def update_l0_resolution_from_dem(self, layer=None):
+        """Prepare/read the filled DEM and show its resolution as L0."""
+        info = self.filled_dem_resolution_info()
+        self._grid_l0_info = info
+        if not info:
+            self._set_resolution_labels("L0", "", "")
+            self.refresh_l1_l11_resolution_options()
+            self.update_latlon_button_state()
+            return
+
+        self._set_resolution_labels(
+            "L0",
+            format_resolution(info["resolution"], info["unit"]),
+            info["unit"],
+        )
+        if abs(info["x_resolution"] - info["y_resolution"]) > max(info["resolution"], 1.0) * 1e-6:
+            self.log_message(
+                "WARNING: DEM pixels are not square. L0 uses the average of "
+                f"x={info['x_resolution']} and y={info['y_resolution']}.")
+        self.refresh_l1_l11_resolution_options()
+
+    def filled_dem_resolution_info(self):
+        """Return L0 resolution from the prepared filled DEM raster."""
+        if not self.project_folder:
+            return None
+        if not self.mMapLayerComboBox_dem.currentLayer():
+            return None
+
+        processor = getattr(self, "morphology_processor", None)
+        if processor is None:
+            return None
+
+        try:
+            if not processor._ensure_filled_dem(processor.fill_dem):
+                return None
+        except Exception as e:
+            self.log_message(f"WARNING: Could not prepare filled DEM for L0 resolution: {e}")
+            return None
+
+        filled_path = getattr(processor, "filled_dem_path", None)
+        if not filled_path or not os.path.exists(filled_path):
+            filled_path = os.path.join(
+                geometry_folder(self.project_folder),
+                "1_dem_filled.tif",
+            )
+            if os.path.exists(filled_path):
+                processor.filled_dem_path = filled_path
+
+        if not filled_path or not os.path.exists(filled_path):
+            return None
+
+        filled_layer = QgsRasterLayer(filled_path, "Filled_DEM")
+        if not filled_layer.isValid():
+            self.log_message("WARNING: Filled DEM exists but could not be read for L0 resolution.")
+            return None
+        return raster_resolution_info(filled_layer)
+
+    def update_l2_resolution_from_metadata(self, metadata=None):
+        """Show L2 resolution from saved meteo grid metadata or existing headers."""
+        if metadata is None and self.project_folder:
+            metadata = load_meteo_grid_metadata(self.project_folder)
+
+        header = None
+        if metadata:
+            header = metadata.get("l2_header")
+        elif self.project_folder:
+            header = read_header_file(
+                os.path.join(data_folder(self.project_folder), "meteo", "pre", "header.txt")
+            )
+            if header:
+                metadata = {
+                    "l2_resolution": header["cellsize"],
+                    "l2_unit": self._grid_l0_info.get("unit", "") if self._grid_l0_info else "",
+                    "l2_header": header,
+                }
+
+        self._grid_l2_metadata = metadata
+        self._grid_l2_header = header
+        if not metadata:
+            self._set_resolution_labels("L2", "", "")
+            self.update_extent_labels()
+            self.refresh_l1_l11_resolution_options()
+            self.update_latlon_button_state()
+            return
+
+        self._set_resolution_labels(
+            "L2",
+            format_resolution(
+                metadata.get("l2_resolution", ""),
+                metadata.get("l2_unit", ""),
+            ),
+            metadata.get("l2_unit", ""),
+        )
+        self.update_extent_labels(metadata)
+        self.refresh_l1_l11_resolution_options()
+        self.update_latlon_button_state()
+
+    def set_meteo_l2_grid_metadata(self, metadata):
+        """Store freshly prepared L2 metadata and update resolution controls."""
+        self.update_l2_resolution_from_metadata(metadata)
+        self.save_input_state()
+
+    def prepare_meteo_l2_grid(self, nc_folder):
+        """Build the adjusted L2 grid used by meteorology processing."""
+        self.update_l0_resolution_from_dem()
+        grid = build_meteo_l2_grid(self, nc_folder)
+        metadata = grid.get("metadata", {})
+        self.log_message(
+            "Meteo L2 resolution adjusted from "
+            f"{format_resolution(metadata.get('raw_meteo_resolution'), metadata.get('raw_meteo_unit', ''))} "
+            f"{metadata.get('raw_meteo_unit', '')} to "
+            f"{format_resolution(metadata.get('l2_resolution'), metadata.get('l2_unit', ''))} "
+            f"{metadata.get('l2_unit', '')} "
+            f"({metadata.get('l2_ratio_to_l0')} x L0).")
+        return grid
+
+    def refresh_l1_l11_resolution_options(self):
+        """Populate L1 and L11 resolution choices from L0/L2 compatibility."""
+        l0_resolution = self.current_l0_resolution()
+        l2_resolution = self.current_l2_resolution()
+        unit = self.current_grid_unit()
+
+        l1_values = []
+        if l0_resolution and l2_resolution:
+            l1_values = possible_resolutions(l0_resolution, l2_resolution)
+        elif l0_resolution:
+            l1_values = [l0_resolution]
+
+        preferred_l1 = self._preferred_l1_resolution
+        self._populate_resolution_combo(
+            getattr(self, "comboBox_L1", None),
+            l1_values,
+            preferred_l1,
+            unit,
+        )
+        if preferred_l1 is not None and l1_values:
+            self._preferred_l1_resolution = None
+        if hasattr(self, "label_L1ResolutionUnit"):
+            self.label_L1ResolutionUnit.setText(unit if l1_values else "")
+
+        self.handle_l1_resolution_changed()
+
+    def handle_l1_resolution_changed(self):
+        """Refresh L1 label and rebuild L11 choices for the selected L1."""
+        self.update_l1_resolution_label()
+        l1_resolution = self.current_l1_resolution()
+        l2_resolution = self.current_l2_resolution()
+        unit = self.current_grid_unit()
+
+        l11_values = []
+        if l1_resolution and l2_resolution:
+            l11_values = possible_resolutions(l1_resolution, l2_resolution)
+        elif l1_resolution:
+            l11_values = [l1_resolution]
+
+        preferred_l11 = self._preferred_l11_resolution
+        self._populate_resolution_combo(
+            getattr(self, "comboBox_L11", None),
+            l11_values,
+            preferred_l11,
+            unit,
+        )
+        if preferred_l11 is not None and l11_values:
+            self._preferred_l11_resolution = None
+        if hasattr(self, "label_L11ResolutionUnit"):
+            self.label_L11ResolutionUnit.setText(unit if l11_values else "")
+        self.update_l11_resolution_label()
+        self.update_latlon_button_state()
+
+    def update_l1_resolution_label(self):
+        """Show the selected L1 relation to L0."""
+        value = self.current_l1_resolution()
+        l0_resolution = self.current_l0_resolution()
+        label = getattr(self, "label_L1Resolution", None)
+        if label is None:
+            return
+        if value and l0_resolution:
+            label.setText(f"{value / l0_resolution:g} x L0")
+        else:
+            label.setText("")
+
+    def update_l11_resolution_label(self):
+        """Show the selected L11 relation to L1."""
+        value = self.current_l11_resolution()
+        l1_resolution = self.current_l1_resolution()
+        label = getattr(self, "label_L11Resolution", None)
+        if label is None:
+            return
+        if value and l1_resolution:
+            label.setText(f"{value / l1_resolution:g} x L1")
+        else:
+            label.setText("")
+        self.update_latlon_button_state()
+
+    def current_l0_resolution(self):
+        """Return current L0 resolution."""
+        if self._grid_l0_info:
+            return float(self._grid_l0_info["resolution"])
+        return None
+
+    def current_l2_resolution(self):
+        """Return current L2 resolution."""
+        if self._grid_l2_metadata and self._grid_l2_metadata.get("l2_resolution"):
+            return float(self._grid_l2_metadata["l2_resolution"])
+        if self._grid_l2_header:
+            return float(self._grid_l2_header["cellsize"])
+        return None
+
+    def current_l1_resolution(self):
+        """Return selected L1 resolution."""
+        return self._current_combo_resolution(getattr(self, "comboBox_L1", None))
+
+    def current_l11_resolution(self):
+        """Return selected L11 resolution."""
+        return self._current_combo_resolution(getattr(self, "comboBox_L11", None))
+
+    def current_grid_unit(self):
+        """Return the unit shared by the derived grid-resolution controls."""
+        if self._grid_l2_metadata and self._grid_l2_metadata.get("l2_unit"):
+            return self._grid_l2_metadata["l2_unit"]
+        if self._grid_l0_info:
+            return self._grid_l0_info.get("unit", "")
+        return ""
+
+    def grid_level_headers(self):
+        """Return compatible L0, L1, L11, and L2 headers for latlon.nc."""
+        if not self._grid_l2_header:
+            self.update_l2_resolution_from_metadata()
+        if not self._grid_l2_header:
+            raise ValueError("L2 grid is not available. Run and save meteorology data first.")
+
+        l0_resolution = self.current_l0_resolution()
+        l1_resolution = self.current_l1_resolution()
+        l11_resolution = self.current_l11_resolution()
+        if not l0_resolution or not l1_resolution or not l11_resolution:
+            raise ValueError("L0, L1, and L11 resolutions must be available.")
+
+        l2_header = self._grid_l2_header
+        return {
+            "L0": header_for_existing_bounds(l2_header, l0_resolution),
+            "L1": header_for_existing_bounds(l2_header, l1_resolution),
+            "L11": header_for_existing_bounds(l2_header, l11_resolution),
+            "L2": l2_header,
+        }
+
+    def grid_configuration_snapshot(self):
+        """Return current grid configuration for project-state reference."""
+        snapshot = {
+            "l0_resolution": self.current_l0_resolution(),
+            "l1_resolution": self.current_l1_resolution(),
+            "l11_resolution": self.current_l11_resolution(),
+            "l2_resolution": self.current_l2_resolution(),
+            "unit": self.current_grid_unit(),
+        }
+        try:
+            snapshot["headers"] = self.grid_level_headers()
+        except Exception:
+            snapshot["headers"] = {}
+        return snapshot
+
+    def update_extent_labels(self, metadata=None):
+        """Show the final model extent from the prepared L2 grid header."""
+        label_names = (
+            "label_minimumEasting",
+            "label_maximumEasting",
+            "label_minimumNorthing",
+            "label_maximumNorthing",
+        )
+        labels = [getattr(self, name, None) for name in label_names]
+        if any(label is None for label in labels):
+            return
+
+        header = None
+        if metadata:
+            header = metadata.get("l2_header")
+        if header is None:
+            header = self._grid_l2_header
+
+        if not header:
+            for label in labels:
+                label.setText("")
+            return
+
+        unit = (
+            (metadata or {}).get("l2_unit")
+            or (self._grid_l2_metadata or {}).get("l2_unit")
+            or self.current_grid_unit()
+        )
+        precision = display_precision_for_unit(unit)
+        xmin, xmax, ymin, ymax = header_bounds(header)
+        values = (xmin, xmax, ymin, ymax)
+        for label, value in zip(labels, values):
+            label.setText(format_resolution(value, unit, precision=precision))
+
+    def update_latlon_button_state(self):
+        """Enable latlon creation once all derived grid levels are available."""
+        button = getattr(self, "pushButton_createLatLon", None)
+        if button is None:
+            return
+
+        enabled = bool(
+            self.current_l0_resolution()
+            and self.current_l1_resolution()
+            and self.current_l11_resolution()
+            and self._grid_l2_header
+        )
+        button.setEnabled(enabled)
+
+    def _set_resolution_labels(self, level, value_text, unit_text):
+        """Set value and unit labels for a grid level."""
+        value_label = getattr(self, f"label_{level}Resolution", None)
+        unit_label = getattr(self, f"label_{level}ResolutionUnit", None)
+        if value_label is not None:
+            value_label.setText(value_text or "")
+        if unit_label is not None:
+            unit_label.setText(unit_text or "")
+
+    def _populate_resolution_combo(self, combo_box, values, preferred_value=None, unit=None):
+        """Populate a resolution combo box while preserving a compatible selection."""
+        if combo_box is None:
+            return
+        current_value = self._current_combo_resolution(combo_box)
+        preferred = preferred_value or current_value
+        try:
+            combo_box.blockSignals(True)
+        except Exception:
+            pass
+        combo_box.clear()
+        for value in values:
+            combo_box.addItem(format_resolution(value, unit), float(value))
+        if values:
+            selected_index = 0
+            if preferred:
+                for index, value in enumerate(values):
+                    if abs(float(value) - float(preferred)) <= max(abs(float(value)), 1.0) * 1e-8:
+                        selected_index = index
+                        break
+            combo_box.setCurrentIndex(selected_index)
+            combo_box.setEnabled(True)
+        else:
+            combo_box.setEnabled(False)
+        try:
+            combo_box.blockSignals(False)
+        except Exception:
+            pass
+
+    def _current_combo_resolution(self, combo_box):
+        """Return current numeric resolution from a combo box."""
+        if combo_box is None or combo_box.count() == 0:
+            return None
+        try:
+            data = combo_box.currentData()
+            if data is not None:
+                return float(data)
+        except Exception:
+            pass
+        try:
+            return float(combo_box.currentText())
+        except (TypeError, ValueError):
+            return None
 
     def connect_input_state_signals(self):
         """Save input selections when editable inputs change."""
@@ -380,6 +797,18 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             except Exception:
                 pass
 
+        for combo_box in (
+                getattr(self, "comboBox_L1", None),
+                getattr(self, "comboBox_L11", None)):
+            if combo_box is None:
+                continue
+            try:
+                combo_box.currentIndexChanged.connect(
+                    lambda index=None: self.save_input_state()
+                )
+            except Exception:
+                pass
+
         try:
             self.mProjectionSelectionWidget_crs.crsChanged.connect(
                 lambda crs=None: self.save_input_state()
@@ -400,6 +829,8 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.log_selected_input_paths(action_name)
         self.save_input_state()
         callback()
+        if action_name == "Fill DEM":
+            self.update_l0_resolution_from_dem()
 
     def lookup_field_specs(self):
         """Return lookup table layer widgets and their companion field widgets."""
@@ -590,14 +1021,6 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 ("configuration_settings_file", self.lineEdit_loadConfiguration)
             )
 
-        for key, widget_name in (
-            ("l0", "lineEdit_L0"),
-            ("l1", "lineEdit_L1"),
-            ("l2", "lineEdit_L2"),
-        ):
-            if hasattr(self, widget_name):
-                widgets.append((key, getattr(self, widget_name)))
-
         return widgets
 
     def input_state_path(self):
@@ -639,6 +1062,10 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             key: combo_box.currentText()
             for key, combo_box in self.input_lookup_field_widgets()
         }
+        grid_resolutions = {
+            "l1_resolution": self.current_l1_resolution(),
+            "l11_resolution": self.current_l11_resolution(),
+        }
 
         crs = self.get_crs()
         state = {
@@ -646,6 +1073,8 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             "layers": layers,
             "text_inputs": text_inputs,
             "lookup_fields": lookup_fields,
+            "grid_resolutions": grid_resolutions,
+            "grid_configuration": self.grid_configuration_snapshot(),
             "lai_input_type": (
                 self.comboBox_laiInputType.currentText()
                 if hasattr(self, "comboBox_laiInputType") else ""
@@ -683,16 +1112,36 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         self._loading_input_state = True
         try:
+            self.restore_grid_resolution_preferences(
+                state.get("grid_resolutions", {}))
             self.restore_text_inputs(state.get("text_inputs", {}))
             self.restore_lai_input_type(state.get("lai_input_type", ""))
             self.restore_input_crs(state.get("crs_authid", ""))
             self.restore_input_layers(state.get("layers", {}))
             self.restore_lookup_fields(state.get("lookup_fields", {}))
             self.update_lai_input_controls()
+            self.refresh_grid_resolution_controls()
         finally:
             self._loading_input_state = False
 
         self.log_message(f"Input state loaded: {state_path}")
+
+    def restore_grid_resolution_preferences(self, grid_resolutions):
+        """Restore preferred L1/L11 selections for the next combo population."""
+        try:
+            self._preferred_l1_resolution = (
+                float(grid_resolutions.get("l1_resolution"))
+                if grid_resolutions.get("l1_resolution") is not None else None
+            )
+        except (TypeError, ValueError):
+            self._preferred_l1_resolution = None
+        try:
+            self._preferred_l11_resolution = (
+                float(grid_resolutions.get("l11_resolution"))
+                if grid_resolutions.get("l11_resolution") is not None else None
+            )
+        except (TypeError, ValueError):
+            self._preferred_l11_resolution = None
 
     def restore_text_inputs(self, text_inputs):
         """Restore saved file/folder and numeric text fields."""
@@ -881,6 +1330,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             # Load project state in morphology processor
             self.morphology_processor.load_project_state()
             self.meteorology_processor.load_project_state()
+            self.refresh_grid_resolution_controls()
             self.configuration_processor.load_project_state()
             self.configuration_processor.refresh_status_indicators()
 
