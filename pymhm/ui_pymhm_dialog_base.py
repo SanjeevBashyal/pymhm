@@ -1192,7 +1192,7 @@ class Ui_pymhmDialog(object):
         self.label_placeholder_out.setText(_translate("pymhmDialog", "Output configuration and results will be displayed here."))
 from qgsmaplayercombobox import QgsMapLayerComboBox
 from qgsprojectionselectionwidget import QgsProjectionSelectionWidget
-import resources_rc
+from . import resources_rc
 
 
 if __name__ == "__main__":
