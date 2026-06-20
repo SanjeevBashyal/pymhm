@@ -1,4 +1,4 @@
-"""Tools to pre- and post-process data for and from mHM.
+"""Tools to prepare, process, evaluate, and visualize mHM data.
 
 .. toctree::
    :hidden:
@@ -15,17 +15,40 @@ Built-in processing and tool functions.
    :caption: Subpackages
 
    common
-   post
-   pre
+   data_processing
+   evaluation
+   legacy_tools
+   mhm_v5_v6_converter
+   setup_creation
+   utility_tools
+   visualisation
 """
 
 try:
     from ._version import __version__
 except ModuleNotFoundError:  # pragma: no cover
     # package is not installed
-    __version__ = "0.0.0.dev0"
+    __version__ = "not_available"
 
-from . import common, post, pre
+from . import (
+    common,
+    data_processing,
+    evaluation,
+    legacy_tools,
+    mhm_v5_v6_converter,
+    setup_creation,
+    utility_tools,
+    visualisation,
+)
 
 __all__ = ["__version__"]
-__all__ += ["common", "post", "pre"]
+__all__ += [
+    "common",
+    "data_processing",
+    "evaluation",
+    "legacy_tools",
+    "mhm_v5_v6_converter",
+    "setup_creation",
+    "utility_tools",
+    "visualisation",
+]

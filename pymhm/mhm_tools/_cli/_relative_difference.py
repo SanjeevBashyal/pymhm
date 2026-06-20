@@ -146,7 +146,7 @@ def run(args):
         parsed command line arguments
 
     """
-    from ..post.relative_difference import calc_rel_diff
+    from ..data_processing.relative_difference import calc_rel_diff
 
     calc_rel_diff(
         ref_input_dir=args.ref_input_dir,

@@ -1,4 +1,10 @@
-"""Computes and stores long term mean for a given NetCDF file(s)."""
+"""
+Computes and stores long term mean for a given NetCDF file(s).
+
+Authors
+-------
+- Jeisson Leal
+"""
 
 import argparse
 
@@ -15,13 +21,17 @@ def add_args(parser):
     flags = parser.add_argument_group("flags")
     required.add_argument(
         "-i",
+        "--input-dir",
         "--in-dir",
+        dest="in_dir",
         required=True,
         help="Input directory containing forcing NetCDF files",
     )
     required.add_argument(
         "-o",
+        "--output-dir",
         "--out-dir",
+        dest="out_dir",
         required=True,
         help="Output directory for processed files",
     )
@@ -29,7 +39,9 @@ def add_args(parser):
     optional = parser.add_argument_group("optional arguments")
     optional.add_argument(
         "-f",
+        "--input-name",
         "--in-file",
+        dest="in_file",
         required=False,
         default="*.nc",
         help="Input filename or glob pattern.",
@@ -63,7 +75,9 @@ def add_args(parser):
         help="Keep intermediate temporal files generated during processing.",
     )
     optional.add_argument(
+        "--output-name",
         "--out-file",
+        dest="out_file",
         default="long_term_mean.nc",
         help="Name of the output NetCDF file.",
     )
@@ -109,7 +123,7 @@ def run(args: argparse.Namespace):
     args : argparse.Namespace
         Parsed command line arguments.
     """
-    from mhm_tools.post.long_term_mean import cal_long_term_mean
+    from mhm_tools.data_processing.long_term_mean import cal_long_term_mean
 
     if not args.aggregate:
         args.aggregation_type = None

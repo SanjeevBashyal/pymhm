@@ -1,4 +1,10 @@
-"""CLI for converting mHM landcover ASCII files to CF-compliant NetCDF."""
+"""
+CLI for converting mHM landcover ASCII files to CF-compliant NetCDF.
+
+Authors
+-------
+- Jeisson Leal
+"""
 
 from __future__ import annotations
 
@@ -99,7 +105,9 @@ def run(args: Namespace) -> None:
     args : argparse.Namespace
         Parsed command line arguments (see add_args()).
     """
-    from mhm_tools.pre.landcover_ascii_to_nc import convert_lc_ascii_to_nc
+    from mhm_tools.mhm_v5_v6_converter.landcover_ascii_to_nc import (
+        convert_lc_ascii_to_nc,
+    )
 
     input_nml = Path(args.input_nml)
     output = Path(args.output)

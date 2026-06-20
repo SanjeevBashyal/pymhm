@@ -1,4 +1,9 @@
-"""Regrid to L2 aligned with L0 grid from mask.nc."""
+"""Regrid to L2 aligned with L0 grid from mask.nc.
+
+Authors
+-------
+- Simon Lüdke
+"""
 
 from pathlib import Path
 
@@ -13,13 +18,23 @@ def add_args(parser):
 
     """
     optional = parser.add_argument_group("optional arguments")
-    optional.add_argument("--input", required=True, help="Input NetCDF")
     optional.add_argument(
+        "--input-file", "--input", dest="input", required=True, help="Input NetCDF"
+    )
+    optional.add_argument(
+        "--mask-file",
         "--mask",
+        dest="mask",
         required=True,
         help="mask.nc defining L0 grid (must have lon/lat coords)",
     )
-    optional.add_argument("--output", required=True, help="Output NetCDF (L2 grid)")
+    optional.add_argument(
+        "--output-file",
+        "--output",
+        dest="output",
+        required=True,
+        help="Output NetCDF (L2 grid)",
+    )
     optional.add_argument("--l2", required=True, help="L2 resolution: e.g. 0.05, 0.1")
     optional.add_argument(
         "--method",
@@ -37,7 +52,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from mhm_tools.pre.regrid import regrid
+    from mhm_tools.data_processing.regrid import regrid
 
     input = Path(args.input)
     output = Path(args.output)

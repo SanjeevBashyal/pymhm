@@ -1,4 +1,13 @@
-"""Convert merge multiple nc files."""
+"""Merge multiple NetCDF files into combined output files.
+
+The command searches an input directory for files matching a name pattern and
+merges them into a single NetCDF output. It can also preserve the top-level
+folder structure and merge files recursively within each subfolder.
+
+Authors
+-------
+- Simon Lüdke
+"""
 
 from pathlib import Path
 
@@ -16,7 +25,9 @@ def add_args(parser):
     flags = parser.add_argument_group("flags")
     optional.add_argument(
         "-i",
+        "--input-dir",
         "--input-path",
+        dest="input_path",
         required=True,
         help="The path to input files.",
     )
@@ -36,7 +47,7 @@ def add_args(parser):
         action="store_true",
         help="Preserve the top level folder structure. Recusive merge inside.",
     )
-    optional.add_argument("--n-cpus", required=False, default=1, help="Number of CPUs.")
+    optional.add_argument("--ncpus", required=False, default=1, help="Number of CPUs.")
 
 
 def run(args):
@@ -47,7 +58,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from mhm_tools.pre.merge import merge_files
+    from mhm_tools.data_processing.merge import merge_files
 
     input = Path(args.input_path)
     output = Path(args.output_file)
@@ -55,6 +66,6 @@ def run(args):
         input_path=input,
         input_file_part=args.input_name,
         output=output,
-        n_cpus=int(args.n_cpus),
+        n_cpus=int(args.ncpus),
         preserve_folders=args.preserve_folders,
     )

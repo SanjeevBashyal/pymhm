@@ -2,6 +2,11 @@
 
 A restart file contains all the static information to run mHM on a
 specific grid.
+
+Authors
+-------
+- Simon Lüdke
+- Robert Schweppe
 """
 
 import logging
@@ -203,9 +208,8 @@ def run(args):
 
     from mhm_tools.common.cli_utils import get_coords
     from mhm_tools.common.logger import ErrorLogger
-    from mhm_tools.pre.create_mhm_restart_file import Grid, LatLon, MPRRunner
-
-    from ..pre import MHMRestartFile
+    from mhm_tools.legacy_tools import MHMRestartFile
+    from mhm_tools.legacy_tools.create_mhm_restart_file import Grid, LatLon, MPRRunner
 
     l1_resolution = float(args.l1_resolution)
 

@@ -9,6 +9,10 @@ This routine will simply use the closest flood event in terms of its
 recurrence interval. Also, any input time-stepping is accepted but daily
 or sub-daily data is preferred. Ouput variables in the created NetCDF
 file are called "Q_bkfl" and "P_bkfl".
+
+Authors
+-------
+- Sebastian Müller
 """
 
 
@@ -45,6 +49,7 @@ def add_args(parser):
     required_args = parser.add_argument_group("required arguments")
     required_args.add_argument(
         "-i",
+        "--input-file",
         "--input",
         dest="in_file",
         required=True,
@@ -52,6 +57,7 @@ def add_args(parser):
     )
     required_args.add_argument(
         "-o",
+        "--output-file",
         "--output",
         dest="out_file",
         required=True,
@@ -67,7 +73,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from ..post.bankfull import bankfull_discharge
+    from ..data_processing.bankfull import bankfull_discharge
 
     bankfull_discharge(
         in_file=args.in_file,

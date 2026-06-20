@@ -1,4 +1,11 @@
-"""mHM processing netCDF precipitation and temperature forcings."""
+"""
+mHM processing netCDF precipitation and temperature forcings.
+
+Authors
+-------
+- Jeisson Leal
+- Simon Lüdke
+"""
 
 
 def add_args(parser):
@@ -25,18 +32,27 @@ def add_args(parser):
     flags = parser.add_argument_group("flags")
     required.add_argument(
         "-i",
+        "--input-dir",
         "--in-dir",
+        dest="in_dir",
         required=True,
         help="Input directory containing forcing NetCDF files",
     )
     required.add_argument(
         "-f",
+        "--input-name",
         "--in-file",
+        dest="in_file",
         required=True,
         help='Input filename or glob pattern (e.g. "data_*.nc")',
     )
     required.add_argument(
-        "-o", "--out-dir", required=True, help="Output directory for processed files"
+        "-o",
+        "--output-dir",
+        "--out-dir",
+        dest="out_dir",
+        required=True,
+        help="Output directory for processed files",
     )
     # Optional arguments
     optional = parser.add_argument_group("optional arguments")
@@ -49,12 +65,19 @@ def add_args(parser):
 
     optional.add_argument(
         "-u",
+        "--output-name",
         "--out-file",
+        dest="out_file",
         default="*",
         help=(
             "Output filename or pattern. Use '*' to retain input basename; "
             "otherwise literal name for each output file."
         ),
+    )
+    optional.add_argument(
+        "--out-var",
+        default=None,
+        help="Rename output variable to this name.",
     )
     flags.add_argument(
         "--crop", action="store_true", help="Enable spatial cropping of the dataset"
@@ -109,7 +132,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from mhm_tools.pre.prepare_mhm_forcings import prepare_forcings
+    from mhm_tools.setup_creation.prepare_mhm_forcings import prepare_forcings
 
     prepare_forcings(
         in_dir=args.in_dir,
@@ -124,4 +147,5 @@ def run(args):
         lat_max=args.lat_max,
         use_mfdataset=args.use_mfdataset,
         target_frequency=args.target_frequency,
+        out_var=args.out_var,
     )

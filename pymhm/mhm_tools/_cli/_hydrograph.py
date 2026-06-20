@@ -1,4 +1,14 @@
-"""Create a hydrograph showing the simulated and observed discharge."""
+"""Create hydrograph plots from mHM/mRM discharge output.
+
+The command reads one or more simulation output directories, optionally adds
+observed discharge and precipitation, and writes discharge diagnostics such as
+time series, yearly summaries, seasonality, flow-duration curves, and scatter
+plots.
+
+Authors
+-------
+- Simon Lüdke
+"""
 
 
 def add_args(parser):
@@ -13,6 +23,7 @@ def add_args(parser):
     flags = parser.add_argument_group("flags")
     optional.add_argument(
         "-i",
+        "--input-dir",
         "--input",
         dest="in_dir",
         required=True,
@@ -21,6 +32,7 @@ def add_args(parser):
     )
     optional.add_argument(
         "-o",
+        "--output-file",
         "--output",
         dest="out_file",
         required=False,
@@ -91,7 +103,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from ..post.hydrograph import get_hydrograph_from_path
+    from ..evaluation.hydrograph import get_hydrograph_from_path
 
     get_hydrograph_from_path(
         input_path=args.in_dir,

@@ -1,4 +1,14 @@
-"""Convert between ASCII, GeoTIFF, and NetCDF by file suffix."""
+"""Convert gridded files between supported setup formats.
+
+The input and output formats are inferred from file suffixes, including ASCII,
+GeoTIFF, and NetCDF where supported. The command can set the output variable
+name explicitly or from file names, normalize latitude/longitude coordinates,
+or write only an ESRI-style header.
+
+Authors
+-------
+- Simon Lüdke
+"""
 
 from pathlib import Path
 
@@ -16,13 +26,17 @@ def add_args(parser):
     flags = parser.add_argument_group("flags")
     optional.add_argument(
         "-i",
+        "--input-file",
         "--input",
+        dest="input",
         required=True,
         help="The path to input file. Can be ASCII, GeoTIFF, or NetCDF. The file type is determined by the file suffix.",
     )
     optional.add_argument(
         "-o",
+        "--output-file",
         "--output",
+        dest="output",
         required=True,
         help="The name of the output file. Can be ASCII or NetCDF. The file type is determined by the file suffix.",
     )

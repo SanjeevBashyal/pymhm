@@ -8,10 +8,9 @@ import sys
 from ..common import QMessageBox
 from ...project_layout import data_folder, plugin_root
 from ..layers.masking import MaskingMixin
-from .latlon_netcdf import LatLonNetcdfMixin
 
 
-class LatLonProcessingMixin(MaskingMixin, LatLonNetcdfMixin):
+class LatLonProcessingMixin(MaskingMixin):
     """Lat/lon grid metadata processing for mHM."""
 
     def process_lat_lon(self) -> bool:
@@ -45,7 +44,7 @@ class LatLonProcessingMixin(MaskingMixin, LatLonNetcdfMixin):
 
         try:
             self._ensure_local_mhm_tools_importable()
-            from mhm_tools.pre.latlon import create_latlon
+            from mhm_tools.setup_creation import create_latlon
 
             level0 = headers["L0"]
             level1 = headers["L1"]["cellsize"]

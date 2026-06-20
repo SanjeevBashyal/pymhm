@@ -1,4 +1,14 @@
-"""Evaluation of spatially distributed data based on their climatology or timeseries."""
+"""Evaluate gridded model data against gridded reference data.
+
+The tool compares spatial fields and time series within an optional mask or
+lon/lat domain, supports unit conversion, temporal resampling, direct or
+bootstrap comparisons, and restricted year ranges. It writes evaluation
+metrics and plots for bias, seasonality, variability, and related diagnostics.
+
+Authors
+-------
+- Simon Lüdke
+"""
 
 import logging
 
@@ -237,6 +247,12 @@ def add_args(parser):
             "Frequency to resample input and ref dataset to. Options: (H, D, W, ME) or hourly, daily, weekly, monthly"
         ),
     )
+    optional.add_argument(
+        "--metric",
+        required=False,
+        default="SPAEF",
+        help="Result metric written to results.csv. Accepted values: TSM, SPAEF, ESP, WASPAEF, MSPAEF, all.",
+    )
 
 
 def run(args):
@@ -248,7 +264,7 @@ def run(args):
         parsed command line arguments
     """
     from mhm_tools.common.cli_utils import get_available_mem_in_unit, get_coords
-    from mhm_tools.post.gridded_data_evaluation import (
+    from mhm_tools.evaluation.gridded_data_evaluation import (
         EvalDataset,
         gridded_data_evaluation,
     )
@@ -319,4 +335,5 @@ def run(args):
         bias_only=args.bias_only,
         global_climate=args.global_climate,
         target_time_freq=target_freq,
+        result_metric=args.metric,
     )
