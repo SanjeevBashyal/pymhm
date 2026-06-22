@@ -8,7 +8,7 @@ from typing import Callable, TYPE_CHECKING
 from .state import MeteorologyOutputState
 
 if TYPE_CHECKING:
-    from .ERA5Land.mhm.types import MeteoForcingResult
+    from ..mhm_tools_to_integrate.data_processing.era5_mhm.types import MeteoForcingResult
 
 
 def record_forcing_outputs(

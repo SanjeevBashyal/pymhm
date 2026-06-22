@@ -31,9 +31,10 @@ from .namelist import (
     write_rendered_namelist,
 )
 from .path_defaults import configuration_path_defaults
-from .paths import namelist_output_dir, output_path, template_path
+from .paths import namelist_output_dir, output_path, template_path, version_key
 from .schema_loader import config_schemas, output_schemas, parameter_schema_lookup
 from .state import ConfigurationStateStore
+from .version_compat import render_values_for_version
 
 
 ConfigPage = dict[str, Any]
@@ -154,7 +155,7 @@ class ConfigurationProcessor(SimulationProcessor):
         )
 
     def configure_parameters(self) -> bool:
-        """Open the parameter configuration dialog and save mhm_parameters.nml."""
+        """Open the parameter configuration dialog and save parameter namelist."""
         config_values = self.current_mhm_values()
         return self.open_editor(
             kind="parameters",
@@ -199,7 +200,7 @@ class ConfigurationProcessor(SimulationProcessor):
             if editor.exec_() != editor.Accepted:
                 return False
             values = editor.collect_values()
-            include_blocks = [page["block"] for page in pages] if parameter_mode else None
+            include_blocks = self.render_include_blocks(pages, parameter_mode)
             self.set_kind_state(kind, values)
             self.write_kind(kind, values, include_blocks=include_blocks)
             if kind == "mhm":
@@ -230,7 +231,10 @@ class ConfigurationProcessor(SimulationProcessor):
             self.write_kind(
                 "parameters",
                 parameter_values,
-                include_blocks=[page["block"] for page in parameter_pages],
+                include_blocks=self.render_include_blocks(
+                    parameter_pages,
+                    parameter_mode=True,
+                ),
             )
 
             output_pages = self.build_output_pages()
@@ -254,12 +258,29 @@ class ConfigurationProcessor(SimulationProcessor):
         ensure_project_structure(project_folder, self.selected_version())
         os.makedirs(namelist_output_dir(project_folder), exist_ok=True)
         template = template_path(self.selected_version(), kind)
-        destination = output_path(project_folder, kind)
+        destination = output_path(project_folder, kind, self.selected_version())
+        render_values = render_values_for_version(
+            self.selected_version(),
+            kind,
+            values,
+            self.dialog,
+        )
         write_rendered_namelist(
-            template, destination, values, include_blocks=include_blocks)
+            template, destination, render_values, include_blocks=include_blocks)
         self.log_message(f"Written: {destination}")
         self.refresh_status_indicators()
         return destination
+
+    def render_include_blocks(
+            self,
+            pages: list[ConfigPage],
+            parameter_mode: bool = False) -> list[str] | None:
+        """Return template blocks to render, or None to preserve the template."""
+        if not parameter_mode:
+            return None
+        if version_key(self.selected_version()) == "v5.13":
+            return None
+        return [page["block"] for page in pages]
 
     def build_config_pages(self) -> list[ConfigPage]:
         """Build page data for the mHM configuration dialog."""
@@ -325,7 +346,7 @@ class ConfigurationProcessor(SimulationProcessor):
             values = self.kind_state("mhm")
             if values:
                 return values
-            path = output_path(project_folder, "mhm")
+            path = output_path(project_folder, "mhm", self.selected_version())
             if os.path.exists(path):
                 return template_values(path)
         return self.default_values_from_pages(self.build_config_pages())
@@ -564,7 +585,10 @@ class ConfigurationProcessor(SimulationProcessor):
             label = getattr(self.dialog, label_name, None)
             if label is None:
                 continue
-            path = output_path(project_folder, kind) if project_folder else ""
+            path = (
+                output_path(project_folder, kind, self.selected_version())
+                if project_folder else ""
+            )
             saved = bool(path and os.path.exists(path))
             self.set_status_label(label, kind, path, saved)
 

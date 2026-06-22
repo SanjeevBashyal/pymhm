@@ -14,7 +14,10 @@ NamelistValues = dict[str, NamelistBlockValues]
 BLOCK_RE = re.compile(r"^\s*&\s*([A-Za-z_][A-Za-z0-9_]*)")
 END_RE = re.compile(r"^\s*/\s*(?:!.*)?$")
 ASSIGNMENT_RE = re.compile(
-    r"^(\s*)([A-Za-z_][A-Za-z0-9_]*(?:\s*\([^)]*\))?)(\s*=\s*)(.*)$")
+    r"^(\s*)"
+    r"([A-Za-z_][A-Za-z0-9_]*(?:\s*\([^)]*\))?"
+    r"(?:%[A-Za-z_][A-Za-z0-9_]*)?)"
+    r"(\s*=\s*)(.*)$")
 
 
 def canonical_name(name: object) -> str:
@@ -222,10 +225,22 @@ def indexed_lhs(
         template_path: str,
         variable_name: str,
         suffix: str,
-        index: int) -> str:
+        index: int,
+        template_lhs: str | None = None) -> str:
     """Return an lhs for a generated indexed assignment."""
     if suffix == "class" and canonical_name(variable_name) == "geoparam":
         return geo_param_lhs(template_path, index)
+    if template_lhs:
+        match = re.search(r"\(([^)]*)\)", str(template_lhs))
+        if match:
+            parts = [part.strip() for part in match.group(1).split(",")]
+            if len(parts) == 1:
+                return f"{variable_name}({index})"
+            if (
+                    len(parts) == 2
+                    and parts[0] == ":"
+                    and parts[1].isdigit()):
+                return f"{variable_name}(:,{index})"
     return f"{variable_name}(:,{index})"
 
 
@@ -299,7 +314,7 @@ def render_template(
                         indexed_items = domain_items or class_items
                         for index, indexed_value in indexed_items:
                             generated_lhs = indexed_lhs(
-                                template_path, base_name, suffix, index)
+                                template_path, base_name, suffix, index, lhs)
                             line_text = (
                                 f"{assignment.group(1)}{generated_lhs}"
                                 f"{assignment.group(3)}"

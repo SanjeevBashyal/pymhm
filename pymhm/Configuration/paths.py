@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Union
 
-from .constants import OUTPUT_FILES, TEMPLATE_NAMES
+from .constants import OUTPUT_FILE_OVERRIDES, OUTPUT_FILES, TEMPLATE_NAMES
 from ..project_layout import version_key as layout_version_key
 
 PathInput = Union[str, os.PathLike[str]]
@@ -26,7 +26,7 @@ def templates_root() -> str:
     return os.path.join(package_root(), "nml-templates")
 
 
-def version_key(version_text: str) -> str:
+def version_key(version_text: str | None) -> str:
     """Map the version combo-box text to a template folder key."""
     return layout_version_key(version_text)
 
@@ -53,6 +53,18 @@ def namelist_output_dir(project_folder: PathInput) -> str:
     return str(project_folder)
 
 
-def output_path(project_folder: PathInput, kind: str) -> str:
+def output_filename(kind: str, version_text: str | None = None) -> str:
+    """Return the version-aware output namelist filename for a kind."""
+    overrides = OUTPUT_FILE_OVERRIDES.get(version_key(version_text), {})
+    return overrides.get(kind, OUTPUT_FILES[kind])
+
+
+def output_path(
+        project_folder: PathInput,
+        kind: str,
+        version_text: str | None = None) -> str:
     """Return the project-local output namelist path for a kind."""
-    return os.path.join(namelist_output_dir(project_folder), OUTPUT_FILES[kind])
+    return os.path.join(
+        namelist_output_dir(project_folder),
+        output_filename(kind, version_text),
+    )

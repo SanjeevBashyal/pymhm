@@ -6,9 +6,9 @@ from ..common import (
     os,
     project_geometry_folder,
     QMessageBox,
-    processing,
 )
 from ..core.dem_inputs import DemInputMixin
+from ...mhm_tools_to_integrate.setup_creation.terrain import aspect_params, slope_params
 
 
 class TerrainAnalysisMixin(DemInputMixin):
@@ -45,17 +45,7 @@ class TerrainAnalysisMixin(DemInputMixin):
 
         self.log_message("Processing Aspect...")
 
-        params_aspect = {
-            'INPUT': input_dem_path,
-            'BAND': 1,
-            'TRIG_ANGLE': False,
-            'ZERO_FLAT': False,
-            'COMPUTE_EDGES': False,
-            'ZEVENBERGEN': False,
-            'OPTIONS': None,
-            'EXTRA': '',
-            'OUTPUT': self.aspect_path
-        }
+        params_aspect = aspect_params(input_dem_path, self.aspect_path)
 
         result = self.run_processing_algorithm("gdal:aspect", params_aspect)
         if result:
@@ -100,17 +90,7 @@ class TerrainAnalysisMixin(DemInputMixin):
             self.log_message(
                 f"Using gdaldem geographic scale factor for slope: {slope_scale}")
 
-        params_slope = {
-            'INPUT': input_dem_path,
-            'BAND': 1,
-            'SCALE': slope_scale,
-            'AS_PERCENT': True,
-            'COMPUTE_EDGES': False,
-            'ZEVENBERGEN': False,
-            'OPTIONS': None,
-            'EXTRA': '',
-            'OUTPUT': self.slope_path
-        }
+        params_slope = slope_params(input_dem_path, self.slope_path, slope_scale)
 
         result = self.run_processing_algorithm("gdal:slope", params_slope)
         if result:

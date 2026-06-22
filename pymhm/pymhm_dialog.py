@@ -260,7 +260,13 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 self.morphology_processor.process_lai,
             )
 
-        # Mask all layers
+        # Crop and mask all layers
+        if hasattr(self, "pushButton_cropAll"):
+            self.connect_processor_button(
+                self.pushButton_cropAll,
+                "Crop All Layers",
+                self.morphology_processor.crop_all_layers,
+            )
         self.connect_processor_button(
             self.pushButton_maskAll,
             "Mask All Layers",

@@ -38,11 +38,12 @@ class ExecuteAllMixin(
         10. channel network
         11. snap
         12. upslope area
-        13. mask all layers
-        14. process lat/lon headers
-        15. write geology class definition
-        16. write soil class definition
-        17. write all layers (convert to ASCII)
+        13. crop all layers
+        14. mask all cropped layers
+        15. process lat/lon headers
+        16. write geology class definition
+        17. write soil class definition
+        18. write all layers (convert to ASCII)
         """
         self.log_message("\n=== Starting Execute All Processing ===")
 
@@ -53,34 +54,34 @@ class ExecuteAllMixin(
 
         try:
             # Step 1: Fill DEM
-            self.log_message("\n--- Step 1/17: Fill DEM ---")
+            self.log_message("\n--- Step 1/18: Fill DEM ---")
             self.without_layer_loading(self.fill_dem)
             if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
                 self.log_message("ERROR: Fill DEM failed. Aborting Execute All.")
                 return
 
             # Step 2: Slope
-            self.log_message("\n--- Step 2/17: Process Slope ---")
+            self.log_message("\n--- Step 2/18: Process Slope ---")
             self.process_slope()
 
             # Step 3: Aspect
-            self.log_message("\n--- Step 3/17: Process Aspect ---")
+            self.log_message("\n--- Step 3/18: Process Aspect ---")
             self.process_aspect()
 
             # Step 4: Land Cover
-            self.log_message("\n--- Step 4/17: Process Land Cover ---")
+            self.log_message("\n--- Step 4/18: Process Land Cover ---")
             self.process_land_use()
 
             # Step 5: Soil
-            self.log_message("\n--- Step 5/17: Process Soil ---")
+            self.log_message("\n--- Step 5/18: Process Soil ---")
             self.process_soil(write_classdefinition=True)
 
             # Step 6: Geology
-            self.log_message("\n--- Step 6/17: Process Geology ---")
+            self.log_message("\n--- Step 6/18: Process Geology ---")
             self.process_geology(write_classdefinition=True)
 
             # Step 7: Flow Accumulation
-            self.log_message("\n--- Step 7/17: Process Flow Accumulation ---")
+            self.log_message("\n--- Step 7/18: Process Flow Accumulation ---")
             self.process_flow_accumulation()
             if not self.flow_accumulation_path or not os.path.exists(
                 self.flow_accumulation_path
@@ -91,7 +92,7 @@ class ExecuteAllMixin(
                 return
 
             # Step 8: Flow Direction
-            self.log_message("\n--- Step 8/17: Process Flow Direction ---")
+            self.log_message("\n--- Step 8/18: Process Flow Direction ---")
             self.process_flow_direction()
             if not self.flow_direction_path or not os.path.exists(
                 self.flow_direction_path
@@ -101,12 +102,12 @@ class ExecuteAllMixin(
 
             # Step 9: ID Gauges (Gauge Position) - Note: requires snap points, will be processed after step 11
             self.log_message(
-                "\n--- Step 9/17: Process ID Gauges (deferred until after snap points) ---"
+                "\n--- Step 9/18: Process ID Gauges (deferred until after snap points) ---"
             )
             # This will be processed after snap points in step 11
 
             # Step 10: Channel Network
-            self.log_message("\n--- Step 10/17: Process Channel Network ---")
+            self.log_message("\n--- Step 10/18: Process Channel Network ---")
             self.process_channel_network()
             if not self.channel_network_vector_path or not os.path.exists(
                 self.channel_network_vector_path
@@ -115,7 +116,7 @@ class ExecuteAllMixin(
                 return
 
             # Step 11: Snap Points
-            self.log_message("\n--- Step 11/17: Snap Points ---")
+            self.log_message("\n--- Step 11/18: Snap Points ---")
             if not self.check_prerequisites(needs_pour_points=True):
                 self.log_message(
                     "WARNING: Pour points not available. Skipping Snap Points step."
@@ -127,12 +128,12 @@ class ExecuteAllMixin(
                     self.snapped_points_path
                 ):
                     self.log_message(
-                        "\n--- Processing Step 9/17: ID Gauges (now that snap points are available) ---"
+                        "\n--- Processing Step 9/18: ID Gauges (now that snap points are available) ---"
                     )
                     self.process_gauge_position()
 
             # Step 12: Upslope Area (Delineate Watershed)
-            self.log_message("\n--- Step 12/17: Delineate Watershed (Upslope Area) ---")
+            self.log_message("\n--- Step 12/18: Delineate Watershed (Upslope Area) ---")
             if not self.snapped_points_path or not os.path.exists(
                 self.snapped_points_path
             ):
@@ -142,32 +143,29 @@ class ExecuteAllMixin(
             else:
                 self.delineate_watershed()
 
-            # Step 13: Mask All Layers
-            self.log_message("\n--- Step 13/17: Mask All Layers ---")
-            if not self.merged_watershed_path or not os.path.exists(
-                self.merged_watershed_path
-            ):
-                self.log_message(
-                    "WARNING: Merged watershed not available. Skipping Mask All Layers step."
-                )
-            else:
-                self.mask_all_layers()
+            # Step 13: Crop All Layers
+            self.log_message("\n--- Step 13/18: Crop All Layers ---")
+            self.crop_all_layers()
 
-            # Step 14: Process Lat/Lon Headers
-            self.log_message("\n--- Step 14/17: Process Lat/Lon Headers ---")
+            # Step 14: Mask All Layers
+            self.log_message("\n--- Step 14/18: Mask All Layers ---")
+            self.mask_all_layers()
+
+            # Step 15: Process Lat/Lon Headers
+            self.log_message("\n--- Step 15/18: Process Lat/Lon Headers ---")
             self.process_lat_lon()
 
-            # Step 15: Write Geology Class Definition
-            self.log_message("\n--- Step 15/17: Write Geology Class Definition ---")
+            # Step 16: Write Geology Class Definition
+            self.log_message("\n--- Step 16/18: Write Geology Class Definition ---")
             self.geology_classification_writer()
 
-            # Step 16: Write Soil Class Definition
-            self.log_message("\n--- Step 16/17: Write Soil Class Definition ---")
+            # Step 17: Write Soil Class Definition
+            self.log_message("\n--- Step 17/18: Write Soil Class Definition ---")
             self.soil_classdefinition_writer()
 
-            # Step 17: Write All Layers (Convert to ASCII)
+            # Step 18: Write All Layers (Convert to ASCII)
             self.log_message(
-                "\n--- Step 17/17: Write All Layers (Convert to ASCII) ---"
+                "\n--- Step 18/18: Write All Layers (Convert to ASCII) ---"
             )
             self.write_all_layers()
 

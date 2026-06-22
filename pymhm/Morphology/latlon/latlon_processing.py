@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import os
-import sys
 
 from ..common import QMessageBox
-from ...project_layout import data_folder, plugin_root
+from ...project_layout import data_folder
 from ..layers.masking import MaskingMixin
 
 
@@ -43,20 +42,20 @@ class LatLonProcessingMixin(MaskingMixin):
         output_file = os.path.join(output_folder, "latlon.nc")
 
         try:
-            self._ensure_local_mhm_tools_importable()
-            from mhm_tools.setup_creation import create_latlon
+            from ...mhm_tools_to_integrate.setup_creation.latlon import create_latlon_file
 
             level0 = headers["L0"]
             level1 = headers["L1"]["cellsize"]
             level11 = headers["L11"]["cellsize"]
             level2 = headers["L2"]["cellsize"]
-            create_latlon(
+            create_latlon_file(
                 out_file=output_file,
                 level0=level0,
                 level1=level1,
                 level11=level11,
                 level2=level2,
                 crs=crs_string,
+                log=self.log_message,
             )
         except ImportError as e:
             self.log_message(f"ERROR: Required library not available: {e}")
@@ -86,9 +85,3 @@ class LatLonProcessingMixin(MaskingMixin):
         )
         self.log_message(f"latlon.nc created successfully: {output_file}")
         return True
-
-    def _ensure_local_mhm_tools_importable(self) -> None:
-        """Put the plugin root on sys.path so bundled mhm_tools imports work."""
-        root = plugin_root()
-        if root not in sys.path:
-            sys.path.insert(0, root)

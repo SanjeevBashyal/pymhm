@@ -61,6 +61,12 @@ OUTPUT_FILES = {
     "outputs": "mhm_outputs.nml",
 }
 
+OUTPUT_FILE_OVERRIDES = {
+    "v5.13": {
+        "parameters": "mhm_parameter.nml",
+    },
+}
+
 TEMPLATE_NAMES = {
     "mhm": ["mhm-template.nml"],
     "parameters": [

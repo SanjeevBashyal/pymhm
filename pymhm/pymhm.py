@@ -1,15 +1,40 @@
 # -*- coding: utf-8 -*-
 """QGIS plugin implementation for pymhm."""
+from __future__ import annotations
+
+import os
+import sys
+
+# QGIS reloads can accidentally import this file as top-level ``pymhm`` if the
+# plugin directory was previously added to sys.path. Make the module package-like
+# so relative imports still resolve in that recovery path.
+_PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
+if not __package__:
+    __package__ = __name__
+    __path__ = [_PLUGIN_DIR]
+    if globals().get("__spec__") is not None:
+        __spec__.submodule_search_locations = __path__
+
+_plugin_dir_key = os.path.normcase(os.path.abspath(_PLUGIN_DIR))
+sys.path[:] = [
+    path for path in sys.path
+    if os.path.normcase(os.path.abspath(path or os.curdir)) != _plugin_dir_key
+]
+
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
 
 # Initialize Qt resources from file resources.py
-from .resources_rc import *
+from . import resources_rc  # noqa: F401
 
 # Import the code for the dialog
 from .pymhm_dialog import pymhmDialog
-import os.path
+
+
+def classFactory(iface):  # pylint: disable=invalid-name
+    """Return the plugin instance when QGIS imports this module directly."""
+    return pymhm(iface)
 
 
 class pymhm:

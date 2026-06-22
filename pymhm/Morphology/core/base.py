@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ..common import (
+    os,
     json,
     processing,
     DialogUtils,
@@ -82,9 +83,18 @@ class BaseProcessingMixin(ProcessingStateMixin):
             self.mark_output_prepared(path, name=name, loaded=False)
             return
 
-        self.mark_output_prepared(path, name=name, loaded=True)
+        display_path = path
+        display_name = name
+        if is_raster and hasattr(self, "_preferred_display_raster_path"):
+            display_path = self._preferred_display_raster_path(path)
+            display_name = self._preferred_display_layer_name(name, display_path)
+            if display_path != path:
+                self.log_message(
+                    f"Loading prepared display raster instead: {os.path.basename(display_path)}")
+
+        self.mark_output_prepared(display_path, name=display_name, loaded=True)
         # Call the parent load_layer method
-        return self.dialog.load_layer(path, name, is_raster)
+        return self.dialog.load_layer(display_path, display_name, is_raster)
 
     def run_processing_algorithm(
             self,
