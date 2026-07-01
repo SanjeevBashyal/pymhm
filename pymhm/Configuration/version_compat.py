@@ -83,7 +83,16 @@ def _is_blank(value: Any) -> bool:
 
 
 def _block(values: ConfigValues, block: str) -> dict[str, Any]:
-    return values.get(canonical_name(block), {})
+    block_key = canonical_name(block)
+    if block_key in values:
+        return values.get(block_key, {})
+    for candidate, block_values in values.items():
+        if canonical_name(candidate) == block_key and isinstance(block_values, dict):
+            return {
+                canonical_name(name): value
+                for name, value in block_values.items()
+            }
+    return {}
 
 
 def _value(
@@ -119,6 +128,19 @@ def _domain_value(
         return value[index - 1] if index <= len(value) else (
             value[-1] if value else default)
     return value
+
+
+def _domain_value_any(
+        values: ConfigValues,
+        block: str,
+        names: tuple[str, ...],
+        index: int,
+        default: Any = None) -> Any:
+    for name in names:
+        value = _domain_value(values, block, name, index, None)
+        if not _is_blank(value):
+            return value
+    return default
 
 
 def _first_domain(
@@ -212,6 +234,25 @@ def _resolution(
     return numeric if numeric > 0 else None
 
 
+def _resolution_any(
+        values: ConfigValues,
+        block: str,
+        names: tuple[str, ...],
+        index: int,
+        dialog_value: float | None) -> Any:
+    if dialog_value:
+        return dialog_value
+    for name in names:
+        value = _domain_value(values, block, name, index, None)
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            continue
+        if numeric > 0:
+            return numeric
+    return None
+
+
 def _any_domain_bool(
         values: ConfigValues,
         block: str,
@@ -252,12 +293,14 @@ def _mainconfig(
         count: int,
         dialog: Any | None) -> None:
     l1_resolution = _dialog_resolution(dialog, "current_l1_resolution")
-    coord_system = _first_domain(
-        values,
-        "config_coupling",
-        "morph_grid_coordsys",
-        _first_domain(values, "config_coupling", "hydro_grid_coordsys", 0),
-    )
+    coord_system = _value(values, "config_project", "iFlag_cordinate_sys", None)
+    if coord_system is None:
+        coord_system = _first_domain(
+            values,
+            "config_coupling",
+            "morph_grid_coordsys",
+            _first_domain(values, "config_coupling", "hydro_grid_coordsys", 0),
+        )
     _put(result, "mainconfig", "iFlag_cordinate_sys", coord_system)
     _put(result, "mainconfig", "nDomains", count)
     _put(
@@ -272,10 +315,34 @@ def _mainconfig(
             "mainconfig",
             "resolution_Hydrology",
             index,
-            _resolution(values, "config_mhm", "resolution", index, l1_resolution),
+            _resolution_any(
+                values,
+                "config_mhm",
+                ("resolution_Hydrology", "resolution"),
+                index,
+                l1_resolution,
+            ),
         )
-        _put_index(result, "mainconfig", "L0Domain", index, index)
-        _put_index(result, "mainconfig", "read_opt_domain_data", index, 0)
+        _put_index(
+            result,
+            "mainconfig",
+            "L0Domain",
+            index,
+            _domain_value(values, "config_mhm", "L0Domain", index, index),
+        )
+        _put_index(
+            result,
+            "mainconfig",
+            "read_opt_domain_data",
+            index,
+            _domain_value(
+                values,
+                "config_mhm",
+                "read_opt_domain_data",
+                index,
+                0,
+            ),
+        )
 
 
 def _mainconfig_mhm_mrm(
@@ -290,10 +357,10 @@ def _mainconfig_mhm_mrm(
             "mainconfig_mhm_mrm",
             "mhm_file_RestartIn",
             index,
-            _path_text(_domain_value(
+            _path_text(_domain_value_any(
                 values,
                 "config_mhm",
-                "restart_input_path",
+                ("mhm_file_RestartIn", "restart_input_path"),
                 index,
                 "restart/mhm_restart_in.nc")),
         )
@@ -302,19 +369,35 @@ def _mainconfig_mhm_mrm(
             "mainconfig_mhm_mrm",
             "mrm_file_RestartIn",
             index,
-            _path_text(_domain_value(
-                values,
-                "config_mrm",
-                "restart_input_path",
-                index,
-                "restart/mrm_restart_in.nc")),
+            _path_text(
+                _domain_value_any(
+                    values,
+                    "config_mhm",
+                    ("mrm_file_RestartIn",),
+                    index,
+                    None,
+                )
+                or _domain_value(
+                    values,
+                    "config_mrm",
+                    "restart_input_path",
+                    index,
+                    "restart/mrm_restart_in.nc",
+                )
+            ),
         )
         _put_index(
             result,
             "mainconfig_mhm_mrm",
             "resolution_Routing",
             index,
-            _resolution(values, "config_mrm", "resolution", index, l11_resolution),
+            _resolution_any(
+                values,
+                "config_mrm",
+                ("resolution_Routing", "resolution"),
+                index,
+                l11_resolution,
+            ),
         )
     _put(
         result,
@@ -390,10 +473,10 @@ def _directories_general(
             "directories_general",
             "mhm_file_RestartOut",
             index,
-            _path_text(_domain_value(
+            _path_text(_domain_value_any(
                 values,
                 "config_mhm",
-                "restart_output_path",
+                ("mhm_file_RestartOut", "restart_output_path"),
                 index,
                 "restart/mhm_restart_out.nc")),
         )
@@ -402,12 +485,22 @@ def _directories_general(
             "directories_general",
             "mrm_file_RestartOut",
             index,
-            _path_text(_domain_value(
-                values,
-                "config_mrm",
-                "restart_output_path",
-                index,
-                "restart/mrm_restart_out.nc")),
+            _path_text(
+                _domain_value_any(
+                    values,
+                    "config_mhm",
+                    ("mrm_file_RestartOut",),
+                    index,
+                    None,
+                )
+                or _domain_value(
+                    values,
+                    "config_mrm",
+                    "restart_output_path",
+                    index,
+                    "restart/mrm_restart_out.nc",
+                )
+            ),
         )
         _put_index(result, "directories_general", "dir_Out", index, output_dir)
         _put_index(
@@ -630,28 +723,40 @@ def _time_periods(
         result: ConfigValues,
         values: ConfigValues,
         count: int) -> None:
+    starts: list[tuple[int, int, int] | None] = []
+    ends: list[tuple[int, int, int] | None] = []
+    warming_days: list[int | None] = []
     for index in range(1, count + 1):
         sim_start = _domain_value(values, "config_time", "sim_start", index, None)
         eval_start = _domain_value(values, "config_time", "eval_start", index, sim_start)
         sim_end = _domain_value(values, "config_time", "sim_end", index, None)
-        start_parts = _date_parts(eval_start or sim_start)
-        end_parts = _date_parts(sim_end)
-        if start_parts:
-            for key, value in zip(("ystart", "mstart", "dstart"), start_parts):
-                _put_key(result, "time_periods", f"evalper{index}{key}", value)
-        if end_parts:
-            for key, value in zip(("yend", "mend", "dend"), end_parts):
-                _put_key(result, "time_periods", f"evalper{index}{key}", value)
+        starts.append(_date_parts(eval_start or sim_start))
+        ends.append(_date_parts(sim_end))
         sim_dt = _parse_date(sim_start)
         eval_dt = _parse_date(eval_start)
-        if sim_dt and eval_dt:
-            _put_index(
-                result,
-                "time_periods",
-                "warming_Days",
-                index,
-                max(0, (eval_dt - sim_dt).days),
-            )
+        warming_days.append(
+            max(0, (eval_dt - sim_dt).days) if sim_dt and eval_dt else None)
+
+    if all(day is not None for day in warming_days):
+        _put(result, "time_periods", "warming_Days", warming_days)
+
+    start_keys = ("eval_Per%yStart", "eval_Per%mStart", "eval_Per%dStart")
+    for offset, key in enumerate(start_keys):
+        values_for_key = [
+            parts[offset] for parts in starts
+            if parts is not None
+        ]
+        if len(values_for_key) == count:
+            _put(result, "time_periods", key, values_for_key)
+
+    end_keys = ("eval_Per%yEnd", "eval_Per%mEnd", "eval_Per%dEnd")
+    for offset, key in enumerate(end_keys):
+        values_for_key = [
+            parts[offset] for parts in ends
+            if parts is not None
+        ]
+        if len(values_for_key) == count:
+            _put(result, "time_periods", key, values_for_key)
 
 
 def _meteo_weights(result: ConfigValues, values: ConfigValues) -> None:

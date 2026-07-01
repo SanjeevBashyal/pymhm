@@ -26,6 +26,8 @@ def configuration_path_defaults(domain_count: int) -> dict[str, dict[str, Any]]:
     defaults = {
         "config_project": {
             "n_domains": count,
+            "nDomains": count,
+            "iFlag_cordinate_sys": 0,
         },
         "config_input": {
             "latlon_path": repeat("data/latlon.nc", count),
@@ -66,7 +68,17 @@ def configuration_path_defaults(domain_count: int) -> dict[str, dict[str, Any]]:
                 f"{restart}/mpr_restart_out.nc", count),
         },
         "config_mhm": {
+            "L0Domain": list(range(1, count + 1)),
+            "read_opt_domain_data": repeat(0, count),
             "output_path": repeat(f"{output}/mhm_output.nc", count),
+            "mhm_file_RestartIn": repeat(
+                f"{restart}/mhm_restart_in.nc", count),
+            "mrm_file_RestartIn": repeat(
+                f"{restart}/mrm_restart_in.nc", count),
+            "mhm_file_RestartOut": repeat(
+                f"{restart}/mhm_restart_out.nc", count),
+            "mrm_file_RestartOut": repeat(
+                f"{restart}/mrm_restart_out.nc", count),
             "restart_input_path": repeat(
                 f"{restart}/mhm_restart_in.nc", count),
             "restart_output_path": repeat(
@@ -82,6 +94,10 @@ def configuration_path_defaults(domain_count: int) -> dict[str, dict[str, Any]]:
                 f"{restart}/mrm_restart_out.nc", count),
             "diagnostics_path": repeat(
                 f"{output}/mrm_diagnostics.nc", count),
+        },
+        "config_time": {
+            "timestep": repeat(1, count),
+            "time_step": repeat(1, count),
         },
     }
 

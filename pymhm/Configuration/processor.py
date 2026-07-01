@@ -284,15 +284,15 @@ class ConfigurationProcessor(SimulationProcessor):
 
     def build_config_pages(self) -> list[ConfigPage]:
         """Build page data for the mHM configuration dialog."""
-        return self.pages_from_schemas(config_schemas(), "mhm")
+        return self.pages_from_schemas(config_schemas(self.selected_version()), "mhm")
 
     def build_output_pages(self) -> list[ConfigPage]:
         """Build page data for the output configuration dialog."""
-        return self.pages_from_schemas(output_schemas(), "outputs")
+        return self.pages_from_schemas(output_schemas(self.selected_version()), "outputs")
 
     def build_parameter_pages(self, config_values: dict[str, Any]) -> list[ConfigPage]:
         """Build parameter pages required by selected mHM process cases."""
-        schema_lookup = parameter_schema_lookup()
+        schema_lookup = parameter_schema_lookup(self.selected_version())
         selected_blocks = self.parameter_blocks_for_config(config_values)
         ordered_blocks = self.ordered_template_blocks("parameters")
         selected_keys = {canonical_name(block) for block in selected_blocks}

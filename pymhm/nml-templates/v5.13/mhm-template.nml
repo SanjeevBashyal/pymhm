@@ -281,31 +281,17 @@
   !> (only for *_classdefinition files)
   dirCommonFiles = "test_domain/input/morph/"
   !
-  !**** for Domain 1
   !> directory where morphological files are located
-  dir_Morpho(1)        = "data/static/morph/"
+  dir_Morpho        = "data/static/morph/", "test_domain_2/input/morph/"
   !> directory where land cover files are located
-  dir_LCover(1)        = "test_domain/input/luse/"
+  dir_LCover        = "test_domain/input/luse/", "test_domain_2/input/luse/"
   !> directory where restart output should be written
-  mhm_file_RestartOut(1)    = "test_domain/restart/mHM_restart_001.nc"
-  mrm_file_RestartOut(1)    = "test_domain/restart/mRM_restart_001.nc"
+  mhm_file_RestartOut    = "test_domain/restart/mHM_restart_001.nc", "test_domain_2/restart/mHM_restart_002.nc"
+  mrm_file_RestartOut    = "test_domain/restart/mRM_restart_001.nc", "test_domain_2/restart/mRM_restart_002.nc"
   !> directory where output should be written
-  dir_Out(1)           = "test_domain/output_b1/"
+  dir_Out           = "test_domain/output_b1/", "test_domain_2/output/"
   !> file containing latitude and longitude on the resolution_Hydrology
-  file_LatLon(1)       = "test_domain/input/latlon/latlon_1.nc"
-
-  ! **** for Domain 2
-  !> directory where morphological files are located
-  dir_Morpho(2)        = "test_domain_2/input/morph/"
-  !> directory where land cover files are located
-  dir_LCover(2)        = "test_domain_2/input/luse/"
-  !> directory where restart output should be written
-  mhm_file_RestartOut(2)    = "test_domain_2/restart/mHM_restart_002.nc"
-  mrm_file_RestartOut(2)    = "test_domain_2/restart/mRM_restart_002.nc"
-  !> directory where output should be written
-  dir_Out(2)           = "test_domain_2/output/"
-  !> file containing latitude and longitude on the resolution_Hydrology
-  file_LatLon(2)       = "test_domain_2/input/latlon/latlon.nc"
+  file_LatLon       = "test_domain/input/latlon/latlon_1.nc", "test_domain_2/input/latlon/latlon.nc"
 /
 
 !******************************************************************************************
@@ -326,10 +312,9 @@
   !> domain wise directory paths
   !-----------------------------------------------------
   !
-  !**** for Domain 1
   !> directory where meteorological input is located
-  dir_Precipitation(1) = "test_domain/input/meteo/pre/"
-  dir_Temperature(1)   = "test_domain/input/meteo/tavg/"
+  dir_Precipitation = "test_domain/input/meteo/pre/", "test_domain_2/input/meteo/pre/"
+  dir_Temperature   = "test_domain/input/meteo/tavg/", "test_domain_2/input/meteo/tavg/"
   !> paths depending on PET process (processCase(5))
   !>  -1 - PET is input, LAI driven correction
   !>   0 - PET is input, aspect driven correction
@@ -337,40 +322,17 @@
   !>   2 - Priestley-Taylor mehtod
   !>   3 - Penman-Monteith method
   !> if processCase(5) == 0  input directory of pet has to be specified
-  dir_ReferenceET(1)     = "test_domain/input/meteo/pet/"
+  dir_ReferenceET     = "test_domain/input/meteo/pet/", "test_domain_2/input/meteo/pet/"
   !> if processCase(5) == 1  input directory of minimum and maximum temperature has to be specified
-  dir_MinTemperature(1)  = "test_domain/input/meteo/"
-  dir_MaxTemperature(1)  = "test_domain/input/meteo/"
+  dir_MinTemperature  = "test_domain/input/meteo/", "test_domain_2/input/meteo/"
+  dir_MaxTemperature  = "test_domain/input/meteo/", "test_domain_2/input/meteo/"
   !> if processCase(5) == 2  input directory of net-radiation has to be specified
-  dir_NetRadiation(1)    = "test_domain/input/meteo/"
+  dir_NetRadiation    = "test_domain/input/meteo/", "test_domain_2/input/meteo/"
   !> if processCase(5) == 3  input directory of absolute vapour pressure (eabs) and windspeed has to be specified
-  dir_absVapPressure(1)  = "test_domain/input/meteo/"
-  dir_windspeed(1)       = "test_domain/input/meteo/"
+  dir_absVapPressure  = "test_domain/input/meteo/", "test_domain_2/input/meteo/"
+  dir_windspeed       = "test_domain/input/meteo/", "test_domain_2/input/meteo/"
   !> if processCase(11) == 1  input directory of (long/short-wave)radiation has to be specified
-  dir_Radiation(1)    = "test_domain/input/meteo/"
-  !
-  !**** for Domain 2
-  !> directory where meteorological input is located
-  dir_Precipitation(2) = "test_domain_2/input/meteo/pre/"
-  dir_Temperature(2)   = "test_domain_2/input/meteo/tavg/"
-  !> paths depending on PET process (processCase(5))
-  !>  -1 - PET is input, LAI driven correction
-  !>   0 - PET is input, aspect driven correction
-  !>   1 - Hargreaves-Sammani method
-  !>   2 - Priestley-Taylor mehtod
-  !>   3 - Penman-Monteith method
-  !>   if processCase(5) == 0  input directory of pet has to be specified
-  dir_ReferenceET(2)     = "test_domain_2/input/meteo/pet/"
-  !> if processCase(5) == 1  input directory of minimum and maximum temperature has to be specified
-  dir_MinTemperature(2)  = "test_domain_2/input/meteo/"
-  dir_MaxTemperature(2)  = "test_domain_2/input/meteo/"
-  !> if processCase(5) == 2  input directory of net-radiation has to be specified
-  dir_NetRadiation(2)    = "test_domain_2/input/meteo/"
-  !> if processCase(5) == 3  input directory of absolute vapour pressure (eabs) and windspeed has to be specified
-  dir_absVapPressure(2)  = "test_domain_2/input/meteo/"
-  dir_windspeed(2)       = "test_domain_2/input/meteo/"
-  !> if processCase(11) == 1  input directory of (long/short-wave)radiation has to be specified
-  dir_Radiation(2)    = "test_domain_2/input/meteo/"
+  dir_Radiation    = "test_domain/input/meteo/", "test_domain_2/input/meteo/"
   !> switch to control read input frequency of the gridded meteo input,
   !> i.e. precipitation, potential evapotransiration, and temperature
   !>      >0: after each <timeStep_model_inputs> days
@@ -395,9 +357,9 @@
   !> directory where discharge files are located
   dir_Gauges        = "domain1/data/observation/streamflow/", "domain2/data/observation/streamflow/"
   !> directory where simulated runoff can be found (only required if coupling mode equals 0)
-  dir_Total_Runoff(1) = 'domain1/output/', 'domain2/output/'
+  dir_Total_Runoff = 'domain1/output/', 'domain2/output/'
   !> directory where runoff at bankfull conditions can be found (only for coupling to groundwater model)
-  dir_Bankfull_Runoff(1) = 'domain1/input/optional_data/', 'domain2/input/optional_data/'
+  dir_Bankfull_Runoff = 'domain1/input/optional_data/', 'domain2/input/optional_data/'
 /
 
 !******************************************************************************************
@@ -413,7 +375,7 @@
   !
   !> directory to soil moisture data
   ! expected file name: sm.nc, expected variable name: sm
-  dir_soil_moisture(1)   = "test_domain/input/optional_data/"
+  dir_soil_moisture   = "test_domain/input/optional_data/", "test_domain_2/input/optional_data/"
   !> number of mHM soil layers (nSoilHorizons_mHM) which the soil moisture
   !> input is representative for (counted top to down)
   nSoilHorizons_sm_input = 1
@@ -426,13 +388,13 @@
   !
   !> directory to neutron data
   ! expected file name: neutrons.nc, expected variable name: neutrons
-  dir_neutrons(1)        = "test_domain/input/optional_data/"
+  dir_neutrons        = "test_domain/input/optional_data/", "test_domain_2/input/optional_data/"
 
   !> evapotranspiration data
   !
   !> directory to evapotranspiration data
   ! expected file name: et.nc, expected variable name: et
-  dir_evapotranspiration(1)   = "test_domain/input/optional_data/"
+  dir_evapotranspiration   = "test_domain/input/optional_data/", "test_domain_2/input/optional_data/"
 
   !> time stepping of the et input
   !>     -1: daily   ET values
@@ -560,8 +522,7 @@
   !>    day, which is 2001/01/01 = 1), THEN all dynamic datasets should be given for
   !>    the effective modeling period of 2001/01/01 to 2003/12/31.
   !-----------------------------------------------------------------------------
-  warming_Days(1)    = 0
-  warming_Days(2)    = 180
+  warming_Days    = 0, 180
   !> first year of wanted simulation period
   eval_Per%yStart = 1990, 1993
   !> first month of wanted simulation period
@@ -701,9 +662,7 @@
 ! this is only needed for timeStep_LAI_input != 0
 &directories_MPR
   !> directory where gridded LAI files are located
-  dir_gridded_LAI(1)   = "test_domain/input/lai/"
-  !> directory where gridded LAI files are located
-  dir_gridded_LAI(2)   = "test_domain/input/lai/"
+  dir_gridded_LAI   = "test_domain/input/lai/", "test_domain_2/input/lai/"
 /
 
 !******************************************************************************************

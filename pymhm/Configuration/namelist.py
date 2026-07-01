@@ -233,15 +233,25 @@ def indexed_lhs(
     if template_lhs:
         match = re.search(r"\(([^)]*)\)", str(template_lhs))
         if match:
+            derived_suffix = str(template_lhs).split(")", 1)[1]
             parts = [part.strip() for part in match.group(1).split(",")]
             if len(parts) == 1:
-                return f"{variable_name}({index})"
+                return f"{variable_name}({index}){derived_suffix}"
             if (
                     len(parts) == 2
                     and parts[0] == ":"
                     and parts[1].isdigit()):
-                return f"{variable_name}(:,{index})"
+                return f"{variable_name}(:,{index}){derived_suffix}"
     return f"{variable_name}(:,{index})"
+
+
+def is_domain_array_lhs(template_lhs: str) -> bool:
+    """Return True when an lhs should be rendered as one domain array."""
+    match = re.search(r"\(([^)]*)\)", str(template_lhs))
+    if not match:
+        return True
+    parts = [part.strip() for part in match.group(1).split(",")]
+    return len(parts) == 1 and parts[0] in ("", ":")
 
 
 def render_template(
@@ -310,16 +320,25 @@ def render_template(
                 if domain_items or class_items:
                     emit_key = (current_block, base_key)
                     if emit_key not in emitted_indexed:
-                        suffix = "domain" if domain_items else "class"
-                        indexed_items = domain_items or class_items
-                        for index, indexed_value in indexed_items:
-                            generated_lhs = indexed_lhs(
-                                template_path, base_name, suffix, index, lhs)
+                        if domain_items and not class_items and is_domain_array_lhs(lhs):
+                            _, comment = split_inline_comment(assignment.group(4))
                             line_text = (
-                                f"{assignment.group(1)}{generated_lhs}"
+                                f"{assignment.group(1)}{assignment.group(2)}"
                                 f"{assignment.group(3)}"
-                                f"{format_value(indexed_value)}\n")
+                                f"{format_value([value for _, value in domain_items])}"
+                                f"{(' ' + comment.strip()) if comment else ''}\n")
                             write_line(line_text)
+                        else:
+                            suffix = "domain" if domain_items else "class"
+                            indexed_items = domain_items or class_items
+                            for index, indexed_value in indexed_items:
+                                generated_lhs = indexed_lhs(
+                                    template_path, base_name, suffix, index, lhs)
+                                line_text = (
+                                    f"{assignment.group(1)}{generated_lhs}"
+                                    f"{assignment.group(3)}"
+                                    f"{format_value(indexed_value)}\n")
+                                write_line(line_text)
                         emitted_indexed.add(emit_key)
                     continue
 

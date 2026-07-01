@@ -425,7 +425,7 @@ class LaiProcessingMixin(
             )
             resampled = resampled.where(~np.isnan(resampled), nearest)
             resampled = resampled.transpose(month_dim, "yc", "xc")
-            lai_values = resampled.values.astype(np.float32)
+            lai_values = resampled.values.astype(np.float64)
 
             output_dataset = self._build_lai_output_dataset(
                 lai_values,
@@ -770,7 +770,7 @@ class LaiProcessingMixin(
                 "xc": dataset["xc"],
             },
         )
-        dataset["lai"] = dataset["lai"].where(mask_da, -9999.0).astype("float32")
+        dataset["lai"] = dataset["lai"].where(mask_da, -9999.0).astype("float64")
         dataset["lai"].attrs.pop("_FillValue", None)
         dataset["lai"].attrs.pop("missing_value", None)
         dataset["lai"].attrs["nodata_value"] = -9999.0
@@ -887,18 +887,21 @@ class LaiProcessingMixin(
             "lai": {
                 "zlib": True,
                 "complevel": 4,
+                "dtype": "float64",
                 "_FillValue": -9999.0,
                 "chunksizes": (1, dataset.sizes["yc"], dataset.sizes["xc"]),
             },
             "lat": {
                 "zlib": True,
                 "complevel": 4,
+                "dtype": "float64",
                 "_FillValue": -9999.0,
                 "chunksizes": (dataset.sizes["yc"], dataset.sizes["xc"]),
             },
             "lon": {
                 "zlib": True,
                 "complevel": 4,
+                "dtype": "float64",
                 "_FillValue": -9999.0,
                 "chunksizes": (dataset.sizes["yc"], dataset.sizes["xc"]),
             },

@@ -16,9 +16,15 @@ def package_root() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def schemas_dir() -> str:
+def schemas_dir(version_text: str | None = None) -> str:
     """Return the directory containing namelist YAML schemas."""
-    return os.path.join(package_root(), "nml-schemas")
+    root = os.path.join(package_root(), "nml-schemas")
+    if version_text is None:
+        return root
+    versioned = os.path.join(root, version_key(version_text))
+    if os.path.isdir(versioned):
+        return versioned
+    return root
 
 
 def templates_root() -> str:

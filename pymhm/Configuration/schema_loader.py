@@ -32,9 +32,11 @@ def load_schema(path: str) -> dict[str, Any]:
     return data
 
 
-def load_schema_group(prefix: str) -> dict[str, dict[str, Any]]:
+def load_schema_group(
+        prefix: str,
+        version_text: str | None = None) -> dict[str, dict[str, Any]]:
     """Load all schemas with a prefix and index them by fortran namelist."""
-    pattern = os.path.join(schemas_dir(), f"{prefix}_*.yml")
+    pattern = os.path.join(schemas_dir(version_text), f"{prefix}_*.yml")
     schemas = {}
     for path in sorted(glob.glob(pattern)):
         schema = load_schema(path)
@@ -46,9 +48,10 @@ def load_schema_group(prefix: str) -> dict[str, dict[str, Any]]:
 
 def ordered_schemas(
         prefix: str,
-        order: list[str] | tuple[str, ...] | None = None) -> list[dict[str, Any]]:
+        order: list[str] | tuple[str, ...] | None = None,
+        version_text: str | None = None) -> list[dict[str, Any]]:
     """Load schemas and return them in a requested namelist order."""
-    schemas = load_schema_group(prefix)
+    schemas = load_schema_group(prefix, version_text)
     ordered = []
     if order:
         for name in order:
@@ -59,16 +62,16 @@ def ordered_schemas(
     return ordered
 
 
-def config_schemas() -> list[dict[str, Any]]:
+def config_schemas(version_text: str | None = None) -> list[dict[str, Any]]:
     """Return mHM configuration schemas in the requested page order."""
-    return ordered_schemas("config", CONFIG_ORDER)
+    return ordered_schemas("config", CONFIG_ORDER, version_text)
 
 
-def output_schemas() -> list[dict[str, Any]]:
+def output_schemas(version_text: str | None = None) -> list[dict[str, Any]]:
     """Return output schemas in template order."""
-    return ordered_schemas("output", OUTPUT_ORDER)
+    return ordered_schemas("output", OUTPUT_ORDER, version_text)
 
 
-def parameter_schema_lookup() -> dict[str, dict[str, Any]]:
+def parameter_schema_lookup(version_text: str | None = None) -> dict[str, dict[str, Any]]:
     """Return parameter schemas indexed by namelist name."""
-    return load_schema_group("parameter")
+    return load_schema_group("parameter", version_text)
