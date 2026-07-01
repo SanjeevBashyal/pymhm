@@ -200,7 +200,7 @@ def run(args):
         parsed command line arguments
     """
     from mhm_tools.common.cli_utils import get_coords
-    from mhm_tools.evaluation.discharge_evaluation import evaludate_discharge_data
+    from mhm_tools.post.discharge_evaluation import evaludate_discharge_data
 
     lon_min, lon_max, lat_min, lat_max, mask = get_coords(
         args.lonlatbox, args.mask_file, raise_exception=False

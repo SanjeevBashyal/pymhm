@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Deprecated compatibility module.
 
-The plugin now creates latlon.nc through mhm_tools.setup_creation.create_latlon.
+The plugin now creates latlon.nc through mhm_tools.pre.latlon.create_latlon.
 This module is intentionally kept without an independent writer so stale imports
 fail loudly instead of producing a second NetCDF implementation.
 """
@@ -13,5 +13,5 @@ class LatLonNetcdfMixin:
     def create_latlon_nc_file(self, latlon_folder: str) -> bool:
         raise RuntimeError(
             "Independent latlon.nc writing has been removed. "
-            "Use process_lat_lon(), which calls mhm_tools.setup_creation.create_latlon."
+            "Use process_lat_lon(), which calls mhm_tools.pre.latlon.create_latlon."
         )

@@ -24,6 +24,7 @@ properties:
     items:
       type: integer
       x-fortran-kind: i4
+      default: 2
     x-fortran-shape: max_domains
     x-fortran-flex-tail-dims: 1
     title: Number of soil horizons

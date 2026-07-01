@@ -3,7 +3,7 @@ description: Configuration for the multiscale parameter regionalization in mHM.
 x-fortran-namelist: config_mpr
 type: object
 properties:
-  soil_db_mode:
+  iFlag_soilDB:
     type: array
     items:
       type: integer
@@ -19,11 +19,12 @@ properties:
       - 1: harmonised horizon-specific soil database with soil_class_horizon_XX.asc and soil_classdefinition_iFlag_soilDB_1.txt.
         Soil depth is provided for all horizons; the last horizon depth is fixed and uniform;
         tillage depth must match a horizon depth.
-  n_horizons:
+  nSoilHorizons_mHM:
     type: array
     items:
       type: integer
       x-fortran-kind: i4
+      default: 2
     x-fortran-shape: max_domains
     x-fortran-flex-tail-dims: 1
     title: Number of soil horizons
@@ -77,7 +78,7 @@ properties:
     x-fortran-shape: max_domains
     title: Land cover variable
     description: Land-cover variable name in the NetCDF dataset.
-  lai_time_step:
+  timeStep_LAI_input:
     type: array
     items:
       type: integer

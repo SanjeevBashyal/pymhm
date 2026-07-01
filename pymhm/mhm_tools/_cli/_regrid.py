@@ -52,7 +52,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from mhm_tools.data_processing.regrid import regrid
+    from mhm_tools.pre.regrid import regrid
 
     input = Path(args.input)
     output = Path(args.output)

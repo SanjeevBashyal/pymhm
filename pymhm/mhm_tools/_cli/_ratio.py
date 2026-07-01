@@ -148,7 +148,7 @@ def run(args):
         parsed command line arguments
 
     """
-    from ..data_processing.ratio import calc_ratio
+    from ..post.ratio import calc_ratio
 
     calc_ratio(
         ref_input_dir=args.ref_input_dir,

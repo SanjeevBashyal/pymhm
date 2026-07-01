@@ -39,7 +39,7 @@ from mhm_tools.common.utils import (
     get_upscaling_factor,
 )
 from mhm_tools.common.xarray_utils import get_dtype
-from mhm_tools.legacy_tools.create_id_gauges import write_gauge_id
+from mhm_tools.pre.create_id_gauges import write_gauge_id
 
 logger = logging.getLogger(__name__)
 
@@ -842,7 +842,7 @@ class Catchment:
     def _revert_data(self, data):
         # correct circumspanning data
         if self.do_shift:
-            return np.roll(data, int(len(self.ds.lon) / 2), axis=1)
+            return np.roll(data, int(data.shape[1] / 2), axis=1)
         return data
 
     def add_dem(self, latlon):
@@ -2435,10 +2435,10 @@ def _is_list_of_float_tuples(a):
 @log_arguments()
 def create_catchment(  # noqa: PLR0913, PLR0912, PLR0915
     input_file,
-    output_path,  # should be dir
-    var_name,  # confusing
-    var,  # confusing
-    ftype,  # could be automatically assesed
+    output_path,
+    var_name,
+    var,
+    ftype,
     gauge_coords=None,
     coordinate_slices=None,
     mask_file=None,
@@ -2469,7 +2469,6 @@ def create_catchment(  # noqa: PLR0913, PLR0912, PLR0915
         f"Creating catchment file for {var_name} using {var} and {ftype} from {input_file}"
     )
     output_path = Path(output_path)
-
     id_gauges_out_path = (
         output_path if id_gauges_out_path is None else Path(id_gauges_out_path)
     )

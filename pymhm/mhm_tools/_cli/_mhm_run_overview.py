@@ -68,7 +68,7 @@ def add_args(parser: argparse.ArgumentParser):
 
 def run(args: argparse.Namespace):
     """Run run-overview statistics export."""
-    from mhm_tools.evaluation.mhm_run_overview import create_mhm_run_overview
+    from mhm_tools.post.mhm_run_overview import create_mhm_run_overview
 
     create_mhm_run_overview(
         namelist_file=args.namelist.resolve(),

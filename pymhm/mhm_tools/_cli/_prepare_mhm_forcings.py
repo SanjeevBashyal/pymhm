@@ -132,7 +132,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from mhm_tools.setup_creation.prepare_mhm_forcings import prepare_forcings
+    from mhm_tools.pre.prepare_mhm_forcings import prepare_forcings
 
     prepare_forcings(
         in_dir=args.in_dir,

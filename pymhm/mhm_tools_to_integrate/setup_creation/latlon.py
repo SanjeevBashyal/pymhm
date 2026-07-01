@@ -26,7 +26,7 @@ def create_latlon_file(
         log: Callable[[str], None] | None = None) -> Path:
     """Create latlon.nc through mhm_tools and return the output path."""
     ensure_bundled_mhm_tools()
-    from mhm_tools.setup_creation import create_latlon
+    from mhm_tools.pre.latlon import create_latlon
 
     output = Path(out_file)
     output.parent.mkdir(parents=True, exist_ok=True)

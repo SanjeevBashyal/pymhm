@@ -65,13 +65,10 @@ _COMMAND_GROUPS: List[Tuple[str, str, List[Tuple[str, object]]]] = [
         [
             ("create-catchment", "mhm_tools._cli._create_catchment"),
             ("crop-mhm-setup", "mhm_tools._cli._crop_mhm_setup"),
-            ("create-header", "mhm_tools._cli._create_header"),
             ("latlon", "mhm_tools._cli._latlon"),
+            ("create-header", "mhm_tools._cli._create_header"),
             ("calculate-pet", "mhm_tools._cli._calculate_pet"),
-            (
-                "prepare-mhm-forcings",
-                "mhm_tools._cli._prepare_mhm_forcings",
-            ),
+            ("prepare-mhm-forcings", "mhm_tools._cli._prepare_mhm_forcings"),
         ],
     ),
     (
@@ -82,12 +79,10 @@ _COMMAND_GROUPS: List[Tuple[str, str, List[Tuple[str, object]]]] = [
             ("merge-files", "mhm_tools._cli._merge"),
             ("fill-nearest", "mhm_tools._cli._fill_nearest"),
             ("regrid-file", "mhm_tools._cli._regrid"),
+            ("fill-nearest", "mhm_tools._cli._fill_nearest"),
             ("long-term-mean", "mhm_tools._cli._long_term_mean"),
             ("difference", "mhm_tools._cli._difference"),
-            (
-                "relative-difference",
-                "mhm_tools._cli._relative_difference",
-            ),
+            ("relative-difference", "mhm_tools._cli._relative_difference"),
             ("ratio", "mhm_tools._cli._ratio"),
             ("bankfull", "mhm_tools._cli._bankfull"),
         ],
@@ -96,20 +91,14 @@ _COMMAND_GROUPS: List[Tuple[str, str, List[Tuple[str, object]]]] = [
         "evaluation",
         "Evaluate simulations against observations or reference data.",
         [
-            (
-                "discharge-evaluation",
-                "mhm_tools._cli._discharge_evaluation",
-            ),
+            ("discharge-evaluation", "mhm_tools._cli._discharge_evaluation"),
             ("hydrograph", "mhm_tools._cli._hydrograph"),
-            (
-                "gridded-data-evaluation",
-                "mhm_tools._cli._gridded_data_evaluation",
-            ),
+            ("gridded-data-evaluation", "mhm_tools._cli._gridded_data_evaluation"),
             ("run-overview", "mhm_tools._cli._mhm_run_overview"),
         ],
     ),
     (
-        "utility_tools",
+        "utilities",
         "General helper commands.",
         [
             ("link-folder-tree", "mhm_tools._cli._link_folder_tree"),
@@ -124,27 +113,22 @@ _COMMAND_GROUPS: List[Tuple[str, str, List[Tuple[str, object]]]] = [
         ],
     ),
     (
-        "mhm_v5_v6_converter",
+        "mhm-v5-v6-converter",
         "Convert mHM5 setup files to mHMv6 format.",
         [
-            (
-                "landcover-ascii-to-nc",
-                "mhm_tools._cli._landcover_ascii_to_nc",
-            ),
+            ("landcover-ascii-to-nc", "mhm_tools._cli._landcover_ascii_to_nc"),
         ],
     ),
     (
-        "legacy_tools",
-        "Legacy Tools: either depreciated or for very specific usecases",
+        "legacy-tools",
+        "Legacy tools that are no longer recomended or only created for very specific usecases.",
         [
             ("create-id-gauges", "mhm_tools._cli._create_idgauges"),
+            ("create-subdomain-masks", "mhm_tools._cli._create_subdomain_masks"),
+            ("create-mhm-restart-file", "mhm_tools._cli._create_mhm_restart_file"),
             (
-                "create-subdomain-masks",
-                "mhm_tools._cli._create_subdomain_masks",
-            ),
-            (
-                "create-mhm-restart-file",
-                "mhm_tools._cli._create_mhm_restart_file",
+                "create-mhm-restart-from-setup",
+                "mhm_tools._cli._create_mhm_restart_from_setup",
             ),
         ],
     ),
@@ -454,6 +438,20 @@ def _convert_callback(action: argparse.Action) -> Callable:
     return _callback
 
 
+def _contiguous_int_choices(choices):
+    """Return integer range bounds when choices are contiguous integers."""
+    try:
+        int_choices = sorted(int(choice) for choice in choices)
+    except (TypeError, ValueError):
+        return None
+    if not int_choices:
+        return None
+    expected = list(range(int_choices[0], int_choices[-1] + 1))
+    if int_choices != expected:
+        return None
+    return int_choices[0], int_choices[-1]
+
+
 def _action_to_click_option(action: argparse.Action, option_group: str = "options"):
     """Convert one parser action to a Click option."""
     option_strings = tuple(_canonical_option_strings(action.option_strings))
@@ -490,7 +488,18 @@ def _action_to_click_option(action: argparse.Action, option_group: str = "option
         else:
             kwargs["type"] = str
         if action.choices is not None:
-            kwargs["type"] = click.Choice([str(choice) for choice in action.choices])
+            if action.type is int:
+                choice_range = _contiguous_int_choices(action.choices)
+                if choice_range is not None:
+                    kwargs["type"] = click.IntRange(*choice_range)
+                else:
+                    kwargs["type"] = int
+            elif action.type is float:
+                kwargs["type"] = float
+            else:
+                kwargs["type"] = click.Choice(
+                    [str(choice) for choice in action.choices]
+                )
         kwargs["callback"] = _convert_callback(action)
 
     param_decls = [*list(option_strings), action.dest]

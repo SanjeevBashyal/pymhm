@@ -640,7 +640,7 @@
   !>  1: read mean monthly gridded LAI values.
   !>     must be a separate *.nc file for every (modeled) domains.
   !-----------------------------------------------------------------------------------
-  timeStep_LAI_input = 0
+  timeStep_LAI_input = 1
   !> input file format of gridded file (if timeStep_LAI_input < 0)
   !>     nc  - assume one file with name lai.nc
   !> input file format of gridded file (if timeStep_LAI_input == 1)

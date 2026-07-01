@@ -123,7 +123,7 @@ def run(args: argparse.Namespace):
     args : argparse.Namespace
         Parsed command line arguments.
     """
-    from mhm_tools.data_processing.long_term_mean import cal_long_term_mean
+    from mhm_tools.post.long_term_mean import cal_long_term_mean
 
     if not args.aggregate:
         args.aggregation_type = None

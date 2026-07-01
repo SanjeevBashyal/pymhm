@@ -414,7 +414,9 @@ def get_xarray_ds_from_file(  # noqa: PLR0912
     logger.debug(lon_key)
     if normalize_latlon_coords:
         # re-name input coords to lat and lon
-        ds_out = normalize_lat_lon(ds_out, lat_key, lon_key, raise_exceptions=False)
+        ds_out = normalize_lat_lon(
+            ds_out, lat_key=lat_key, lon_key=lon_key, raise_exceptions=False
+        )
     if create_bounds:
         ds_out = generate_bounds_for_all_coords(ds_out)
     if lon_key is None and lat_key is None:
@@ -468,7 +470,7 @@ def write_xarray_to_file(  # noqa: PLR0912, PLR0915
 
     file_path = Path(file_path)
     if create_folder and not file_path.parent.is_dir():
-        file_path.parent.mkdir(parents=True)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
     if file_path.is_file():
         file_path.unlink()
     logger.info(f"Writing file to {file_path}")
@@ -733,6 +735,17 @@ def write_xarray_to_file(  # noqa: PLR0912, PLR0915
                 if coord in ds_clean.dims:
                     enc["_FillValue"] = None
                 ds_clean[coord].encoding = enc
+            for name in _metadata_data_vars(ds_clean):
+                if name not in ds_clean or name in ds_clean.coords:
+                    continue
+                enc = dict(ds_clean[name].encoding) if ds_clean[name].encoding else {}
+                for key in coord_drop_encoding:
+                    enc.pop(key, None)
+                enc = {k: v for k, v in enc.items() if k in coord_allowed_encoding}
+                enc["_FillValue"] = None
+                ds_clean[name].encoding = enc
+                ds_clean[name].attrs.pop("_FillValue", None)
+                ds_clean[name].attrs.pop("missing_value", None)
             ds_clean.to_netcdf(
                 file_path, engine=engine, format="NETCDF4", encoding=encoding
             )
@@ -840,7 +853,7 @@ def _lacks_explicit_cf_axis_metadata(coord: xr.DataArray) -> bool:
 
 
 def write_xarray_to_ascii(
-    dataset, output_file, data_var=None, nodata_value=None, resolution=None
+    dataset, filepath, data_var=None, nodata_value=None, resolution=None
 ):
     """Write xarray Dataset to an ASCII file that can be read by mHM."""
     # check if a data_var can be optained for writing the data
@@ -848,7 +861,7 @@ def write_xarray_to_ascii(
         data_var = get_single_data_var(dataset)
         if data_var is None:
             logger.error(
-                f"Data can not be written to {output_file} as the dataset has multiple data_vars, which is incompatible with asci or no datavar exists."
+                f"Data can not be written to {filepath} as the dataset has multiple data_vars, which is incompatible with asci or no datavar exists."
             )
             return
     # get the data from the dataset
@@ -873,9 +886,9 @@ def write_xarray_to_ascii(
         data_to_write = np.where(np.isnan(data_to_write), nodata_value, data_to_write)
 
     out_header_str = write_grid(
-        file=output_file, header=header, dtype=dtype, data=data_to_write
+        file=filepath, header=header, dtype=dtype, data=data_to_write
     )
-    logger.info(f"Writting file to {output_file}")
+    logger.info(f"Writting file to {filepath}")
     logger.debug(f"Header written:\n{out_header_str}")
 
 
@@ -1114,7 +1127,9 @@ def get_dataset_from_path(
         logger.debug(lon_key)
 
         if normalize_latlon_coords:
-            ds_out = normalize_lat_lon(ds_out, lat_key, lon_key, raise_exceptions=False)
+            ds_out = normalize_lat_lon(
+                ds_out, lat_key=lat_key, lon_key=lon_key, raise_exceptions=False
+            )
 
         if lon_key is None and lat_key is None:
             logger.warning("Dataset does not have lon and lat key.")

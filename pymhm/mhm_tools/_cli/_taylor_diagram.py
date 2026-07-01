@@ -92,7 +92,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from ..visualisation.taylor_diagram import generate_taylor_diagram
+    from ..post.taylor_diagram import generate_taylor_diagram
 
     # sanity check to ensure matched lists
     if not (len(args.mod_input_dirs) == len(args.model_patterns) == len(args.mod_vars)):

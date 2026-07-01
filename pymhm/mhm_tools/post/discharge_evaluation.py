@@ -37,10 +37,10 @@ from mhm_tools.common.xarray_utils import (
     get_single_data_var,
     spearman_correlation,
 )
-from mhm_tools.evaluation.gridded_data_evaluation import (
+from mhm_tools.post.gridded_data_evaluation import (
     resample_to_coarser_calendar,
 )
-from mhm_tools.evaluation.hydrograph import gen_hydrograph_by_data_sets
+from mhm_tools.post.hydrograph import gen_hydrograph_by_data_sets
 
 logger = logging.getLogger(__name__)
 
@@ -897,8 +897,7 @@ def Q_data_to_xarray(  # noqa: PLR0913, PLR0915, PLR0912
 
     # creating saving path
     saving_path = Path(saving_path)
-    if not saving_path.is_dir():
-        saving_path.mkdir(parents=True)
+    saving_path.mkdir(parents=True, exist_ok=True)
 
     # Load data and get gauge info for multiple different cases:
     # 1. discharge.nc files with Qsim/Qobs_<id> variables available (e.g. mRM v5+ output)

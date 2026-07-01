@@ -82,7 +82,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from mhm_tools.legacy_tools import create_subdomain_masks
+    from ..pre import create_subdomain_masks
 
     create_subdomain_masks(
         output_dir=args.output_dir,

@@ -58,7 +58,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from mhm_tools.data_processing.merge import merge_files
+    from mhm_tools.pre.merge import merge_files
 
     input = Path(args.input_path)
     output = Path(args.output_file)

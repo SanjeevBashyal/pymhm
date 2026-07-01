@@ -59,7 +59,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from mhm_tools.utility_tools.link_folder_tree import link_folder_tree
+    from mhm_tools.pre.link_folder_tree import link_folder_tree
 
     input_dir = Path(args.input_dir)
     output_dir = Path(args.output_dir)

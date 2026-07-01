@@ -81,7 +81,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from mhm_tools.setup_creation.pet_calc import calculate_pet
+    from mhm_tools.pre.pet_calc import calculate_pet
 
     calculate_pet(
         tavg_file=args.tavg,

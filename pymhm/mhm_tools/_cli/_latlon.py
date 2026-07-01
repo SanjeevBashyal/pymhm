@@ -143,7 +143,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from mhm_tools.setup_creation import create_latlon
+    from ..pre import create_latlon
 
     create_latlon(
         out_file=args.out_file,

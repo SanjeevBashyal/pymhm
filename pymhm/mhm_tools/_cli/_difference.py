@@ -132,7 +132,7 @@ def add_args(parser):
 
 def run(args):
     """Compute and plot the spatial difference (reference - model)."""
-    from ..data_processing.difference import OutputOptions, PlotOptions, calc_diff
+    from ..post.difference import OutputOptions, PlotOptions, calc_diff
 
     plot_opts = PlotOptions(
         colorbar_label=args.colorbar_label,

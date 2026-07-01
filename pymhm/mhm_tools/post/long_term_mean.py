@@ -34,7 +34,7 @@ except Exception:
     cdo = None
 
 from mhm_tools.common.logger import ErrorLogger
-from mhm_tools.setup_creation.crop_mhm_setup import crop_file
+from mhm_tools.pre.crop_mhm_setup import crop_file
 
 logger = logging.getLogger(__name__)
 

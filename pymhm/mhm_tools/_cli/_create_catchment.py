@@ -262,7 +262,8 @@ def run(args):  # noqa: PLR0912,PLR0915
     from mhm_tools.common.cli_utils import get_available_mem_in_unit
     from mhm_tools.common.logger import ErrorLogger
     from mhm_tools.common.resolution_handler import Resolution
-    from mhm_tools.setup_creation import create_catchment
+
+    from ..pre import create_catchment
 
     gauge_coords = None
     coordinate_slices = None

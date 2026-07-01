@@ -73,7 +73,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from ..data_processing.bankfull import bankfull_discharge
+    from ..post.bankfull import bankfull_discharge
 
     bankfull_discharge(
         in_file=args.in_file,

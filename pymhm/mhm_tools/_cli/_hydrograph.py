@@ -103,7 +103,7 @@ def run(args):
     args : argparse.Namespace
         parsed command line arguments
     """
-    from ..evaluation.hydrograph import get_hydrograph_from_path
+    from ..post.hydrograph import get_hydrograph_from_path
 
     get_hydrograph_from_path(
         input_path=args.in_dir,
