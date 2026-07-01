@@ -5,7 +5,11 @@ import sys
 from pathlib import Path
 
 
-DEFAULT_QGIS_ROOT = Path(r"C:\Program Files\QGIS 3.40.6")
+if sys.platform == "win32":
+    DEFAULT_QGIS_ROOT = Path(r"C:\Program Files\QGIS 3.40.6")
+else:
+    DEFAULT_QGIS_ROOT = Path("/usr")
+
 REPO_ROOT = Path(__file__).resolve().parent
 PLUGIN_PACKAGE_DIR = REPO_ROOT / "pymhm"
 
@@ -49,6 +53,23 @@ def _set_env_path(name, path):
 
 def configure_qgis_environment():
     """Prepare a standalone PyQGIS runtime before importing qgis modules."""
+    if sys.platform != "win32":
+        # On Linux/macOS, typical system installations don't need the extensive
+        # environment setup required by OSGeo4W on Windows.
+        if "QGIS_PREFIX_PATH" not in os.environ:
+            os.environ["QGIS_PREFIX_PATH"] = str(DEFAULT_QGIS_ROOT)
+        
+        # We just need to ensure the repository root is in sys.path
+        # And we might need the QGIS python plugins path for 'processing'
+        python_paths = [
+            REPO_ROOT,
+            DEFAULT_QGIS_ROOT / "share" / "qgis" / "python",
+            DEFAULT_QGIS_ROOT / "share" / "qgis" / "python" / "plugins"
+        ]
+        _prepend_sys_path(python_paths)
+        _set_env_paths("PYTHONPATH", python_paths)
+        return
+
     qgis_root = Path(os.environ.get("QGIS_ROOT", DEFAULT_QGIS_ROOT))
     qgis_prefix = Path(
         os.environ.get("QGIS_PREFIX_PATH", qgis_root / "apps" / "qgis-ltr")
