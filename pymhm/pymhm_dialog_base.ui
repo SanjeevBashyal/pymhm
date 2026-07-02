@@ -2625,14 +2625,14 @@
      </property>
      <layout class="QHBoxLayout" name="horizontalLayout_2">
       <item>
-       <widget class="QPushButton" name="pushButton_Threads">
+       <widget class="QPushButton" name="pushButton_threads">
         <property name="text">
          <string>Threads</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="pushButton_Log">
+       <widget class="QPushButton" name="pushButton_log">
         <property name="text">
          <string>Log</string>
         </property>
@@ -2652,16 +2652,16 @@
        </spacer>
       </item>
       <item>
-       <widget class="QPushButton" name="pushButton_Terminal">
+       <widget class="QPushButton" name="pushButton_python">
         <property name="text">
-         <string>Terminal</string>
+         <string>Python</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="pushButton_Python">
+       <widget class="QPushButton" name="pushButton_terminal">
         <property name="text">
-         <string>Python</string>
+         <string>Terminal</string>
         </property>
        </widget>
       </item>

@@ -5,7 +5,7 @@ import os
 import json
 
 # QGIS and PyQt imports
-from qgis.PyQt.QtWidgets import QDialog, QFileDialog
+from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QMessageBox
 from qgis.core import (
     QgsApplication,
     QgsMapLayer,
@@ -17,6 +17,7 @@ from qgis.core import (
 # UI class from the compiled .ui file
 from .ui_pymhm_dialog_base import Ui_pymhmDialog
 from .qgis_compat import map_layer_filters
+from .terminal_dialog import ProjectTerminalDialog
 
 # Import utility mixin and processors
 from .utils import DialogUtils
@@ -97,6 +98,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self._grid_l2_header = None
         self._preferred_l1_resolution = None
         self._preferred_l11_resolution = None
+        self._terminal_dialog = None
 
         # --- Initialize processors ---
         self.morphology_processor = MorphologyProcessor(self)
@@ -117,6 +119,8 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.page_validation = self.page_configuration
         if hasattr(self, "page_execution") and not hasattr(self, "page_datasets"):
             self.page_datasets = self.page_execution
+        if hasattr(self, "pushButton_Terminal") and not hasattr(self, "pushButton_terminal"):
+            self.pushButton_terminal = self.pushButton_Terminal
 
     def configure_input_layer_combo_boxes(self):
         """Allow input layer boxes to start empty so layers are chosen deliberately."""
@@ -353,6 +357,22 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.connect_processor_button(
             self.pushButton_RUN, "Run mHM", self.configuration_processor.run_mhm
         )
+        if hasattr(self, "pushButton_execute_mHM"):
+            self.pushButton_execute_mHM.setToolTip("Run mHM")
+            self.connect_processor_button(
+                self.pushButton_execute_mHM,
+                "Execute mHM",
+                self.configuration_processor.run_mhm,
+            )
+        connected_terminal_buttons = set()
+        for terminal_button_name in ("pushButton_terminal", "pushButton_Terminal"):
+            terminal_button = getattr(self, terminal_button_name, None)
+            if (
+                terminal_button is not None
+                and id(terminal_button) not in connected_terminal_buttons
+            ):
+                terminal_button.clicked.connect(self.open_project_terminal)
+                connected_terminal_buttons.add(id(terminal_button))
         if hasattr(self, "comboBox_mHMversion"):
             self.comboBox_mHMversion.currentIndexChanged.connect(
                 lambda index=None: self.configuration_processor.handle_version_changed()
@@ -837,6 +857,25 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         callback()
         if action_name == "Fill DEM":
             self.update_l0_resolution_from_dem()
+
+    def project_terminal_dialog(self):
+        """Return the persistent terminal dialog for this plugin dialog."""
+        if self._terminal_dialog is None:
+            self._terminal_dialog = ProjectTerminalDialog(self)
+        return self._terminal_dialog
+
+    def open_project_terminal(self):
+        """Open the persistent terminal in the selected project folder."""
+        if not self.project_folder:
+            QMessageBox.warning(
+                self,
+                "Project Folder Required",
+                "Select a project folder before opening the terminal.",
+            )
+            return None
+        terminal = self.project_terminal_dialog()
+        terminal.show_for_directory(self.project_folder)
+        return terminal
 
     def lookup_field_specs(self):
         """Return lookup table layer widgets and their companion field widgets."""

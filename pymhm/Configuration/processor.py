@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from typing import Any
 
 from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox
@@ -620,72 +619,19 @@ class ConfigurationProcessor(SimulationProcessor):
         )
 
     def run_mhm(self) -> bool:
-        """Create root-level namelists and run mHM against the project folder."""
-        if not self.check_prerequisites():
+        """Run mHM in the selected project folder through the project terminal."""
+        if not self.ensure_project_folder():
             return False
 
         self.log_message("\n--- Running mHM ---")
-        self.log_message("Creating NML files...")
-        if not self.create_nml_files():
-            self.log_message("ERROR: Failed to create NML files. Cannot run mHM.")
-            return False
-
         project_folder = self.dialog.project_folder
         ensure_project_structure(project_folder, self.selected_version())
         self.log_message(f"Running mHM in project directory: {project_folder}")
-        command = ["mHM", "."]
-
-        try:
-            return self.run_mhm_command(command, project_folder)
-        except FileNotFoundError:
-            self.log_message("mHM not found in PATH. Trying conda environments...")
-
-        for env_name in ("mhm", "mHM", "base", "conda"):
-            command = ["conda", "run", "-n", env_name, "mHM", "."]
-            try:
-                if self.run_mhm_command(command, project_folder):
-                    return True
-            except FileNotFoundError:
-                self.log_message("conda not found in PATH.")
-                break
-
-        QMessageBox.critical(
-            self.dialog,
-            "mHM Error",
-            "Could not run mHM. Ensure mHM is available in PATH or a conda environment.")
-        return False
-
-    def run_mhm_command(self, command: list[str], cwd: str) -> bool:
-        """Run one mHM command and stream its output to the plugin console."""
-        self.log_message(f"Executing command: {' '.join(command)}")
-        process = subprocess.Popen(
-            command,
-            cwd=cwd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            universal_newlines=True,
-        )
-
-        self.log_message("mHM execution started...")
-        for line in process.stdout:
-            line = line.strip()
-            if line:
-                self.log_message(line)
-        process.wait()
-
-        if process.returncode == 0:
-            self.log_message("mHM execution completed successfully.")
-            QMessageBox.information(
-                self.dialog,
-                "mHM",
-                "mHM execution completed successfully.")
-            return True
-
-        self.log_message(
-            f"mHM command failed with return code {process.returncode}.")
-        return False
+        terminal = self.dialog.open_project_terminal()
+        if terminal is None:
+            return False
+        self.log_message("Executing command in project terminal: mhm")
+        return terminal.run_command("mhm", cwd=project_folder, show=True)
 
     def report_error(self, title: str, exc: Exception) -> None:
         """Log and show a configuration error."""
