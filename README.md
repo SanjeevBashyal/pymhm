@@ -16,10 +16,30 @@ A Python package for mesoscale hydrological modeling, designed to work both as a
 
 ## Installation
 
-### From PyPI (Recommended)
+`pymhm` is published as a Python/PyPI package, not as an Ubuntu/Debian APT
+package. This will not work unless a separate Debian package is published to an
+APT repository:
 
 ```bash
-pip install pymhm
+sudo apt install python3-pymhm
+```
+
+### From PyPI (Recommended)
+
+For an isolated command-line application install:
+
+```bash
+sudo apt install pipx
+pipx ensurepath
+pipx install pymhm
+```
+
+If you prefer a project virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install pymhm
 ```
 
 ### From Source
@@ -27,7 +47,7 @@ pip install pymhm
 ```bash
 git clone https://github.com/SanjeevBashyal/pymhm.git
 cd pymhm
-pip install -e .
+python3 -m pip install -e .
 ```
 
 ### For QGIS Plugin

@@ -3,18 +3,40 @@
 
 import os
 import json
+import sys
 
 # QGIS and PyQt imports
-from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QMessageBox
-from qgis.core import (
-    QgsApplication,
-    QgsMapLayer,
-    QgsProject,
-    QgsRasterLayer,
-    QgsVectorLayer,
-)
+try:
+    from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QMessageBox
+    from qgis.core import (
+        QgsApplication,
+        QgsMapLayer,
+        QgsProject,
+        QgsRasterLayer,
+        QgsVectorLayer,
+    )
+except ImportError:
+    from .standalone_qgis import install
 
-# UI class from the compiled .ui file
+    install(force=True)
+    from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QMessageBox
+    from qgis.core import (
+        QgsApplication,
+        QgsMapLayer,
+        QgsProject,
+        QgsRasterLayer,
+        QgsVectorLayer,
+    )
+
+# UI class from the compiled .ui file. The generated module imports
+# ``resources_rc`` as a top-level module, so expose the packaged resource module
+# under that name when importing through PyPI/package paths.
+try:
+    from . import resources_rc as _resources_rc  # noqa: F401
+    sys.modules.setdefault("resources_rc", _resources_rc)
+except Exception:
+    pass
+
 from .ui_pymhm_dialog_base import Ui_pymhmDialog
 from .qgis_compat import map_layer_filters
 from .terminal_dialog import ProjectTerminalDialog

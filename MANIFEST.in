@@ -4,13 +4,24 @@ include LICENSE
 include requirements.txt
 
 # Include package data
-recursive-include pymhm *.ui
-recursive-include pymhm *.qrc
+recursive-include pymhm *.asc
+recursive-include pymhm *.html
+recursive-include pymhm *.md
+recursive-include pymhm *.nc
+recursive-include pymhm *.nml
 recursive-include pymhm *.png
-recursive-include pymhm *.txt
+recursive-include pymhm *.qrc
+recursive-include pymhm *.rst
+recursive-include pymhm *.sh
 recursive-include pymhm *.ts
-recursive-include pymhm *.qm
+recursive-include pymhm *.txt
+recursive-include pymhm *.ui
+recursive-include pymhm *.yml
 recursive-include pymhm i18n/*
+graft pymhm/nml-schemas
+graft pymhm/nml-templates
+graft pymhm/project-template
+graft pymhm/Resources
 
 # Include documentation
 recursive-include docs *.rst

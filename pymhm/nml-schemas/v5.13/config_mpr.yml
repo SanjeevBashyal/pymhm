@@ -29,11 +29,12 @@ properties:
     x-fortran-flex-tail-dims: 1
     title: Number of soil horizons
     description: Number of soil horizons to be modeled (nSoilHorizons_mHM).
-  tillage_depth:
+  tillageDepth:
     type: array
     items:
       type: integer
       x-fortran-kind: i4
+      default: 200
     x-fortran-shape: max_domains
     x-fortran-flex-tail-dims: 1
     title: Tillage depth
