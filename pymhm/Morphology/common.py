@@ -33,6 +33,10 @@ from qgis.core import (
     QgsPointXY,
 )
 from qgis.PyQt.QtCore import NULL, QMetaType
+try:
+    from qgis.PyQt.QtCore import QVariant
+except ImportError:
+    QVariant = None
 import processing
 
 from ..utils import DialogUtils
@@ -50,14 +54,38 @@ def _qmeta_type(type_name):
 
 
 def qgs_field(name, field_type):
-    """Create a QgsField without the deprecated QVariant constructor overload."""
+    """Create a QgsField across old QVariant and newer QMetaType bindings."""
     qmeta_name_by_qvariant_name = {
         "String": "QString",
         "Int": "Int",
         "Double": "Double",
     }
+    qvariant_type_by_name = {}
+    if QVariant is not None:
+        qvariant_type_by_name = {
+            "String": QVariant.String,
+            "Int": QVariant.Int,
+            "Double": QVariant.Double,
+        }
     qmeta_name = qmeta_name_by_qvariant_name.get(field_type, field_type)
-    return QgsField(name, _qmeta_type(qmeta_name))
+    candidates = [_qmeta_type(qmeta_name)]
+    try:
+        candidates.append(int(candidates[0]))
+    except (TypeError, ValueError):
+        pass
+    if field_type in qvariant_type_by_name:
+        candidates.append(qvariant_type_by_name[field_type])
+
+    last_error = None
+    for candidate in candidates:
+        try:
+            return QgsField(name, candidate)
+        except TypeError as exc:
+            last_error = exc
+
+    if last_error is not None:
+        raise last_error
+    return QgsField(name)
 
 
 def create_vector_file_writer(path, fields, geometry_type, crs,

@@ -4,9 +4,11 @@
 import os
 import json
 import sys
+import traceback
 
 # QGIS and PyQt imports
 try:
+    from qgis.PyQt import QtCore
     from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QMessageBox
     from qgis.core import (
         QgsApplication,
@@ -19,6 +21,7 @@ except ImportError:
     from .standalone_qgis import install
 
     install(force=True)
+    from qgis.PyQt import QtCore
     from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QMessageBox
     from qgis.core import (
         QgsApplication,
@@ -67,6 +70,97 @@ from .grid_resolution import (
     raster_resolution_info,
     read_header_file,
 )
+
+
+class ExecuteAllWorker(QtCore.QObject):
+    """Run execute-all processing away from the dialog event loop."""
+
+    log_message = QtCore.pyqtSignal(str)
+    finished = QtCore.pyqtSignal(bool, str)
+
+    def __init__(self, processor, project_folder, dem_layer, pour_points_layer):
+        super().__init__()
+        self.processor = processor
+        self.project_folder = project_folder
+        self.dem_layer = dem_layer
+        self.pour_points_layer = pour_points_layer
+        self._original_log_message = None
+        self._original_run_processing_algorithm = None
+        self._original_check_prerequisites = None
+
+    @QtCore.pyqtSlot()
+    def run(self):
+        """Execute the workflow and emit the result."""
+        self._install_worker_hooks()
+        try:
+            ok = bool(self.processor.execute_all_processing(show_error_dialog=False))
+            self.finished.emit(ok, "")
+        except Exception as exc:
+            details = traceback.format_exc()
+            self.log_message.emit(
+                f"\nERROR: Execute All worker failed with exception: {exc}"
+            )
+            self.log_message.emit(f"Traceback: {details}")
+            try:
+                self.processor.mark_workflow_status(
+                    "execute_all",
+                    "failed",
+                    f"Execute All worker failed: {exc}",
+                )
+            except Exception:
+                pass
+            self.finished.emit(False, str(exc))
+        finally:
+            self._restore_worker_hooks()
+
+    def _install_worker_hooks(self):
+        self._original_log_message = self.processor.log_message
+        self._original_run_processing_algorithm = (
+            self.processor.run_processing_algorithm
+        )
+        self._original_check_prerequisites = self.processor.check_prerequisites
+        self.processor.log_message = self.log_message.emit
+        self.processor.run_processing_algorithm = self._run_processing_algorithm
+        self.processor.check_prerequisites = self._check_prerequisites
+
+    def _restore_worker_hooks(self):
+        if self._original_log_message is not None:
+            self.processor.log_message = self._original_log_message
+        if self._original_run_processing_algorithm is not None:
+            self.processor.run_processing_algorithm = (
+                self._original_run_processing_algorithm
+            )
+        if self._original_check_prerequisites is not None:
+            self.processor.check_prerequisites = self._original_check_prerequisites
+
+    def _check_prerequisites(self, needs_pour_points=False):
+        if not self.project_folder:
+            self.log_message.emit(
+                "ERROR: Please select a project folder before proceeding."
+            )
+            return False
+        if not self.dem_layer:
+            self.log_message.emit("ERROR: Please select a DEM Raster Layer.")
+            return False
+        if needs_pour_points and not self.pour_points_layer:
+            self.log_message.emit("ERROR: Please select a Pour Points Layer.")
+            return False
+        return True
+
+    def _run_processing_algorithm(self, name, params):
+        import processing
+
+        self.log_message.emit(f"Running algorithm: {name}...")
+        try:
+            result = processing.run(name, params)
+            self.log_message.emit(f"Algorithm '{name}' finished successfully.")
+            self.processor.record_processing_outputs(name, params, result)
+            return result
+        except Exception as exc:
+            self.log_message.emit(
+                f"ERROR: Algorithm '{name}' failed. Details: {exc}"
+            )
+            return None
 
 
 class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
@@ -121,6 +215,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self._preferred_l1_resolution = None
         self._preferred_l11_resolution = None
         self._terminal_dialog = None
+        self._execute_all_thread = None
+        self._execute_all_worker = None
+        self._execute_all_default_style = self.pushButton_executeAll.styleSheet()
 
         # --- Initialize processors ---
         self.morphology_processor = MorphologyProcessor(self)
@@ -307,16 +404,10 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         )
 
         # Reset geometry
-        self.pushButton_resetGeometry.clicked.connect(
-            self.morphology_processor.resetGeometry
-        )
+        self.pushButton_resetGeometry.clicked.connect(self.reset_geometry_processing)
 
         # Execute all processing
-        self.connect_processor_button(
-            self.pushButton_executeAll,
-            "Execute All Processing",
-            self.morphology_processor.execute_all_processing,
-        )
+        self.pushButton_executeAll.clicked.connect(self.start_execute_all_processing)
 
         # LAI file browser
         if hasattr(self, "pushButton_browse_lai"):
@@ -880,6 +971,167 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if action_name == "Fill DEM":
             self.update_l0_resolution_from_dem()
 
+    def reset_geometry_processing(self):
+        """Reset geometry outputs and refresh execute-all UI state."""
+        self.morphology_processor.resetGeometry()
+        self.refresh_execute_all_button_state()
+
+    def start_execute_all_processing(self):
+        """Run execute-all processing in a background worker thread."""
+        if (
+            self._execute_all_thread is not None
+            and self._execute_all_thread.isRunning()
+        ):
+            QMessageBox.information(
+                self,
+                "Execute All Processing",
+                "Execute All Processing is already running.",
+            )
+            return
+
+        if not self.check_prerequisites():
+            return
+
+        self.log_selected_input_paths("Execute All Processing")
+        self.save_input_state()
+        self.morphology_processor.load_processing_state()
+        self.morphology_processor.mark_workflow_status(
+            "execute_all",
+            "running",
+        )
+        self.set_execute_all_button_state("running")
+
+        thread = QtCore.QThread(self)
+        thread.setObjectName("PymHMExecuteAllThread")
+        worker = ExecuteAllWorker(
+            self.morphology_processor,
+            self.project_folder,
+            self.mMapLayerComboBox_dem.currentLayer(),
+            self.mMapLayerComboBox_pour_points.currentLayer(),
+        )
+        worker.moveToThread(thread)
+
+        worker.log_message.connect(self.log_message)
+        worker.finished.connect(self.finish_execute_all_processing)
+        worker.finished.connect(lambda ok, message: thread.quit())
+        worker.finished.connect(worker.deleteLater)
+        thread.started.connect(worker.run)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self.clear_execute_all_worker)
+
+        self._execute_all_thread = thread
+        self._execute_all_worker = worker
+        thread.start()
+
+    def finish_execute_all_processing(self, ok, message):
+        """Update UI and persisted workflow status after execute-all finishes."""
+        if ok:
+            self.morphology_processor.mark_workflow_status(
+                "execute_all",
+                "completed",
+                "Execute All Processing completed successfully.",
+            )
+            self.set_execute_all_button_state("completed")
+            self.log_message("Execute All Processing completed.")
+            return
+
+        workflow_message = self.morphology_processor.workflow_status(
+            "execute_all"
+        ).get("message")
+        message = (
+            message
+            or workflow_message
+            or "Execute All Processing failed. Check the log for details."
+        )
+        self.morphology_processor.mark_workflow_status(
+            "execute_all",
+            "failed",
+            message,
+        )
+        self.set_execute_all_button_state("failed")
+        self.log_message(message)
+        QMessageBox.critical(
+            self,
+            "Execute All Processing",
+            message,
+        )
+
+    def clear_execute_all_worker(self):
+        """Drop references after the execute-all worker thread stops."""
+        self._execute_all_thread = None
+        self._execute_all_worker = None
+
+    def closeEvent(self, event):
+        """Prevent closing the dialog while execute-all is still running."""
+        if (
+            self._execute_all_thread is not None
+            and self._execute_all_thread.isRunning()
+        ):
+            QMessageBox.warning(
+                self,
+                "Execute All Processing",
+                "Execute All Processing is still running. Wait for it to finish before closing PymHM.",
+            )
+            event.ignore()
+            return
+        super().closeEvent(event)
+
+    def set_execute_all_button_state(self, status):
+        """Reflect execute-all state on the toolbar-style button."""
+        button = getattr(self, "pushButton_executeAll", None)
+        if button is None:
+            return
+
+        if status == "running":
+            button.setEnabled(False)
+            button.setStyleSheet(
+                "QPushButton {"
+                "text-align: left;"
+                "background-color: #f6c453;"
+                "border: 1px solid #a66f00;"
+                "border-radius: 3px;"
+                "}"
+            )
+            return
+
+        button.setEnabled(True)
+        if status == "completed":
+            button.setStyleSheet(
+                "QPushButton {"
+                "text-align: left;"
+                "background-color: #2e7d32;"
+                "border: 1px solid #1b5e20;"
+                "border-radius: 3px;"
+                "}"
+            )
+        elif status == "failed":
+            button.setStyleSheet(
+                "QPushButton {"
+                "text-align: left;"
+                "background-color: #c62828;"
+                "border: 1px solid #8e0000;"
+                "border-radius: 3px;"
+                "}"
+            )
+        else:
+            button.setStyleSheet(self._execute_all_default_style)
+
+    def refresh_execute_all_button_state(self):
+        """Restore execute-all button styling from project processing state."""
+        if (
+            self._execute_all_thread is not None
+            and self._execute_all_thread.isRunning()
+        ):
+            return
+
+        workflow = self.morphology_processor.workflow_status("execute_all")
+        if workflow.get("status") == "completed":
+            self.set_execute_all_button_state("completed")
+        elif workflow.get("status") == "failed":
+            self.set_execute_all_button_state("failed")
+        else:
+            self.set_execute_all_button_state("")
+
     def project_terminal_dialog(self):
         """Return the persistent terminal dialog for this plugin dialog."""
         if self._terminal_dialog is None:
@@ -1396,6 +1648,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
             # Load project state in morphology processor
             self.morphology_processor.load_project_state()
+            self.refresh_execute_all_button_state()
             self.meteorology_processor.load_project_state()
             self.refresh_grid_resolution_controls()
             self.configuration_processor.load_project_state()

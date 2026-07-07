@@ -24,7 +24,7 @@ class ProcessingStateMixin:
         """Load the processing output registry for this project."""
         state_path = self.processing_state_path()
         if not state_path or not os.path.exists(state_path):
-            self.processing_state = {"version": 1, "outputs": {}}
+            self.processing_state = {"version": 1, "outputs": {}, "workflows": {}}
             return
 
         try:
@@ -34,10 +34,11 @@ class ProcessingStateMixin:
                 raise ValueError("Processing state is not a JSON object.")
             state.setdefault("version", 1)
             state.setdefault("outputs", {})
+            state.setdefault("workflows", {})
             self.processing_state = state
         except Exception as e:
             self.log_message(f"WARNING: Could not read processing state: {e}")
-            self.processing_state = {"version": 1, "outputs": {}}
+            self.processing_state = {"version": 1, "outputs": {}, "workflows": {}}
 
     def save_processing_state(self):
         """Write the processing output registry to the project folder."""
@@ -137,3 +138,40 @@ class ProcessingStateMixin:
                     loaded=False,
                     algorithm=algorithm
                 )
+
+    def mark_workflow_status(self, workflow, status, message="", **metadata):
+        """Record a project-local workflow status such as execute-all completion."""
+        if not workflow:
+            return
+
+        timestamp = utc_timestamp()
+        workflows = self.processing_state.setdefault("workflows", {})
+        entry = workflows.get(workflow, {})
+        entry.update({
+            "status": status,
+            "updated_at": timestamp,
+        })
+        if status == "running":
+            entry["started_at"] = timestamp
+            entry.pop("completed_at", None)
+            entry.pop("failed_at", None)
+        elif status == "completed":
+            entry["completed_at"] = timestamp
+        elif status == "failed":
+            entry["failed_at"] = timestamp
+
+        if message:
+            entry["message"] = message
+        elif status == "running":
+            entry.pop("message", None)
+
+        for key, value in metadata.items():
+            if value is not None:
+                entry[key] = value
+
+        workflows[workflow] = entry
+        self.save_processing_state()
+
+    def workflow_status(self, workflow):
+        """Return a saved workflow status entry."""
+        return self.processing_state.get("workflows", {}).get(workflow, {})

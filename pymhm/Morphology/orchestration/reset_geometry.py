@@ -115,7 +115,7 @@ class ResetGeometryMixin(BaseProcessingMixin):
         self.geology_path = None
         self.land_use_layer = None
         self.dem_layer = None
-        self.processing_state = {"version": 1, "outputs": {}}
+        self.processing_state = {"version": 1, "outputs": {}, "workflows": {}}
         self.save_processing_state()
         
         self.log_message("All geometry processing attributes reset.")

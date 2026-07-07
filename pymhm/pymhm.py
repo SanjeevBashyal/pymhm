@@ -28,12 +28,25 @@ from qgis.PyQt.QtWidgets import QAction
 # Initialize Qt resources from file resources.py
 from . import resources_rc  # noqa: F401
 
-# Import the code for the dialog
-from .pymhm_dialog import pymhmDialog
-
 
 def classFactory(iface):  # pylint: disable=invalid-name
     """Return the plugin instance when QGIS imports this module directly."""
+    parent = iface.mainWindow() if iface is not None else None
+    try:
+        from .dependency_bootstrap import ensure_qgis_runtime_dependencies
+
+        ensure_qgis_runtime_dependencies(parent=parent, prompt=True)
+    except Exception as exc:
+        try:
+            from qgis.PyQt.QtWidgets import QMessageBox
+
+            QMessageBox.warning(
+                parent,
+                "PymHM Dependency Check",
+                f"PymHM dependency check could not run.\n\n{exc}",
+            )
+        except Exception:
+            print(f"PymHM dependency check could not run: {exc}")
     return pymhm(iface)
 
 
@@ -181,6 +194,42 @@ class pymhm:
 
     def run(self):
         """Run method that performs all the real work"""
+
+        parent = self.iface.mainWindow() if self.iface is not None else None
+        try:
+            from .dependency_bootstrap import ensure_qgis_runtime_dependencies
+
+            dependency_result = ensure_qgis_runtime_dependencies(
+                parent=parent,
+                prompt=False,
+            )
+        except Exception as exc:
+            from qgis.PyQt.QtWidgets import QMessageBox
+
+            QMessageBox.warning(
+                parent,
+                "PymHM Dependency Check",
+                f"PymHM dependency check could not run.\n\n{exc}",
+            )
+            return
+
+        if not dependency_result.ok:
+            from qgis.PyQt.QtWidgets import QMessageBox
+
+            missing = (
+                dependency_result.failed_requirements
+                or [dependency.requirement for dependency in dependency_result.missing]
+            )
+            QMessageBox.warning(
+                parent,
+                "PymHM Python Dependencies Missing",
+                "PymHM cannot open until these Python packages are available "
+                "in the QGIS Python environment:\n\n"
+                + "\n".join(missing),
+            )
+            return
+
+        from .pymhm_dialog import pymhmDialog
 
         # Create the dialog with elements (after translation) and keep reference
         # Only create GUI ONCE in callback, so that it will only load when the plugin is started

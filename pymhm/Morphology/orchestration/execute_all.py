@@ -2,11 +2,7 @@
 """Execute-all morphology workflow orchestration."""
 from __future__ import annotations
 
-from ..common import (
-    os,
-    QMessageBox,
-    processing,
-)
+from ..common import os, QMessageBox
 from ..classification_writers import ClassificationWritersMixin
 from ..hydrology.aggregate import HydrologyMixin
 from ..latlon import LatLonMixin
@@ -23,7 +19,7 @@ class ExecuteAllMixin(
 ):
     """Execute-all morphology workflow orchestration."""
 
-    def execute_all_processing(self) -> None:
+    def execute_all_processing(self, show_error_dialog=True) -> bool:
         """
         Execute all processing steps sequentially in the following order:
         1. filled dem
@@ -49,16 +45,24 @@ class ExecuteAllMixin(
 
         # Check prerequisites first
         if not self.check_prerequisites():
-            self.log_message("ERROR: Prerequisites check failed. Aborting Execute All.")
-            return
+            message = "Prerequisites check failed. Aborting Execute All."
+            self.log_message(f"ERROR: {message}")
+            self.mark_workflow_status("execute_all", "failed", message)
+            return False
 
+        self.skip_loading = True
+        self.mark_workflow_status("execute_all", "running")
         try:
+            def fail(message):
+                self.log_message(f"ERROR: {message}")
+                self.mark_workflow_status("execute_all", "failed", message)
+                return False
+
             # Step 1: Fill DEM
             self.log_message("\n--- Step 1/18: Fill DEM ---")
             self.without_layer_loading(self.fill_dem)
             if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
-                self.log_message("ERROR: Fill DEM failed. Aborting Execute All.")
-                return
+                return fail("Fill DEM failed. Aborting Execute All.")
 
             # Step 2: Slope
             self.log_message("\n--- Step 2/18: Process Slope ---")
@@ -86,10 +90,7 @@ class ExecuteAllMixin(
             if not self.flow_accumulation_path or not os.path.exists(
                 self.flow_accumulation_path
             ):
-                self.log_message(
-                    "ERROR: Flow Accumulation failed. Aborting Execute All."
-                )
-                return
+                return fail("Flow Accumulation failed. Aborting Execute All.")
 
             # Step 8: Flow Direction
             self.log_message("\n--- Step 8/18: Process Flow Direction ---")
@@ -97,8 +98,7 @@ class ExecuteAllMixin(
             if not self.flow_direction_path or not os.path.exists(
                 self.flow_direction_path
             ):
-                self.log_message("ERROR: Flow Direction failed. Aborting Execute All.")
-                return
+                return fail("Flow Direction failed. Aborting Execute All.")
 
             # Step 9: ID Gauges (Gauge Position) - Note: requires snap points, will be processed after step 11
             self.log_message(
@@ -112,8 +112,7 @@ class ExecuteAllMixin(
             if not self.channel_network_vector_path or not os.path.exists(
                 self.channel_network_vector_path
             ):
-                self.log_message("ERROR: Channel Network failed. Aborting Execute All.")
-                return
+                return fail("Channel Network failed. Aborting Execute All.")
 
             # Step 11: Snap Points
             self.log_message("\n--- Step 11/18: Snap Points ---")
@@ -170,17 +169,27 @@ class ExecuteAllMixin(
             self.write_all_layers()
 
             self.log_message("\n=== Execute All Processing Completed Successfully ===")
+            self.mark_workflow_status(
+                "execute_all",
+                "completed",
+                "Execute All Processing completed successfully.",
+            )
+            return True
 
         except Exception as e:
+            message = f"Execute All Processing failed with exception: {str(e)}"
             self.log_message(
-                f"\nERROR: Execute All Processing failed with exception: {str(e)}"
+                f"\nERROR: {message}"
             )
             import traceback
 
             self.log_message(f"Traceback: {traceback.format_exc()}")
-            QMessageBox.critical(
-                self.dialog, "Error", f"Execute All Processing failed:\n{str(e)}"
-            )
+            self.mark_workflow_status("execute_all", "failed", message)
+            if show_error_dialog:
+                QMessageBox.critical(
+                    self.dialog, "Error", f"Execute All Processing failed:\n{str(e)}"
+                )
+            return False
         finally:
             self.skip_loading = False
             self.log_message(
