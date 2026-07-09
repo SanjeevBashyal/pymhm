@@ -237,14 +237,33 @@ def resolution_is_multiple(
         tolerance=None,
         unit: str | None = None) -> bool:
     """Return True when coarse is an integer multiple of fine."""
+    return integer_resolution_factor(
+        coarse_resolution,
+        fine_resolution,
+        unit=unit,
+        tolerance=tolerance,
+    ) is not None
+
+
+def integer_resolution_factor(
+        coarse_resolution: float,
+        fine_resolution: float,
+        unit: str | None = None,
+        tolerance=None) -> int | None:
+    """Return integer coarse/fine factor when the ratio is close enough."""
     if coarse_resolution <= 0 or fine_resolution <= 0:
-        return False
+        return None
     coarse_resolution = ceil_cellsize(coarse_resolution, unit)
     fine_resolution = ceil_cellsize(fine_resolution, unit)
     if tolerance is None:
-        tolerance = max(10 ** -cellsize_precision_for_unit(unit), 1e-9)
+        tolerance = 1e-7
     ratio = coarse_resolution / fine_resolution
-    return math.isclose(ratio, round(ratio), abs_tol=tolerance, rel_tol=0.0)
+    nearest = int(round(ratio))
+    if nearest < 1:
+        return None
+    if abs(ratio - nearest) <= tolerance:
+        return nearest
+    return None
 
 
 def possible_resolutions(
@@ -254,9 +273,13 @@ def possible_resolutions(
     """Return all resolutions between fine and coarse compatible with both."""
     fine_resolution = ceil_cellsize(fine_resolution, unit)
     coarse_resolution = ceil_cellsize(coarse_resolution, unit)
-    if not resolution_is_multiple(coarse_resolution, fine_resolution, unit=unit):
+    ratio = integer_resolution_factor(
+        coarse_resolution,
+        fine_resolution,
+        unit=unit,
+    )
+    if ratio is None:
         return []
-    ratio = int(round(coarse_resolution / fine_resolution))
     values = []
     for divisor in range(1, ratio + 1):
         if ratio % divisor == 0:

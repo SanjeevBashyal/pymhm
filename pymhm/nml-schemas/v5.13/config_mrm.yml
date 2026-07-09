@@ -3,6 +3,22 @@ description: Configuration for the multi-scale routing model (mRM) in mHM.
 x-fortran-namelist: config_mrm
 type: object
 properties:
+  nGaugesTotal:
+    type: integer
+    x-fortran-kind: i4
+    default: 1
+    title: Number of gauges in all domains
+    description: Number of gauges in all domains.
+  NoGauges_domain:
+    type: array
+    items:
+      type: integer
+      x-fortran-kind: i4
+      minimum: 0
+      default: 1
+    x-fortran-shape: max_domains
+    title: Number of gauges in each domain
+    description: Number of gauges in each domain.
   ALMA_convention:
     type: boolean
     default: false

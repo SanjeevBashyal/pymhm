@@ -14,41 +14,44 @@ from ...grid_resolution import header_bounds, header_for_existing_bounds
 class MaskingMixin(WatershedDelineationMixin):
     """Cropping and watershed masking for prepared morphology rasters."""
 
-    def crop_all_layers(self) -> None:
+    def crop_all_layers(self, show_error_dialog=True) -> bool:
         """Crop prepared morphology rasters to the common L0/L2 model extent."""
         if not self.check_prerequisites():
-            return
+            return False
 
         if not self._ensure_filled_dem(self.fill_dem):
-            return
+            return False
 
         geometry_folder = project_geometry_folder(self.dialog.project_folder)
         try:
             l0_header = self._target_l0_header()
         except Exception as e:
             self.log_message(f"ERROR: Cannot crop morphology rasters: {e}")
-            QMessageBox.warning(self.dialog, "Grid Configuration Error", str(e))
-            return
+            if show_error_dialog:
+                QMessageBox.warning(self.dialog, "Grid Configuration Error", str(e))
+            return False
 
         input_crs = self.dialog.get_crs()
         if not input_crs.isValid():
-            QMessageBox.warning(
-                self.dialog,
-                "CRS Error",
-                "Please set a valid input CRS.")
-            return
+            if show_error_dialog:
+                QMessageBox.warning(
+                    self.dialog,
+                    "CRS Error",
+                    "Please set a valid input CRS.")
+            return False
 
         layers_to_crop = self._collect_layers_to_crop(geometry_folder)
         if not layers_to_crop:
             lai_cropped = self._crop_lai_netcdf_if_available(l0_header, input_crs)
             if lai_cropped:
                 self.log_message("Crop all process completed.")
-                return
-            QMessageBox.warning(
-                self.dialog,
-                "No Layers",
-                "No raster layers found to crop. Please process at least the filled DEM first.")
-            return
+                return True
+            if show_error_dialog:
+                QMessageBox.warning(
+                    self.dialog,
+                    "No Layers",
+                    "No raster layers found to crop. Please process at least the filled DEM first.")
+            return False
 
         extent_str = self._extent_from_header(l0_header, input_crs)
         resolution = float(l0_header["cellsize"])
@@ -58,6 +61,7 @@ class MaskingMixin(WatershedDelineationMixin):
         self.log_message(f"Crop resolution: {resolution:.6f}")
         self.log_message(f"Cropping {len(layers_to_crop)} raster layer(s)...")
 
+        all_success = True
         for layer_info in layers_to_crop:
             input_path = layer_info["input"]
             output_path = layer_info["crop"]
@@ -98,30 +102,39 @@ class MaskingMixin(WatershedDelineationMixin):
                 self.log_message(f"{layer_name} cropped successfully.")
             else:
                 self.log_message(f"ERROR: Failed to crop {layer_name}.")
+                all_success = False
 
-        self._crop_lai_netcdf_if_available(l0_header, input_crs)
+        lai_selected = bool(
+            getattr(self, "_is_lai_long_term_monthly_netcdf_selected", lambda: False)()
+        )
+        lai_cropped = self._crop_lai_netcdf_if_available(l0_header, input_crs)
+        if lai_selected and not lai_cropped:
+            all_success = False
         self.log_message("Crop all process completed.")
+        return all_success
 
-    def mask_all_layers(self) -> None:
+    def mask_all_layers(self, show_error_dialog=True) -> bool:
         """Mask cropped morphology rasters by merged watershed, leaving -9999 outside."""
         if not self.check_prerequisites():
-            return
+            return False
 
         geometry_folder = project_geometry_folder(self.dialog.project_folder)
         try:
             l0_header = self._target_l0_header()
         except Exception as e:
             self.log_message(f"ERROR: Cannot mask morphology rasters: {e}")
-            QMessageBox.warning(self.dialog, "Grid Configuration Error", str(e))
-            return
+            if show_error_dialog:
+                QMessageBox.warning(self.dialog, "Grid Configuration Error", str(e))
+            return False
 
         input_crs = self.dialog.get_crs()
         if not input_crs.isValid():
-            QMessageBox.warning(
-                self.dialog,
-                "CRS Error",
-                "Please set a valid input CRS.")
-            return
+            if show_error_dialog:
+                QMessageBox.warning(
+                    self.dialog,
+                    "CRS Error",
+                    "Please set a valid input CRS.")
+            return False
 
         merged_watershed_path = self._restore_existing_path(
             "merged_watershed_path",
@@ -136,11 +149,11 @@ class MaskingMixin(WatershedDelineationMixin):
                     self.process_channel_network,
                     self.process_flow_accumulation,
                     self.fill_dem):
-                return
+                return False
             merged_watershed_path = self.merged_watershed_path
 
         if not merged_watershed_path or not os.path.exists(merged_watershed_path):
-            return
+            return False
 
         layers_to_mask = self._collect_layers_to_mask(geometry_folder)
         if not layers_to_mask:
@@ -151,12 +164,13 @@ class MaskingMixin(WatershedDelineationMixin):
             )
             if lai_masked:
                 self.log_message("Masking process completed.")
-                return
-            QMessageBox.warning(
-                self.dialog,
-                "No Cropped Layers",
-                "No cropped raster layers found. Please run Crop All first.")
-            return
+                return True
+            if show_error_dialog:
+                QMessageBox.warning(
+                    self.dialog,
+                    "No Cropped Layers",
+                    "No cropped raster layers found. Please run Crop All first.")
+            return False
 
         extent_str = self._extent_from_header(l0_header, input_crs)
         resolution = float(l0_header["cellsize"])
@@ -166,6 +180,7 @@ class MaskingMixin(WatershedDelineationMixin):
         self.log_message(f"Mask resolution: {resolution:.6f}")
         self.log_message(f"Masking {len(layers_to_mask)} raster layer(s)...")
 
+        all_success = True
         for layer_info in layers_to_mask:
             input_path = layer_info["input"]
             output_path = layer_info["output"]
@@ -209,13 +224,20 @@ class MaskingMixin(WatershedDelineationMixin):
                 self.log_message(f"{layer_name} masked successfully.")
             else:
                 self.log_message(f"ERROR: Failed to mask {layer_name}.")
+                all_success = False
 
-        self._mask_lai_netcdf_if_available(
+        lai_selected = bool(
+            getattr(self, "_is_lai_long_term_monthly_netcdf_selected", lambda: False)()
+        )
+        lai_masked = self._mask_lai_netcdf_if_available(
             l0_header,
             input_crs,
             merged_watershed_path,
         )
+        if lai_selected and not lai_masked:
+            all_success = False
         self.log_message("Masking process completed.")
+        return all_success
 
     def _target_l0_header(self):
         """Return the L0 grid header derived from the configured model extent."""

@@ -144,11 +144,13 @@ class ExecuteAllMixin(
 
             # Step 13: Crop All Layers
             self.log_message("\n--- Step 13/18: Crop All Layers ---")
-            self.crop_all_layers()
+            if not self.crop_all_layers(show_error_dialog=show_error_dialog):
+                return fail("Crop All Layers failed. Aborting Execute All.")
 
             # Step 14: Mask All Layers
             self.log_message("\n--- Step 14/18: Mask All Layers ---")
-            self.mask_all_layers()
+            if not self.mask_all_layers(show_error_dialog=show_error_dialog):
+                return fail("Mask All Layers failed. Aborting Execute All.")
 
             # Step 15: Process Lat/Lon Headers
             self.log_message("\n--- Step 15/18: Process Lat/Lon Headers ---")
@@ -166,7 +168,8 @@ class ExecuteAllMixin(
             self.log_message(
                 "\n--- Step 18/18: Write All Layers (Convert to ASCII) ---"
             )
-            self.write_all_layers()
+            if not self.write_all_layers(show_error_dialog=show_error_dialog):
+                return fail("Write All Layers failed. Aborting Execute All.")
 
             self.log_message("\n=== Execute All Processing Completed Successfully ===")
             self.mark_workflow_status(
@@ -194,4 +197,62 @@ class ExecuteAllMixin(
             self.skip_loading = False
             self.log_message(
                 "Execute All finished. Prepared outputs were recorded in the project processing state."
+            )
+
+    def execute_morph_setup_processing(self, show_error_dialog=True) -> bool:
+        """Run Crop All, Mask All, and Write All as one workflow."""
+        self.log_message("\n=== Starting Morphology Setup ===")
+
+        if not self.check_prerequisites():
+            message = "Prerequisites check failed. Aborting Morphology Setup."
+            self.log_message(f"ERROR: {message}")
+            self.mark_workflow_status("morph_setup", "failed", message)
+            return False
+
+        self.skip_loading = True
+        self.mark_workflow_status("morph_setup", "running")
+        try:
+            def fail(message):
+                self.log_message(f"ERROR: {message}")
+                self.mark_workflow_status("morph_setup", "failed", message)
+                return False
+
+            self.log_message("\n--- Morphology Setup Step 1/3: Crop All Layers ---")
+            if not self.crop_all_layers(show_error_dialog=show_error_dialog):
+                return fail("Crop All Layers failed. Aborting Morphology Setup.")
+
+            self.log_message("\n--- Morphology Setup Step 2/3: Mask All Layers ---")
+            if not self.mask_all_layers(show_error_dialog=show_error_dialog):
+                return fail("Mask All Layers failed. Aborting Morphology Setup.")
+
+            self.log_message(
+                "\n--- Morphology Setup Step 3/3: Write All Layers ---"
+            )
+            if not self.write_all_layers(show_error_dialog=show_error_dialog):
+                return fail("Write All Layers failed. Aborting Morphology Setup.")
+
+            self.log_message("\n=== Morphology Setup Completed Successfully ===")
+            self.mark_workflow_status(
+                "morph_setup",
+                "completed",
+                "Morphology Setup completed successfully.",
+            )
+            return True
+
+        except Exception as e:
+            message = f"Morphology Setup failed with exception: {str(e)}"
+            self.log_message(f"\nERROR: {message}")
+            import traceback
+
+            self.log_message(f"Traceback: {traceback.format_exc()}")
+            self.mark_workflow_status("morph_setup", "failed", message)
+            if show_error_dialog:
+                QMessageBox.critical(
+                    self.dialog, "Error", f"Morphology Setup failed:\n{str(e)}"
+                )
+            return False
+        finally:
+            self.skip_loading = False
+            self.log_message(
+                "Morphology Setup finished. Prepared outputs were recorded in the project processing state."
             )

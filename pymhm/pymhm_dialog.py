@@ -66,6 +66,7 @@ from .grid_resolution import (
     format_resolution,
     header_bounds,
     header_for_existing_bounds,
+    is_geographic_unit,
     load_meteo_grid_metadata,
     possible_resolutions,
     raster_resolution_info,
@@ -73,15 +74,26 @@ from .grid_resolution import (
 )
 
 
-class ExecuteAllWorker(QtCore.QObject):
-    """Run execute-all processing away from the dialog event loop."""
+class MorphologyWorkflowWorker(QtCore.QObject):
+    """Run a morphology workflow away from the dialog event loop."""
 
     log_message = QtCore.pyqtSignal(str)
-    finished = QtCore.pyqtSignal(bool, str)
+    finished = QtCore.pyqtSignal(str, bool, str)
 
-    def __init__(self, processor, project_folder, dem_layer, pour_points_layer):
+    def __init__(
+            self,
+            processor,
+            workflow_key,
+            workflow_label,
+            method_name,
+            project_folder,
+            dem_layer,
+            pour_points_layer):
         super().__init__()
         self.processor = processor
+        self.workflow_key = workflow_key
+        self.workflow_label = workflow_label
+        self.method_name = method_name
         self.project_folder = project_folder
         self.dem_layer = dem_layer
         self.pour_points_layer = pour_points_layer
@@ -94,23 +106,24 @@ class ExecuteAllWorker(QtCore.QObject):
         """Execute the workflow and emit the result."""
         self._install_worker_hooks()
         try:
-            ok = bool(self.processor.execute_all_processing(show_error_dialog=False))
-            self.finished.emit(ok, "")
+            workflow_method = getattr(self.processor, self.method_name)
+            ok = bool(workflow_method(show_error_dialog=False))
+            self.finished.emit(self.workflow_key, ok, "")
         except Exception as exc:
             details = traceback.format_exc()
             self.log_message.emit(
-                f"\nERROR: Execute All worker failed with exception: {exc}"
+                f"\nERROR: {self.workflow_label} worker failed with exception: {exc}"
             )
             self.log_message.emit(f"Traceback: {details}")
             try:
                 self.processor.mark_workflow_status(
-                    "execute_all",
+                    self.workflow_key,
                     "failed",
-                    f"Execute All worker failed: {exc}",
+                    f"{self.workflow_label} worker failed: {exc}",
                 )
             except Exception:
                 pass
-            self.finished.emit(False, str(exc))
+            self.finished.emit(self.workflow_key, False, str(exc))
         finally:
             self._restore_worker_hooks()
 
@@ -170,6 +183,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         super(pymhmDialog, self).__init__(parent)
         self.setupUi(self)
+        self.configure_widget_aliases()
 
         # --- Filter map layer combo boxes to show only relevant layer types ---
         self.mMapLayerComboBox_dem.setFilters(map_layer_filters("RasterLayer"))
@@ -210,15 +224,18 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.geometry_folder = None  # Subfolder for geometry outputs
         self.input_state_filename = "pymhm_input_state.json"
         self._loading_input_state = False
+        self._suspend_input_state_saves = False
+        self._preserve_missing_layer_state = False
         self._grid_l0_info = None
         self._grid_l2_metadata = None
         self._grid_l2_header = None
         self._preferred_l1_resolution = None
         self._preferred_l11_resolution = None
         self._terminal_dialog = None
-        self._execute_all_thread = None
-        self._execute_all_worker = None
-        self._execute_all_default_style = self.pushButton_executeAll.styleSheet()
+        self._morphology_workflow_threads = {}
+        self._morphology_workflow_workers = {}
+        self._workflow_button_default_styles = {}
+        self._capture_workflow_button_default_styles()
 
         # --- Initialize processors ---
         self.morphology_processor = MorphologyProcessor(self)
@@ -231,6 +248,20 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.connect_signals()
         self.refresh_grid_resolution_controls()
         self.configuration_processor.refresh_status_indicators()
+
+    def configure_widget_aliases(self):
+        """Keep renamed widgets compatible with older dialog code."""
+
+        if (
+            hasattr(self, "pushButton_executeAllMorphology")
+            and not hasattr(self, "pushButton_executeAll")
+        ):
+            self.pushButton_executeAll = self.pushButton_executeAllMorphology
+        if (
+            hasattr(self, "pushButton_execute_mHM")
+            and not hasattr(self, "pushButton_RUN")
+        ):
+            self.pushButton_RUN = self.pushButton_execute_mHM
 
     def configure_page_aliases(self):
         """Keep renamed stacked pages compatible with older plugin code."""
@@ -407,8 +438,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         # Reset geometry
         self.pushButton_resetGeometry.clicked.connect(self.reset_geometry_processing)
 
-        # Execute all processing
-        self.pushButton_executeAll.clicked.connect(self.start_execute_all_processing)
+        # Batch morphology workflows
+        execute_all_button = self.morphology_workflow_button("execute_all")
+        if execute_all_button is not None:
+            execute_all_button.clicked.connect(self.start_execute_all_processing)
+        if hasattr(self, "pushButton_executeMorphSetup"):
+            self.pushButton_executeMorphSetup.clicked.connect(
+                self.start_morph_setup_processing
+            )
 
         # LAI file browser
         if hasattr(self, "pushButton_browse_lai"):
@@ -468,14 +505,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             "Create Namelists",
             self.configuration_processor.create_nml_files,
         )
-        self.connect_processor_button(
-            self.pushButton_RUN, "Run mHM", self.configuration_processor.run_mhm
-        )
-        if hasattr(self, "pushButton_execute_mHM"):
-            self.pushButton_execute_mHM.setToolTip("Run mHM")
+        run_mhm_button = getattr(self, "pushButton_execute_mHM", None)
+        if run_mhm_button is None:
+            run_mhm_button = getattr(self, "pushButton_RUN", None)
+        if run_mhm_button is not None:
+            run_mhm_button.setToolTip("Run mHM")
             self.connect_processor_button(
-                self.pushButton_execute_mHM,
-                "Execute mHM",
+                run_mhm_button,
+                "Run mHM",
                 self.configuration_processor.run_mhm,
             )
         connected_terminal_buttons = set()
@@ -496,6 +533,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 self.configuration_processor.browse_configuration_file
             )
         self.connect_input_state_signals()
+        self.connect_input_state_teardown_guards()
 
         # Initialize CRS widget with project CRS
         project_crs = QgsProject.instance().crs()
@@ -668,20 +706,30 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         l2_resolution = self.current_l2_resolution()
         unit = self.current_grid_unit()
 
+        if not self._grid_l2_header or not l2_resolution:
+            self.disable_l1_l11_resolution_options()
+            self.update_latlon_button_state()
+            return
+
         l1_values = []
-        if l0_resolution and l2_resolution:
+        if l0_resolution:
             l1_values = possible_resolutions(l0_resolution, l2_resolution, unit)
-        elif l0_resolution:
-            l1_values = [ceil_cellsize(l0_resolution, unit)]
 
         preferred_l1 = self._preferred_l1_resolution
-        self._populate_resolution_combo(
+        matched_l1 = self._populate_resolution_combo(
             getattr(self, "comboBox_L1", None),
             l1_values,
             preferred_l1,
             unit,
         )
-        if preferred_l1 is not None and l1_values:
+        if preferred_l1 is not None and l1_values and l0_resolution and l2_resolution:
+            if not matched_l1:
+                self.log_resolution_preference_warning(
+                    "L1",
+                    preferred_l1,
+                    l1_values[0],
+                    unit,
+                )
             self._preferred_l1_resolution = None
         if hasattr(self, "label_L1ResolutionUnit"):
             self.label_L1ResolutionUnit.setText(unit if l1_values else "")
@@ -695,25 +743,60 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         l2_resolution = self.current_l2_resolution()
         unit = self.current_grid_unit()
 
+        if not self._grid_l2_header or not l2_resolution or not l1_resolution:
+            self.disable_l11_resolution_options()
+            self.update_latlon_button_state()
+            return
+
         l11_values = []
-        if l1_resolution and l2_resolution:
-            l11_values = possible_resolutions(l1_resolution, l2_resolution, unit)
-        elif l1_resolution:
-            l11_values = [ceil_cellsize(l1_resolution, unit)]
+        l11_values = possible_resolutions(l1_resolution, l2_resolution, unit)
 
         preferred_l11 = self._preferred_l11_resolution
-        self._populate_resolution_combo(
+        matched_l11 = self._populate_resolution_combo(
             getattr(self, "comboBox_L11", None),
             l11_values,
             preferred_l11,
             unit,
         )
-        if preferred_l11 is not None and l11_values:
+        if preferred_l11 is not None and l11_values and l1_resolution and l2_resolution:
+            if not matched_l11:
+                self.log_resolution_preference_warning(
+                    "L11",
+                    preferred_l11,
+                    l11_values[0],
+                    unit,
+                )
             self._preferred_l11_resolution = None
         if hasattr(self, "label_L11ResolutionUnit"):
             self.label_L11ResolutionUnit.setText(unit if l11_values else "")
         self.update_l11_resolution_label()
         self.update_latlon_button_state()
+
+    def disable_l1_l11_resolution_options(self):
+        """Disable L1/L11 controls until meteo L2 grid metadata exists."""
+        self.disable_resolution_combo(getattr(self, "comboBox_L1", None))
+        self.disable_l11_resolution_options()
+        self._set_resolution_labels("L1", "", "")
+
+    def disable_l11_resolution_options(self):
+        """Disable L11 controls and clear its labels."""
+        self.disable_resolution_combo(getattr(self, "comboBox_L11", None))
+        self._set_resolution_labels("L11", "", "")
+
+    def disable_resolution_combo(self, combo_box):
+        """Clear and disable a grid-resolution combo box."""
+        if combo_box is None:
+            return
+        try:
+            combo_box.blockSignals(True)
+        except Exception:
+            pass
+        combo_box.clear()
+        combo_box.setEnabled(False)
+        try:
+            combo_box.blockSignals(False)
+        except Exception:
+            pass
 
     def update_l1_resolution_label(self):
         """Show the selected L1 relation to L0."""
@@ -869,7 +952,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
     def _populate_resolution_combo(self, combo_box, values, preferred_value=None, unit=None):
         """Populate a resolution combo box while preserving a compatible selection."""
         if combo_box is None:
-            return
+            return False
         current_value = self._current_combo_resolution(combo_box)
         preferred = preferred_value or current_value
         try:
@@ -879,21 +962,57 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         combo_box.clear()
         for value in values:
             combo_box.addItem(format_resolution(value, unit), float(value))
+        matched_preferred = preferred is None
         if values:
             selected_index = 0
             if preferred:
                 for index, value in enumerate(values):
-                    if abs(float(value) - float(preferred)) <= max(abs(float(value)), 1.0) * 1e-8:
+                    if self.resolution_values_match(value, preferred, unit):
                         selected_index = index
+                        matched_preferred = True
                         break
             combo_box.setCurrentIndex(selected_index)
-            combo_box.setEnabled(True)
-        else:
-            combo_box.setEnabled(False)
+        combo_box.setEnabled(True)
         try:
             combo_box.blockSignals(False)
         except Exception:
             pass
+        return matched_preferred
+
+    def resolution_state_precision(self, unit):
+        """Return precision used when restoring saved grid-resolution choices."""
+        if is_geographic_unit(unit):
+            return 8
+        return 6
+
+    def normalized_state_resolution(self, value, unit):
+        """Normalize saved and available resolutions for robust state matching."""
+        return ceil_cellsize(value, unit, precision=self.resolution_state_precision(unit))
+
+    def resolution_values_match(self, available_value, preferred_value, unit):
+        """Return True when two resolutions are equivalent for state restore."""
+        try:
+            available = self.normalized_state_resolution(available_value, unit)
+            preferred = self.normalized_state_resolution(preferred_value, unit)
+        except (TypeError, ValueError):
+            return False
+        tolerance = 10 ** (-self.resolution_state_precision(unit))
+        return abs(available - preferred) <= tolerance
+
+    def log_resolution_preference_warning(
+            self,
+            level,
+            saved_value,
+            fallback_value,
+            unit):
+        """Log when a saved L1/L11 choice is no longer selectable."""
+        precision = self.resolution_state_precision(unit)
+        self.log_message(
+            "WARNING: Saved "
+            f"{level} resolution {format_resolution(saved_value, unit, precision)} "
+            f"{unit or ''} is not compatible with the current grid. "
+            f"Using {format_resolution(fallback_value, unit)} {unit or ''}."
+        )
 
     def _current_combo_resolution(self, combo_box):
         """Return current numeric resolution from a combo box."""
@@ -972,6 +1091,58 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         except Exception:
             pass
 
+    def connect_input_state_teardown_guards(self):
+        """Avoid overwriting saved layer selections during QGIS teardown."""
+        application = QtCore.QCoreApplication.instance()
+        if application is not None:
+            try:
+                application.aboutToQuit.connect(self.suspend_input_state_saves)
+            except Exception:
+                pass
+
+        try:
+            project = QgsProject.instance()
+        except Exception:
+            project = None
+        if project is None:
+            return
+
+        removal_start_signal = getattr(project, "layersWillBeRemoved", None)
+        if removal_start_signal is not None:
+            try:
+                removal_start_signal.connect(self.preserve_missing_layer_state)
+            except Exception:
+                pass
+
+        for signal_name in ("layersRemoved", "cleared"):
+            signal = getattr(project, signal_name, None)
+            if signal is None:
+                continue
+            try:
+                signal.connect(self.release_missing_layer_state_preservation)
+            except Exception:
+                pass
+
+    def suspend_input_state_saves(self, *args):
+        """Stop input-state writes once QGIS is shutting down."""
+        self._preserve_missing_layer_state = True
+        self._suspend_input_state_saves = True
+
+    def preserve_missing_layer_state(self, *args):
+        """Keep saved layer entries if QGIS removes layers from combo boxes."""
+        self._preserve_missing_layer_state = True
+
+    def release_missing_layer_state_preservation(self, *args):
+        """Stop preserving empty layer selections after a removal batch ends."""
+        if self._suspend_input_state_saves:
+            return
+        QtCore.QTimer.singleShot(0, self.clear_missing_layer_state_preservation)
+
+    def clear_missing_layer_state_preservation(self):
+        """Return to normal layer-state saving after project layer removal."""
+        if not self._suspend_input_state_saves:
+            self._preserve_missing_layer_state = False
+
     def connect_processor_button(self, button, action_name, callback):
         """Connect a button to a processor callback with input path logging."""
         button.clicked.connect(
@@ -989,39 +1160,109 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.update_l0_resolution_from_dem()
 
     def reset_geometry_processing(self):
-        """Reset geometry outputs and refresh execute-all UI state."""
+        """Reset geometry outputs and refresh workflow UI state."""
         self.morphology_processor.resetGeometry()
-        self.refresh_execute_all_button_state()
+        self.refresh_morphology_workflow_button_states()
+
+    def morphology_workflow_specs(self):
+        """Return metadata for threaded morphology workflows."""
+        return {
+            "execute_all": {
+                "button": "pushButton_executeAllMorphology",
+                "fallback_button": "pushButton_executeAll",
+                "label": "Execute All Processing",
+                "action_name": "Execute All Processing",
+                "method": "execute_all_processing",
+                "thread_name": "PymHMExecuteAllThread",
+                "completed_message": "Execute All Processing completed successfully.",
+                "failed_message": (
+                    "Execute All Processing failed. Check the log for details."
+                ),
+            },
+            "morph_setup": {
+                "button": "pushButton_executeMorphSetup",
+                "label": "Morphology Setup",
+                "action_name": "Morphology Setup",
+                "method": "execute_morph_setup_processing",
+                "thread_name": "PymHMMorphSetupThread",
+                "completed_message": "Morphology Setup completed successfully.",
+                "failed_message": "Morphology Setup failed. Check the log for details.",
+            },
+        }
+
+    def _capture_workflow_button_default_styles(self):
+        """Remember original button styles so saved states can be cleared."""
+        for workflow_key in self.morphology_workflow_specs():
+            button = self.morphology_workflow_button(workflow_key)
+            if button is not None:
+                self._workflow_button_default_styles[workflow_key] = (
+                    button.styleSheet()
+                )
+
+    def morphology_workflow_button(self, workflow_key):
+        """Return the button associated with a morphology workflow."""
+        spec = self.morphology_workflow_specs().get(workflow_key, {})
+        for button_name in (spec.get("button"), spec.get("fallback_button")):
+            if not button_name:
+                continue
+            button = getattr(self, button_name, None)
+            if button is not None:
+                return button
+        return None
+
+    def running_morphology_workflow_key(self):
+        """Return the first running morphology workflow key, if any."""
+        for workflow_key, thread in self._morphology_workflow_threads.items():
+            if thread is not None and thread.isRunning():
+                return workflow_key
+        return None
 
     def start_execute_all_processing(self):
         """Run execute-all processing in a background worker thread."""
-        if (
-            self._execute_all_thread is not None
-            and self._execute_all_thread.isRunning()
-        ):
+        self.start_morphology_workflow("execute_all")
+
+    def start_morph_setup_processing(self):
+        """Run Crop All, Mask All, and Write All in a background worker thread."""
+        self.start_morphology_workflow("morph_setup")
+
+    def start_morphology_workflow(self, workflow_key):
+        """Start a named morphology workflow in a background worker thread."""
+        spec = self.morphology_workflow_specs().get(workflow_key)
+        if spec is None:
+            self.log_message(f"ERROR: Unknown morphology workflow: {workflow_key}")
+            return
+
+        running_key = self.running_morphology_workflow_key()
+        if running_key is not None:
+            running_spec = self.morphology_workflow_specs().get(
+                running_key, {}
+            )
             QMessageBox.information(
                 self,
-                "Execute All Processing",
-                "Execute All Processing is already running.",
+                spec["label"],
+                f"{running_spec.get('label', 'A morphology workflow')} is already running.",
             )
             return
 
         if not self.check_prerequisites():
             return
 
-        self.log_selected_input_paths("Execute All Processing")
+        self.log_selected_input_paths(spec["action_name"])
         self.save_input_state()
         self.morphology_processor.load_processing_state()
         self.morphology_processor.mark_workflow_status(
-            "execute_all",
+            workflow_key,
             "running",
         )
-        self.set_execute_all_button_state("running")
+        self.set_morphology_workflow_button_state(workflow_key, "running")
 
         thread = QtCore.QThread(self)
-        thread.setObjectName("PymHMExecuteAllThread")
-        worker = ExecuteAllWorker(
+        thread.setObjectName(spec["thread_name"])
+        worker = MorphologyWorkflowWorker(
             self.morphology_processor,
+            workflow_key,
+            spec["label"],
+            spec["method"],
             self.project_folder,
             self.mMapLayerComboBox_dem.currentLayer(),
             self.mMapLayerComboBox_pour_points.currentLayer(),
@@ -1029,65 +1270,75 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         worker.moveToThread(thread)
 
         worker.log_message.connect(self.log_message)
-        worker.finished.connect(self.finish_execute_all_processing)
-        worker.finished.connect(lambda ok, message: thread.quit())
+        worker.finished.connect(self.finish_morphology_workflow)
+        worker.finished.connect(
+            lambda key, ok, message, workflow_thread=thread: workflow_thread.quit()
+        )
         worker.finished.connect(worker.deleteLater)
         thread.started.connect(worker.run)
         thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(self.clear_execute_all_worker)
+        thread.finished.connect(
+            lambda key=workflow_key: self.clear_morphology_workflow_worker(key)
+        )
 
-        self._execute_all_thread = thread
-        self._execute_all_worker = worker
+        self._morphology_workflow_threads[workflow_key] = thread
+        self._morphology_workflow_workers[workflow_key] = worker
         thread.start()
 
-    def finish_execute_all_processing(self, ok, message):
-        """Update UI and persisted workflow status after execute-all finishes."""
+    def finish_morphology_workflow(self, workflow_key, ok, message):
+        """Update UI and persisted workflow status after a workflow finishes."""
+        spec = self.morphology_workflow_specs().get(workflow_key)
+        if spec is None:
+            return
+
         if ok:
             self.morphology_processor.mark_workflow_status(
-                "execute_all",
+                workflow_key,
                 "completed",
-                "Execute All Processing completed successfully.",
+                spec["completed_message"],
             )
-            self.set_execute_all_button_state("completed")
-            self.log_message("Execute All Processing completed.")
+            self.set_morphology_workflow_button_state(workflow_key, "completed")
+            self.log_message(spec["completed_message"])
             return
 
         workflow_message = self.morphology_processor.workflow_status(
-            "execute_all"
+            workflow_key
         ).get("message")
         message = (
             message
             or workflow_message
-            or "Execute All Processing failed. Check the log for details."
+            or spec["failed_message"]
         )
         self.morphology_processor.mark_workflow_status(
-            "execute_all",
+            workflow_key,
             "failed",
             message,
         )
-        self.set_execute_all_button_state("failed")
+        self.set_morphology_workflow_button_state(workflow_key, "failed")
         self.log_message(message)
         QMessageBox.critical(
             self,
-            "Execute All Processing",
+            spec["label"],
             message,
         )
 
-    def clear_execute_all_worker(self):
-        """Drop references after the execute-all worker thread stops."""
-        self._execute_all_thread = None
-        self._execute_all_worker = None
+    def clear_morphology_workflow_worker(self, workflow_key):
+        """Drop worker references after a morphology workflow thread stops."""
+        self._morphology_workflow_threads.pop(workflow_key, None)
+        self._morphology_workflow_workers.pop(workflow_key, None)
 
     def closeEvent(self, event):
-        """Prevent closing the dialog while execute-all is still running."""
-        if (
-            self._execute_all_thread is not None
-            and self._execute_all_thread.isRunning()
-        ):
+        """Prevent closing the dialog while a morphology workflow is running."""
+        running_key = self.running_morphology_workflow_key()
+        if running_key is not None:
+            spec = self.morphology_workflow_specs().get(running_key, {})
             QMessageBox.warning(
                 self,
-                "Execute All Processing",
-                "Execute All Processing is still running. Wait for it to finish before closing PymHM.",
+                spec.get("label", "Morphology Processing"),
+                (
+                    f"{spec.get('label', 'Morphology processing')} is still running. "
+                    "Wait for it to finish before closing PymHM."
+                ),
             )
             event.ignore()
             return
@@ -1095,7 +1346,11 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
     def set_execute_all_button_state(self, status):
         """Reflect execute-all state on the toolbar-style button."""
-        button = getattr(self, "pushButton_executeAll", None)
+        self.set_morphology_workflow_button_state("execute_all", status)
+
+    def set_morphology_workflow_button_state(self, workflow_key, status):
+        """Reflect workflow state on its toolbar-style button."""
+        button = self.morphology_workflow_button(workflow_key)
         if button is None:
             return
 
@@ -1131,23 +1386,31 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 "}"
             )
         else:
-            button.setStyleSheet(self._execute_all_default_style)
+            button.setStyleSheet(
+                self._workflow_button_default_styles.get(workflow_key, "")
+            )
 
     def refresh_execute_all_button_state(self):
         """Restore execute-all button styling from project processing state."""
-        if (
-            self._execute_all_thread is not None
-            and self._execute_all_thread.isRunning()
-        ):
+        self.refresh_morphology_workflow_button_state("execute_all")
+
+    def refresh_morphology_workflow_button_states(self):
+        """Restore all morphology workflow button styles from project state."""
+        for workflow_key in self.morphology_workflow_specs():
+            self.refresh_morphology_workflow_button_state(workflow_key)
+
+    def refresh_morphology_workflow_button_state(self, workflow_key):
+        """Restore one morphology workflow button style from project state."""
+        if self.running_morphology_workflow_key() == workflow_key:
             return
 
-        workflow = self.morphology_processor.workflow_status("execute_all")
+        workflow = self.morphology_processor.workflow_status(workflow_key)
         if workflow.get("status") == "completed":
-            self.set_execute_all_button_state("completed")
+            self.set_morphology_workflow_button_state(workflow_key, "completed")
         elif workflow.get("status") == "failed":
-            self.set_execute_all_button_state("failed")
+            self.set_morphology_workflow_button_state(workflow_key, "failed")
         else:
-            self.set_execute_all_button_state("")
+            self.set_morphology_workflow_button_state(workflow_key, "")
 
     def project_terminal_dialog(self):
         """Return the persistent terminal dialog for this plugin dialog."""
@@ -1367,18 +1630,30 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
     def save_input_state(self):
         """Save selected inputs to a JSON file in the project folder."""
-        if not self.project_folder or self._loading_input_state:
+        if (
+            not self.project_folder
+            or self._loading_input_state
+            or self._suspend_input_state_saves
+        ):
             return
 
         state_path = self.input_state_path()
         if not state_path:
             return
 
+        existing_state = self.read_existing_input_state(state_path)
+        existing_layers = existing_state.get("layers", {})
+        if not isinstance(existing_layers, dict):
+            existing_layers = {}
+
         layers = {}
         for key, combo_box in self.input_layer_widgets():
             layer = combo_box.currentLayer()
             if not layer:
-                layers[key] = None
+                if self._preserve_missing_layer_state and key in existing_layers:
+                    layers[key] = existing_layers.get(key)
+                else:
+                    layers[key] = None
                 continue
 
             layer_type = (
@@ -1431,6 +1706,19 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 json.dump(state, state_file, indent=2, sort_keys=True)
         except Exception as e:
             self.log_message(f"WARNING: Could not save input state: {e}")
+
+    def read_existing_input_state(self, state_path):
+        """Return existing input state for preservation during teardown."""
+        if not state_path or not os.path.exists(state_path):
+            return {}
+        try:
+            with open(state_path, "r", encoding="utf-8") as state_file:
+                state = json.load(state_file)
+            if isinstance(state, dict):
+                return state
+        except Exception:
+            pass
+        return {}
 
     def load_input_state(self):
         """Load saved input selections from the project folder."""
@@ -1665,7 +1953,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
             # Load project state in morphology processor
             self.morphology_processor.load_project_state()
-            self.refresh_execute_all_button_state()
+            self.refresh_morphology_workflow_button_states()
             self.meteorology_processor.load_project_state()
             self.refresh_grid_resolution_controls()
             self.configuration_processor.load_project_state()

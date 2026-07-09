@@ -18,7 +18,7 @@ from ...mhm_tools_to_integrate.data_processing import (
 class AsciiExportMixin(MaskingMixin):
     """ASCII export of masked morphology rasters."""
 
-    def write_all_layers(self) -> None:
+    def write_all_layers(self, show_error_dialog=True) -> bool:
         """
         Convert all masked layers to mHM ASCII format through mhm_tools.
         The output grid is cropped/aligned to the L0 header derived from the
@@ -28,26 +28,28 @@ class AsciiExportMixin(MaskingMixin):
 
         # Check prerequisites
         if not self.check_prerequisites():
-            return
+            return False
 
         try:
             headers = self.dialog.grid_level_headers()
         except Exception as e:
             self.log_message(f"ERROR: Cannot prepare ASCII grid headers: {e}")
-            QMessageBox.warning(
-                self.dialog,
-                "Grid Configuration Error",
-                str(e),
-            )
-            return
+            if show_error_dialog:
+                QMessageBox.warning(
+                    self.dialog,
+                    "Grid Configuration Error",
+                    str(e),
+                )
+            return False
 
         geom_folder = geometry_folder(self.dialog.project_folder)
 
         if not os.path.exists(geom_folder):
-            QMessageBox.warning(
-                self.dialog, "Error",
-                "Geometry folder does not exist. Please process layers first.")
-            return
+            if show_error_dialog:
+                QMessageBox.warning(
+                    self.dialog, "Error",
+                    "Geometry folder does not exist. Please process layers first.")
+            return False
 
         morph_output_folder = morph_folder(self.dialog.project_folder)
         os.makedirs(morph_output_folder, exist_ok=True)
@@ -97,11 +99,12 @@ class AsciiExportMixin(MaskingMixin):
 
         if not masked_layers:
             self.log_message("No masked layers found. Please run Mask All before Write All.")
-            QMessageBox.warning(
-                self.dialog,
-                "No Masked Layers",
-                "No masked raster layers found. Please run Mask All first.")
-            return
+            if show_error_dialog:
+                QMessageBox.warning(
+                    self.dialog,
+                    "No Masked Layers",
+                    "No masked raster layers found. Please run Mask All first.")
+            return False
 
         self.log_message(f"Found {len(masked_layers)} masked layer(s) to convert...")
 
@@ -114,10 +117,11 @@ class AsciiExportMixin(MaskingMixin):
             )
         except Exception as e:
             self.log_message(f"ERROR: ASCII conversion failed: {e}")
-            QMessageBox.warning(
-                self.dialog, "Conversion Error",
-                f"Failed to prepare ASCII files:\n{e}")
-            return
+            if show_error_dialog:
+                QMessageBox.warning(
+                    self.dialog, "Conversion Error",
+                    f"Failed to prepare ASCII files:\n{e}")
+            return False
 
         for output_path in result.outputs.values():
             self.mark_output_prepared(
@@ -131,3 +135,4 @@ class AsciiExportMixin(MaskingMixin):
         self.log_message(f"Successfully converted: {len(result.outputs)} layer(s)")
         self.log_message(f"ASCII files saved to: {morph_output_folder}")
         self.log_message("ASCII conversion process completed.")
+        return True
