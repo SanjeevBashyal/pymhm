@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+from decimal import Decimal, ROUND_CEILING
 from pathlib import Path
 
 from .project_layout import geometry_folder, meteo_folder
@@ -12,12 +13,48 @@ from .project_layout import geometry_folder, meteo_folder
 
 METEO_GRID_METADATA = "meteo_grid_metadata.json"
 NODATA_VALUE = -9999.0
+PROJECTED_CELLSIZE_PRECISION = 8
+GEOGRAPHIC_CELLSIZE_PRECISION = 8
+
+
+def is_geographic_unit(unit: str | None) -> bool:
+    """Return True when a unit label describes geographic degrees."""
+    text = (unit or "").strip().lower()
+    return text in {"deg", "degree", "degrees"}
+
+
+def cellsize_precision_for_unit(unit: str | None) -> int:
+    """Return internal cellsize precision for projected or geographic grids."""
+    if is_geographic_unit(unit):
+        return GEOGRAPHIC_CELLSIZE_PRECISION
+    return PROJECTED_CELLSIZE_PRECISION
+
+
+def ceil_to_precision(value, precision: int) -> float:
+    """Ceil a numeric value to a fixed number of decimal places."""
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        return numeric
+    quantum = Decimal("1").scaleb(-int(precision))
+    return float(
+        Decimal(str(numeric)).quantize(
+            quantum,
+            rounding=ROUND_CEILING,
+        )
+    )
+
+
+def ceil_cellsize(value, unit: str | None = None,
+                  precision: int | None = None) -> float:
+    """Ceil a grid cellsize using the configured internal CRS precision."""
+    if precision is None:
+        precision = cellsize_precision_for_unit(unit)
+    return ceil_to_precision(value, precision)
 
 
 def display_precision_for_unit(unit: str | None) -> int:
     """Return display precision for map/grid values in the given unit."""
-    text = (unit or "").strip().lower()
-    if text in {"deg", "degree", "degrees"}:
+    if is_geographic_unit(unit):
         return 6
     return 3
 
@@ -72,14 +109,18 @@ def raster_resolution_info(layer) -> dict | None:
 
     x_resolution = abs((extent.xMaximum() - extent.xMinimum()) / width)
     y_resolution = abs((extent.yMaximum() - extent.yMinimum()) / height)
-    resolution = (x_resolution + y_resolution) / 2.0
     crs = layer.crs()
+    unit = qgis_crs_unit_label(crs)
+    x_resolution = ceil_cellsize(x_resolution, unit)
+    y_resolution = ceil_cellsize(y_resolution, unit)
+    resolution = ceil_cellsize((x_resolution + y_resolution) / 2.0, unit)
     return {
         "resolution": resolution,
         "x_resolution": x_resolution,
         "y_resolution": y_resolution,
-        "unit": qgis_crs_unit_label(crs),
+        "unit": unit,
         "crs_authid": qgis_crs_to_authid(crs),
+        "cellsize_precision": cellsize_precision_for_unit(unit),
         "header": {
             "ncols": width,
             "nrows": height,
@@ -87,11 +128,13 @@ def raster_resolution_info(layer) -> dict | None:
             "yllcorner": float(extent.yMinimum()),
             "cellsize": float(resolution),
             "nodata_value": NODATA_VALUE,
+            "unit": unit,
+            "cellsize_precision": cellsize_precision_for_unit(unit),
         },
     }
 
 
-def read_header_file(path) -> dict | None:
+def read_header_file(path, unit: str | None = None) -> dict | None:
     """Read an mHM/ESRI-style header file into normalized lowercase keys."""
     path = Path(path)
     if not path.exists():
@@ -115,6 +158,10 @@ def read_header_file(path) -> dict | None:
     if "yllcenter" in header:
         header["yllcorner"] = header["yllcenter"] - 0.5 * header.get("cellsize", 1.0)
     header.setdefault("nodata_value", NODATA_VALUE)
+    if unit is not None and "cellsize" in header:
+        header["cellsize"] = ceil_cellsize(header["cellsize"], unit)
+        header["unit"] = unit
+        header["cellsize_precision"] = cellsize_precision_for_unit(unit)
 
     required = {"ncols", "nrows", "xllcorner", "yllcorner", "cellsize"}
     if not required.issubset(header):
@@ -172,31 +219,52 @@ def load_meteo_grid_metadata(project_folder) -> dict | None:
     return None
 
 
-def nearest_integer_multiple(raw_resolution: float, base_resolution: float) -> tuple[float, int]:
+def nearest_integer_multiple(
+        raw_resolution: float,
+        base_resolution: float,
+        unit: str | None = None) -> tuple[float, int]:
     """Return the nearest resolution that is an integer multiple of the base."""
     if raw_resolution <= 0 or base_resolution <= 0:
         raise ValueError("Grid resolutions must be positive.")
+    base_resolution = ceil_cellsize(base_resolution, unit)
     ratio = max(1, int(round(raw_resolution / base_resolution)))
-    return float(ratio * base_resolution), ratio
+    return ceil_cellsize(ratio * base_resolution, unit), ratio
 
 
-def resolution_is_multiple(coarse_resolution: float, fine_resolution: float, tolerance=1e-7) -> bool:
+def resolution_is_multiple(
+        coarse_resolution: float,
+        fine_resolution: float,
+        tolerance=None,
+        unit: str | None = None) -> bool:
     """Return True when coarse is an integer multiple of fine."""
     if coarse_resolution <= 0 or fine_resolution <= 0:
         return False
+    coarse_resolution = ceil_cellsize(coarse_resolution, unit)
+    fine_resolution = ceil_cellsize(fine_resolution, unit)
+    if tolerance is None:
+        tolerance = max(10 ** -cellsize_precision_for_unit(unit), 1e-9)
     ratio = coarse_resolution / fine_resolution
     return math.isclose(ratio, round(ratio), abs_tol=tolerance, rel_tol=0.0)
 
 
-def possible_resolutions(fine_resolution: float, coarse_resolution: float) -> list[float]:
+def possible_resolutions(
+        fine_resolution: float,
+        coarse_resolution: float,
+        unit: str | None = None) -> list[float]:
     """Return all resolutions between fine and coarse compatible with both."""
-    if not resolution_is_multiple(coarse_resolution, fine_resolution):
+    fine_resolution = ceil_cellsize(fine_resolution, unit)
+    coarse_resolution = ceil_cellsize(coarse_resolution, unit)
+    if not resolution_is_multiple(coarse_resolution, fine_resolution, unit=unit):
         return []
     ratio = int(round(coarse_resolution / fine_resolution))
     values = []
     for divisor in range(1, ratio + 1):
         if ratio % divisor == 0:
-            values.append(float(fine_resolution * divisor))
+            quotient = ratio // divisor
+            if quotient == 1:
+                values.append(float(coarse_resolution))
+            else:
+                values.append(ceil_cellsize(coarse_resolution / quotient, unit))
     return values
 
 
@@ -209,8 +277,9 @@ def header_bounds(header: dict) -> tuple[float, float, float, float]:
     return xmin, xmax, ymin, ymax
 
 
-def header_for_bounds(bounds, cellsize: float) -> dict:
+def header_for_bounds(bounds, cellsize: float, unit: str | None = None) -> dict:
     """Create a header snapped outward to cellsize boundaries."""
+    cellsize = ceil_cellsize(cellsize, unit)
     xmin, xmax, ymin, ymax = bounds
     xll = math.floor(min(xmin, xmax) / cellsize) * cellsize
     yll = math.floor(min(ymin, ymax) / cellsize) * cellsize
@@ -225,11 +294,17 @@ def header_for_bounds(bounds, cellsize: float) -> dict:
         "yllcorner": float(yll),
         "cellsize": float(cellsize),
         "nodata_value": NODATA_VALUE,
+        "unit": unit or "",
+        "cellsize_precision": cellsize_precision_for_unit(unit),
     }
 
 
-def header_for_existing_bounds(reference_header: dict, cellsize: float) -> dict:
+def header_for_existing_bounds(
+        reference_header: dict,
+        cellsize: float,
+        unit: str | None = None) -> dict:
     """Create a compatible header on the same lower-left and upper-right bounds."""
+    cellsize = ceil_cellsize(cellsize, unit)
     xmin, xmax, ymin, ymax = header_bounds(reference_header)
     ncols = max(1, int(round((xmax - xmin) / cellsize)))
     nrows = max(1, int(round((ymax - ymin) / cellsize)))
@@ -240,6 +315,9 @@ def header_for_existing_bounds(reference_header: dict, cellsize: float) -> dict:
         "yllcorner": float(ymin),
         "cellsize": float(cellsize),
         "nodata_value": NODATA_VALUE,
+        "unit": unit or reference_header.get("unit", ""),
+        "cellsize_precision": cellsize_precision_for_unit(
+            unit or reference_header.get("unit", "")),
     }
 
 
@@ -477,11 +555,14 @@ def build_meteo_l2_grid(dialog, nc_folder) -> dict:
 
     center_lonlat = extent_center_wgs84(extent, target_crs)
     raw = raw_meteo_resolution(nc_folder, target_crs, center_lonlat)
+    target_unit = qgis_crs_unit_label(target_crs)
+    l0_resolution = ceil_cellsize(l0_info["resolution"], target_unit)
     adjusted_resolution, ratio = nearest_integer_multiple(
         raw["resolution"],
-        l0_info["resolution"],
+        l0_resolution,
+        target_unit,
     )
-    l2_header = header_for_bounds(extent_to_bounds(extent), adjusted_resolution)
+    l2_header = header_for_bounds(extent_to_bounds(extent), adjusted_resolution, target_unit)
     lon_values, lat_values = target_lon_lat_from_header(l2_header, target_crs)
     wgs84_bounds = (
         float(min(lon_values)),
@@ -491,10 +572,10 @@ def build_meteo_l2_grid(dialog, nc_folder) -> dict:
     )
     metadata = {
         "version": 1,
-        "l0_resolution": l0_info["resolution"],
-        "l0_unit": l0_info["unit"],
+        "l0_resolution": l0_resolution,
+        "l0_unit": target_unit,
         "l2_resolution": adjusted_resolution,
-        "l2_unit": qgis_crs_unit_label(target_crs),
+        "l2_unit": target_unit,
         "l2_ratio_to_l0": ratio,
         "raw_meteo_resolution": raw["resolution"],
         "raw_meteo_unit": raw["unit"],

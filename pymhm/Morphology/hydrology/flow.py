@@ -23,9 +23,13 @@ class FlowAnalysisMixin(DemFillMixin, PredecessorMixin):
         geometry_folder = project_geometry_folder(self.dialog.project_folder)
         self.flow_direction_path = os.path.join(geometry_folder, "2_flow_direction.tif")
         if self.flow_direction_path and os.path.exists(self.flow_direction_path):
-            self.log_message("Flow Direction already exists. Loading existing file...")
-            self.load_layer(self.flow_direction_path, "2_Flow_Direction")
-            return
+            if self._raster_output_matches_filled_dem(self.flow_direction_path):
+                self.log_message("Flow Direction already exists. Loading existing file...")
+                self.load_layer(self.flow_direction_path, "2_Flow_Direction")
+                return
+            self.log_message(
+                "Existing Flow Direction does not match the current filled DEM. Recreating it.")
+            self._remove_stale_raster_output(self.flow_direction_path)
 
         self.log_message("Processing D8 Flow Direction with pyflwdir...")
 
@@ -67,11 +71,16 @@ class FlowAnalysisMixin(DemFillMixin, PredecessorMixin):
 
         # Check if final flow accumulation already exists
         if self.flow_accumulation_path and os.path.exists(self.flow_accumulation_path):
+            if self._raster_output_matches_filled_dem(self.flow_accumulation_path):
+                self.log_message(
+                    "Flow Accumulation (pixels, integer) already exists. Loading existing file..."
+                )
+                self.load_layer(self.flow_accumulation_path, "2_Flow_Accumulation")
+                return
             self.log_message(
-                "Flow Accumulation (pixels, integer) already exists. Loading existing file..."
-            )
-            self.load_layer(self.flow_accumulation_path, "2_Flow_Accumulation")
-            return
+                "Existing Flow Accumulation does not match the current filled DEM. Recreating it.")
+            self._remove_stale_raster_output(self.flow_accumulation_path)
+            self._remove_stale_raster_output(self.flow_accumulation_area_path)
 
         self.log_message("Processing Flow Accumulation with pyflwdir...")
 

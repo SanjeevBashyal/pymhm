@@ -29,67 +29,70 @@ class PourPointWorkflowMixin(
         self.snapped_points_path = os.path.join(
             geometry_folder, "2_pour_points_snapped.shp")
 
-        # Check if snapped points already exist (from load_project_state or previous run)
-        if self.snapped_points_path and os.path.exists(self.snapped_points_path):
-            self.log_message(
-                "Snapped points already exist. Loading existing file...")
-            self.load_layer(self.snapped_points_path,
-                            "2_pour_points_snapped", is_raster=False)
+        if not self._ensure_channel_network(
+                self.process_channel_network,
+                self.process_flow_accumulation,
+                self.fill_dem):
             return
-
-        if not self.channel_network_vector_path or not os.path.exists(self.channel_network_vector_path):
-            if not self._ensure_channel_network(
-                    self.process_channel_network,
-                    self.process_flow_accumulation,
-                    self.fill_dem):
-                return
-
-        pour_points_layer = self.dialog.mMapLayerComboBox_pour_points.currentLayer()
-        temp_reprojected_path = None
-
-        # Check and reproject pour points layer if needed
-        input_crs = self.dialog.get_crs()
-        if not input_crs.isValid():
-            self.log_message(
-                "WARNING: Input CRS is not valid. Using pour points layer CRS as-is.")
-        else:
-            pour_points_crs = pour_points_layer.crs()
-            if pour_points_crs.isValid():
-                if pour_points_crs.authid() != input_crs.authid():
-                    self.log_message(
-                        f"Pour points CRS ({pour_points_crs.authid()}) differs from input CRS ({input_crs.authid()}). Reprojecting...")
-                    temp_reprojected_path = os.path.join(
-                        geometry_folder, "2_pour_points_reprojected.shp")
-
-                    reprojected_layer = self.reproject_vector_layer(
-                        pour_points_layer, input_crs, temp_reprojected_path)
-                    if reprojected_layer:
-                        pour_points_layer = reprojected_layer
-                        self.log_message(
-                            f"Pour points reprojected successfully to {input_crs.authid()}")
-                    else:
-                        self.log_message(
-                            "WARNING: Reprojection failed. Using original pour points layer.")
-                        temp_reprojected_path = None  # Don't try to delete if reprojection failed
-                else:
-                    self.log_message(
-                        f"Pour points CRS ({pour_points_crs.authid()}) matches input CRS. No reprojection needed.")
-            else:
-                self.log_message(
-                    "WARNING: Pour points CRS is not valid. Using as-is.")
+        self.snapped_points_path = os.path.join(
+            geometry_folder, "2_pour_points_snapped.shp")
 
         channel_network_layer = QgsVectorLayer(
             self.channel_network_vector_path, "Channel Network", "ogr")
         if not channel_network_layer.isValid():
             self.log_message(
                 f"ERROR: Could not load channel network layer from {self.channel_network_vector_path}")
-            # Clean up temporary file if it was created
-            if temp_reprojected_path and os.path.exists(temp_reprojected_path):
-                try:
-                    os.remove(temp_reprojected_path)
-                except:
-                    pass
             return
+
+        # Check if snapped points already exist (from load_project_state or previous run)
+        if self.snapped_points_path and os.path.exists(self.snapped_points_path):
+            if self._snapped_points_match_channel_network(
+                    self.snapped_points_path, self.channel_network_vector_path):
+                self.log_message(
+                    "Snapped points already exist. Loading existing file...")
+                self.load_layer(self.snapped_points_path,
+                                "2_pour_points_snapped", is_raster=False)
+                return
+            self.log_message(
+                "Existing snapped points do not match the channel network CRS/status. Recreating them.")
+            self._remove_stale_vector_output(self.snapped_points_path)
+
+        pour_points_layer = self.dialog.mMapLayerComboBox_pour_points.currentLayer()
+        temp_reprojected_path = None
+
+        # Check and reproject pour points to the channel network CRS if needed.
+        target_crs = channel_network_layer.crs()
+        if not target_crs.isValid():
+            target_crs = self.dialog.get_crs()
+
+        if not target_crs.isValid():
+            self.log_message(
+                "WARNING: Channel network CRS is not valid. Using pour points layer CRS as-is.")
+        else:
+            pour_points_crs = pour_points_layer.crs()
+            if pour_points_crs.isValid():
+                if pour_points_crs.authid() != target_crs.authid():
+                    self.log_message(
+                        f"Pour points CRS ({pour_points_crs.authid()}) differs from channel network CRS ({target_crs.authid()}). Reprojecting...")
+                    temp_reprojected_path = os.path.join(
+                        geometry_folder, "2_pour_points_reprojected.shp")
+
+                    reprojected_layer = self.reproject_vector_layer(
+                        pour_points_layer, target_crs, temp_reprojected_path)
+                    if reprojected_layer:
+                        pour_points_layer = reprojected_layer
+                        self.log_message(
+                            f"Pour points reprojected successfully to {target_crs.authid()}")
+                    else:
+                        self.log_message(
+                            "WARNING: Reprojection failed. Using original pour points layer.")
+                        temp_reprojected_path = None  # Don't try to delete if reprojection failed
+                else:
+                    self.log_message(
+                        f"Pour points CRS ({pour_points_crs.authid()}) matches channel network CRS. No reprojection needed.")
+            else:
+                self.log_message(
+                    "WARNING: Pour points CRS is not valid. Using as-is.")
 
         # Call the new custom snapping function
         result_path = self.snap_points_to_network(
@@ -104,7 +107,7 @@ class PourPointWorkflowMixin(
         # Clean up temporary reprojected file if it was created
         if temp_reprojected_path and os.path.exists(temp_reprojected_path):
             try:
-                os.remove(temp_reprojected_path)
+                self._remove_vector_dataset(temp_reprojected_path)
                 self.log_message(
                     "Cleaned up temporary reprojected pour points file.")
             except Exception as e:

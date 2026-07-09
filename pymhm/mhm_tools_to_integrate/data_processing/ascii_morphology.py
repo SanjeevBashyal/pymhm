@@ -7,10 +7,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ...grid_resolution import (
+    ceil_cellsize,
+    cellsize_precision_for_unit,
+)
 from .._bundled import ensure_bundled_mhm_tools
 
 
-Header = dict[str, float | int]
+Header = dict[str, Any]
 LogCallback = Callable[[str], None]
 
 
@@ -104,6 +108,7 @@ def validate_grid_headers(
         for level in required
     }
     _assert_same_extent(standardized)
+    unit = _headers_unit(standardized)
 
     ratios = {
         "L0_to_L1": _resolution_ratio(
@@ -111,18 +116,21 @@ def validate_grid_headers(
             standardized["L1"]["cellsize"],
             "L0",
             "L1",
+            unit,
         ),
         "L1_to_L2": _resolution_ratio(
             standardized["L1"]["cellsize"],
             standardized["L2"]["cellsize"],
             "L1",
             "L2",
+            unit,
         ),
         "L11_to_L2": _resolution_ratio(
             standardized["L11"]["cellsize"],
             standardized["L2"]["cellsize"],
             "L11",
             "L2",
+            unit,
         ),
     }
     _assert_matrix_multiple(
@@ -228,8 +236,9 @@ def _write_ascii(dataset, output_path: Path, header: Mapping[str, Any],
         nodata_value=nodata_value,
         resolution=float(header["cellsize"]),
     )
-    written = _read_ascii_header(output_path)
-    _assert_header_matches(written, _normalise_header(header), output_path.name)
+    expected = _normalise_header(header)
+    written = _read_ascii_header(output_path, unit=expected.get("unit", ""))
+    _assert_header_matches(written, expected, output_path.name)
 
 
 def _normalise_header(header: Mapping[str, Any]) -> Header:
@@ -238,6 +247,8 @@ def _normalise_header(header: Mapping[str, Any]) -> Header:
         normalized["nodata_value"] = normalized["nodata"]
     if "nodata_value" not in normalized:
         normalized["nodata_value"] = -9999.0
+    if "unit" not in normalized and "crs_unit" in normalized:
+        normalized["unit"] = normalized["crs_unit"]
     return normalized
 
 
@@ -255,14 +266,27 @@ def _standardize_header(header: Mapping[str, Any]) -> Header:
     missing = required - set(normalized)
     if missing:
         raise ValueError(f"Grid header is missing required key(s): {', '.join(sorted(missing))}")
+    unit = str(normalized.get("unit", "") or "")
+    cellsize = ceil_cellsize(float(normalized["cellsize"]), unit)
     return {
         "ncols": int(float(normalized["ncols"])),
         "nrows": int(float(normalized["nrows"])),
         "xllcorner": float(normalized["xllcorner"]),
         "yllcorner": float(normalized["yllcorner"]),
-        "cellsize": float(normalized["cellsize"]),
+        "cellsize": cellsize,
         "nodata_value": float(normalized.get("nodata_value", -9999.0)),
+        "unit": unit,
+        "cellsize_precision": cellsize_precision_for_unit(unit),
     }
+
+
+def _headers_unit(headers: Mapping[str, Header]) -> str:
+    """Return the first non-empty grid unit recorded in the headers."""
+    for header in headers.values():
+        unit = str(header.get("unit", "") or "")
+        if unit:
+            return unit
+    return ""
 
 
 def _resolution_ratio(
@@ -270,12 +294,16 @@ def _resolution_ratio(
         coarse_cellsize: float,
         fine_name: str,
         coarse_name: str,
-        tolerance: float = 1e-7) -> int:
-    fine_cellsize = float(fine_cellsize)
-    coarse_cellsize = float(coarse_cellsize)
+        unit: str | None = None,
+        tolerance: float | None = None) -> int:
+    fine_cellsize = ceil_cellsize(fine_cellsize, unit)
+    coarse_cellsize = ceil_cellsize(coarse_cellsize, unit)
+    precision = cellsize_precision_for_unit(unit)
+    if tolerance is None:
+        tolerance = max(10 ** -precision, 1e-9)
     if fine_cellsize <= 0 or coarse_cellsize <= 0:
         raise ValueError("Grid cell sizes must be positive.")
-    if fine_cellsize > coarse_cellsize:
+    if fine_cellsize - coarse_cellsize > tolerance:
         raise ValueError(
             f"{fine_name} cellsize ({fine_cellsize}) must be finer than or equal to "
             f"{coarse_name} cellsize ({coarse_cellsize})."
@@ -366,7 +394,7 @@ def _assert_header_matches(written: Mapping[str, Any], expected: Header, name: s
             )
 
 
-def _read_ascii_header(path: Path) -> Header:
+def _read_ascii_header(path: Path, unit: str | None = None) -> Header:
     header: dict[str, float | int] = {}
     with path.open("r", encoding="utf-8") as handle:
         for line in handle:
@@ -382,6 +410,8 @@ def _read_ascii_header(path: Path) -> Header:
                 header[key] = float(parts[1])
             if len(header) >= 6:
                 break
+    if unit:
+        header["unit"] = unit
     return _standardize_header(header)
 
 

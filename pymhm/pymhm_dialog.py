@@ -61,6 +61,7 @@ from .project_layout import (
 )
 from .grid_resolution import (
     build_meteo_l2_grid,
+    ceil_cellsize,
     display_precision_for_unit,
     format_resolution,
     header_bounds,
@@ -595,16 +596,29 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             metadata = load_meteo_grid_metadata(self.project_folder)
 
         header = None
+        unit = ""
         if metadata:
             header = metadata.get("l2_header")
+            unit = metadata.get("l2_unit", "")
+            if not unit and self._grid_l0_info:
+                unit = self._grid_l0_info.get("unit", "")
+            if header:
+                header = dict(header)
+                header["cellsize"] = ceil_cellsize(header["cellsize"], unit)
+                header["unit"] = unit
+                metadata["l2_header"] = header
+                metadata["l2_resolution"] = header["cellsize"]
+                metadata["l2_unit"] = unit
         elif self.project_folder:
+            unit = self._grid_l0_info.get("unit", "") if self._grid_l0_info else ""
             header = read_header_file(
-                os.path.join(data_folder(self.project_folder), "meteo", "pre", "header.txt")
+                os.path.join(data_folder(self.project_folder), "meteo", "pre", "header.txt"),
+                unit=unit,
             )
             if header:
                 metadata = {
                     "l2_resolution": header["cellsize"],
-                    "l2_unit": self._grid_l0_info.get("unit", "") if self._grid_l0_info else "",
+                    "l2_unit": unit,
                     "l2_header": header,
                 }
 
@@ -656,9 +670,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         l1_values = []
         if l0_resolution and l2_resolution:
-            l1_values = possible_resolutions(l0_resolution, l2_resolution)
+            l1_values = possible_resolutions(l0_resolution, l2_resolution, unit)
         elif l0_resolution:
-            l1_values = [l0_resolution]
+            l1_values = [ceil_cellsize(l0_resolution, unit)]
 
         preferred_l1 = self._preferred_l1_resolution
         self._populate_resolution_combo(
@@ -683,9 +697,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         l11_values = []
         if l1_resolution and l2_resolution:
-            l11_values = possible_resolutions(l1_resolution, l2_resolution)
+            l11_values = possible_resolutions(l1_resolution, l2_resolution, unit)
         elif l1_resolution:
-            l11_values = [l1_resolution]
+            l11_values = [ceil_cellsize(l1_resolution, unit)]
 
         preferred_l11 = self._preferred_l11_resolution
         self._populate_resolution_combo(
@@ -769,11 +783,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if not l0_resolution or not l1_resolution or not l11_resolution:
             raise ValueError("L0, L1, and L11 resolutions must be available.")
 
-        l2_header = self._grid_l2_header
+        unit = self.current_grid_unit()
+        l2_header = dict(self._grid_l2_header)
+        l2_header["cellsize"] = ceil_cellsize(l2_header["cellsize"], unit)
+        l2_header["unit"] = unit
         return {
-            "L0": header_for_existing_bounds(l2_header, l0_resolution),
-            "L1": header_for_existing_bounds(l2_header, l1_resolution),
-            "L11": header_for_existing_bounds(l2_header, l11_resolution),
+            "L0": header_for_existing_bounds(l2_header, l0_resolution, unit),
+            "L1": header_for_existing_bounds(l2_header, l1_resolution, unit),
+            "L11": header_for_existing_bounds(l2_header, l11_resolution, unit),
             "L2": l2_header,
         }
 

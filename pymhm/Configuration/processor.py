@@ -7,6 +7,7 @@ from typing import Any
 
 from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox
 
+from ..grid_resolution import ceil_cellsize
 from ..simulation_processor import SimulationProcessor
 from ..project_layout import ensure_project_structure
 from .constants import (
@@ -217,6 +218,7 @@ class ConfigurationProcessor(SimulationProcessor):
             self.log_message("\n--- Creating schema-driven namelist files ---")
             config_pages = self.build_config_pages()
             config_values = self.kind_state("mhm") or self.default_values_from_pages(config_pages)
+            config_values = self.apply_current_resolution_values(config_values)
             self.set_kind_state("mhm", config_values)
             self.write_kind("mhm", config_values)
             self._last_mhm_values = config_values
@@ -261,7 +263,7 @@ class ConfigurationProcessor(SimulationProcessor):
         render_values = render_values_for_version(
             self.selected_version(),
             kind,
-            values,
+            self.apply_current_resolution_values(values) if kind == "mhm" else values,
             self.dialog,
         )
         write_rendered_namelist(
@@ -339,16 +341,17 @@ class ConfigurationProcessor(SimulationProcessor):
     def current_mhm_values(self) -> dict[str, Any]:
         """Return current mHM config values from memory, file, or defaults."""
         if self._last_mhm_values:
-            return self._last_mhm_values
+            return self.apply_current_resolution_values(self._last_mhm_values)
         project_folder = self.dialog.project_folder
         if project_folder:
             values = self.kind_state("mhm")
             if values:
-                return values
+                return self.apply_current_resolution_values(values)
             path = output_path(project_folder, "mhm", self.selected_version())
             if os.path.exists(path):
-                return template_values(path)
-        return self.default_values_from_pages(self.build_config_pages())
+                return self.apply_current_resolution_values(template_values(path))
+        return self.apply_current_resolution_values(
+            self.default_values_from_pages(self.build_config_pages()))
 
     def pages_from_schemas(
             self,
@@ -359,18 +362,25 @@ class ConfigurationProcessor(SimulationProcessor):
         saved = self.kind_state(kind)
         if kind == "mhm":
             generated = configuration_path_defaults(domain_count(self.dialog))
+            generated = self.merge_generated_defaults(
+                generated,
+                self.current_resolution_defaults(),
+            )
         else:
             generated = {}
+        dynamic = self.current_resolution_defaults() if kind == "mhm" else {}
         pages = []
         for schema in schemas:
             block = schema.get("x-fortran-namelist")
             if not block:
                 continue
+            block_key = canonical_name(block)
             block_defaults = defaults.get(canonical_name(block), {})
-            block_generated = generated.get(canonical_name(block), {})
-            block_saved = saved.get(canonical_name(block), {})
+            block_generated = generated.get(block_key, {})
+            block_saved = saved.get(block_key, {})
+            block_dynamic = dynamic.get(block_key, {})
             geology_rows = []
-            if kind == "parameters" and canonical_name(block) == "geoparameter":
+            if kind == "parameters" and block_key == "geoparameter":
                 geology_rows = geology_class_rows(self.dialog)
                 block_generated = self.generated_geoparameter_defaults(
                     block_defaults,
@@ -378,26 +388,100 @@ class ConfigurationProcessor(SimulationProcessor):
                 )
             page_defaults = {}
             for name in schema.get("properties", {}):
-                page_defaults[name] = self.default_for_property(
-                    block_defaults,
-                    block_generated,
-                    block_saved,
-                    name,
-                    schema["properties"][name],
-                )
+                key = canonical_name(name)
+                if key in block_dynamic:
+                    page_defaults[name] = block_dynamic[key]
+                else:
+                    page_defaults[name] = self.default_for_property(
+                        block_defaults,
+                        block_generated,
+                        block_saved,
+                        name,
+                        schema["properties"][name],
+                    )
             pages.append({
                 "block": block,
                 "title": schema.get("title") or block,
                 "schema": schema,
                 "defaults": page_defaults,
             })
-            if canonical_name(block) == "geoparameter":
+            if block_key == "geoparameter":
                 if not geology_rows:
                     geology_rows = geology_class_rows(self.dialog)
                 pages[-1]["geo_classes"] = geology_rows
                 pages[-1]["geo_class_count"] = (
                     len(geology_rows) or geology_class_count(self.dialog))
         return pages
+
+    def merge_generated_defaults(
+            self,
+            base: ConfigValues,
+            overlay: ConfigValues) -> ConfigValues:
+        """Merge generated defaults without mutating the source dictionaries."""
+        merged = {
+            canonical_name(block): dict(values or {})
+            for block, values in (base or {}).items()
+        }
+        for block, values in (overlay or {}).items():
+            block_key = canonical_name(block)
+            merged.setdefault(block_key, {})
+            merged[block_key].update({
+                canonical_name(name): value
+                for name, value in (values or {}).items()
+            })
+        return merged
+
+    def current_resolution_defaults(self) -> ConfigValues:
+        """Return current L1/L11 resolutions as config defaults for all domains."""
+        unit = self.current_grid_unit()
+        domain_total = max(1, int(domain_count(self.dialog) or 1))
+        version = version_key(self.selected_version())
+        defaults: ConfigValues = {}
+
+        l1_resolution = self.current_resolution_value("current_l1_resolution", unit)
+        if l1_resolution is not None:
+            name = "resolution_Hydrology" if version == "v5.13" else "resolution"
+            defaults.setdefault(canonical_name("config_mhm"), {})[
+                canonical_name(name)
+            ] = [l1_resolution for _ in range(domain_total)]
+
+        l11_resolution = self.current_resolution_value("current_l11_resolution", unit)
+        if l11_resolution is not None:
+            name = "resolution_Routing" if version == "v5.13" else "resolution"
+            defaults.setdefault(canonical_name("config_mrm"), {})[
+                canonical_name(name)
+            ] = [l11_resolution for _ in range(domain_total)]
+
+        return defaults
+
+    def apply_current_resolution_values(self, values: ConfigValues) -> ConfigValues:
+        """Overlay current L1/L11 resolution values onto mHM config values."""
+        return self.merge_generated_defaults(values, self.current_resolution_defaults())
+
+    def current_resolution_value(self, method_name: str, unit: str | None) -> float | None:
+        """Read and round a current dialog resolution for configuration use."""
+        if not hasattr(self.dialog, method_name):
+            return None
+        try:
+            value = getattr(self.dialog, method_name)()
+        except Exception:
+            return None
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return None
+        if value <= 0:
+            return None
+        return ceil_cellsize(value, unit)
+
+    def current_grid_unit(self) -> str:
+        """Return the active grid unit from the dialog, if available."""
+        if hasattr(self.dialog, "current_grid_unit"):
+            try:
+                return self.dialog.current_grid_unit() or ""
+            except Exception:
+                return ""
+        return ""
 
     def default_for_property(
             self,

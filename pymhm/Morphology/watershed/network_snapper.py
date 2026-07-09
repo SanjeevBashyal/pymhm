@@ -13,6 +13,8 @@ from ..common import (
     QgsSpatialIndex,
     QgsFields,
     QgsWkbTypes,
+    QgsCoordinateTransform,
+    QgsProject,
     create_vector_file_writer,
     qgs_field,
     processing,
@@ -72,6 +74,31 @@ class NetworkSnapperMixin(VectorIOMixin):
         output_fields.append(qgs_field("snap_status", "String"))
         output_fields.append(qgs_field("snap_dist", "Double"))
         output_fields.append(qgs_field("snapped_order", "Int"))
+        snap_status_index = output_fields.indexOf("snap_status")
+        snap_dist_index = output_fields.indexOf("snap_dist")
+        snapped_order_index = output_fields.indexOf("snapped_order")
+
+        output_crs = channel_network_layer.crs()
+        if not output_crs.isValid():
+            output_crs = pour_points_layer.crs()
+        if not output_crs.isValid():
+            output_crs = self.dialog.get_crs()
+
+        point_transform = None
+        pour_points_crs = pour_points_layer.crs()
+        if (
+                pour_points_crs.isValid()
+                and output_crs.isValid()
+                and pour_points_crs.authid() != output_crs.authid()):
+            point_transform = QgsCoordinateTransform(
+                pour_points_crs,
+                output_crs,
+                QgsProject.instance(),
+            )
+            point_transform.setBallparkTransformsAreAppropriate(True)
+            self.log_message(
+                f"Transforming pour point geometries from {pour_points_crs.authid()} "
+                f"to channel network CRS {output_crs.authid()} for snapping.")
 
         # If the file already exists, remove it before creating a new one
         if os.path.exists(output_path):
@@ -81,7 +108,7 @@ class NetworkSnapperMixin(VectorIOMixin):
             output_path,
             output_fields,
             QgsWkbTypes.Point,
-            self.dialog.get_crs(),
+            output_crs,
         )
         if writer.hasError():
             self.log_message(
@@ -100,10 +127,25 @@ class NetworkSnapperMixin(VectorIOMixin):
                 self.log_message(
                     f"  ...processing point {i + 1} of {total_points}")
 
-            original_geom = point_feat.geometry()
+            original_geom = QgsGeometry(point_feat.geometry())
+            if original_geom is None or original_geom.isEmpty():
+                self.log_message(
+                    f"WARNING: Skipping empty pour point feature {point_feat.id()}.")
+                continue
+            if point_transform is not None:
+                try:
+                    original_geom.transform(point_transform)
+                except Exception as e:
+                    self.log_message(
+                        f"WARNING: Could not transform pour point feature {point_feat.id()}: {e}")
+                    continue
+
             original_point = original_geom.asPoint()
             new_feat = QgsFeature(output_fields)
-            new_feat.setAttributes(point_feat.attributes())
+            attributes = list(point_feat.attributes())
+            while len(attributes) < len(output_fields):
+                attributes.append(None)
+            new_feat.setAttributes(attributes[:len(output_fields)])
             snapped = False
 
             # --- Stage 1: High-order snap search ---
@@ -143,10 +185,10 @@ class NetworkSnapperMixin(VectorIOMixin):
                 new_geom = QgsGeometry.fromPointXY(closest_point[1])
 
                 new_feat.setGeometry(new_geom)
-                new_feat.setAttribute("snap_status", "high_order")
+                new_feat.setAttribute(snap_status_index, "high_order")
                 new_feat.setAttribute(
-                    "snap_dist", new_geom.distance(original_geom))
-                new_feat.setAttribute("snapped_order", max_order)
+                    snap_dist_index, new_geom.distance(original_geom))
+                new_feat.setAttribute(snapped_order_index, max_order)
                 writer.addFeature(new_feat)
                 snapped = True
 
@@ -163,19 +205,20 @@ class NetworkSnapperMixin(VectorIOMixin):
                         new_geom = QgsGeometry.fromPointXY(closest_point[1])
 
                         new_feat.setGeometry(new_geom)
-                        new_feat.setAttribute("snap_status", "closest")
-                        new_feat.setAttribute("snap_dist", dist_to_geom)
+                        new_feat.setAttribute(snap_status_index, "closest")
+                        new_feat.setAttribute(snap_dist_index, dist_to_geom)
                         order_val = target_feat.attribute(
                             order_field_name)
-                        new_feat.setAttribute("snapped_order", order_val)
+                        new_feat.setAttribute(snapped_order_index, order_val)
                         writer.addFeature(new_feat)
                         snapped = True
 
             # --- Stage 3: If no snap possible, write original point with 'failed' status ---
             if not snapped:
                 new_feat.setGeometry(original_geom)
-                new_feat.setAttribute("snap_status", "failed")
-                new_feat.setAttribute("snap_dist", 0.0)
+                new_feat.setAttribute(snap_status_index, "failed")
+                new_feat.setAttribute(snap_dist_index, 0.0)
+                new_feat.setAttribute(snapped_order_index, -1)
                 writer.addFeature(new_feat)
 
         del writer  # Finalize writing to the file

@@ -20,8 +20,8 @@ properties:
       exclusiveMinimum: 0.0
     x-fortran-shape: max_domains
     x-fortran-flex-tail-dims: 1
-    title: mRM resolution (L3)
-    description: Resolution of the mRM routing grid, level 3.
+    title: mRM routing resolution (L11)
+    description: Resolution of the mRM routing grid, level 11.
     examples: [[0.1]]
   gw_coupling:
     type: boolean

@@ -57,7 +57,7 @@ class AsciiExportMixin(MaskingMixin):
             "1_dem_filled_masked.tif": ("dem.asc", -9999, False),
             "1_dem_slope_masked.tif": ("slope.asc", -9999, False),
             "1_dem_aspect_masked.tif": ("aspect.asc", -9999, False),
-            "2_flow_accumulation_masked.tif": ("facc.asc", -9999, False),
+            "2_flow_accumulation_masked.tif": ("facc.asc", -9999, True),
             "2_flow_direction_masked.tif": ("fdir.asc", -9999, True),
             "2_gauge_position_masked.tif": ("idgauges.asc", -9999, True),
             "3_land_use_masked.tif": ("lc.asc", -9999, True),

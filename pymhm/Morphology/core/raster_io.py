@@ -48,6 +48,86 @@ class RasterIOMixin(PythonDependencyMixin, BaseProcessingMixin):
         ds = None
         return metadata
 
+    def _read_raster_grid_metadata(self, raster_path: str) -> dict[str, Any] | None:
+        """Read raster grid metadata without loading band values."""
+        deps = self._get_python_morphology_deps()
+        if not deps:
+            return None
+
+        gdal = deps["gdal"]
+        ds = gdal.Open(raster_path)
+        if ds is None:
+            self.log_message(f"ERROR: Could not open raster: {raster_path}")
+            return None
+
+        metadata = {
+            "geotransform": ds.GetGeoTransform(),
+            "projection": ds.GetProjection(),
+            "rows": ds.RasterYSize,
+            "cols": ds.RasterXSize,
+        }
+        ds = None
+        return metadata
+
+    def _projection_matches(
+            self,
+            projection_a: str | None,
+            projection_b: str | None,
+            deps: dict[str, Any]) -> bool:
+        """Return True when two WKT projections describe the same CRS."""
+        if not projection_a and not projection_b:
+            return True
+        if not projection_a or not projection_b:
+            return False
+
+        osr = deps["osr"]
+        spatial_ref_a = osr.SpatialReference()
+        spatial_ref_b = osr.SpatialReference()
+        if spatial_ref_a.ImportFromWkt(projection_a) != 0:
+            return projection_a == projection_b
+        if spatial_ref_b.ImportFromWkt(projection_b) != 0:
+            return projection_a == projection_b
+        return bool(spatial_ref_a.IsSame(spatial_ref_b))
+
+    def _geotransform_matches(
+            self,
+            transform_a: tuple,
+            transform_b: tuple,
+            tolerance: float = 1e-9) -> bool:
+        """Return True when two affine transforms are equal within tolerance."""
+        for value_a, value_b in zip(transform_a, transform_b):
+            scale = max(abs(float(value_a)), abs(float(value_b)), 1.0)
+            if abs(float(value_a) - float(value_b)) > tolerance * scale:
+                return False
+        return True
+
+    def _raster_grid_matches(
+            self,
+            raster_path: str,
+            reference_path: str) -> bool:
+        """Return True when a raster has the same grid and CRS as a reference raster."""
+        if not raster_path or not reference_path:
+            return False
+        if not os.path.exists(raster_path) or not os.path.exists(reference_path):
+            return False
+
+        deps = self._get_python_morphology_deps()
+        if not deps:
+            return False
+
+        raster = self._read_raster_grid_metadata(raster_path)
+        reference = self._read_raster_grid_metadata(reference_path)
+        if not raster or not reference:
+            return False
+
+        if raster["rows"] != reference["rows"] or raster["cols"] != reference["cols"]:
+            return False
+        if not self._geotransform_matches(
+                raster["geotransform"], reference["geotransform"]):
+            return False
+        return self._projection_matches(
+            raster.get("projection"), reference.get("projection"), deps)
+
     def _write_raster_array(
             self,
             output_path: str,

@@ -303,6 +303,9 @@ class ArrayValueWidget(QtWidgets.QWidget):
             self.summary_label.setText(
                 f"{len(self._value)} domain page(s), "
                 f"{len(self._value[0]) if self._value else 0} value(s) each")
+        elif self._domain_1d and "resolution" in self.field_name.lower():
+            self.summary_label.setText(
+                ", ".join(value_text(value) for value in self._value))
         else:
             self.summary_label.setText(f"{len(self._value)} value(s)")
 

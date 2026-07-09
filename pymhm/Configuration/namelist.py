@@ -180,7 +180,7 @@ def format_scalar(value: NamelistValue) -> str:
     if isinstance(value, int):
         return str(value)
     if isinstance(value, float):
-        return f"{value:g}"
+        return f"{value:.15g}"
     return str(value)
 
 

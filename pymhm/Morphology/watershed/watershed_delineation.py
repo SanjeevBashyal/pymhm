@@ -7,6 +7,9 @@ from ..common import (
     project_geometry_folder,
     QMessageBox,
     QgsVectorLayer,
+    QgsRasterLayer,
+    QgsCoordinateTransform,
+    QgsProject,
     NULL,
 )
 from .pour_point_workflow import PourPointWorkflowMixin
@@ -71,6 +74,8 @@ class WatershedDelineationMixin(PourPointWorkflowMixin):
 
         watershed_outputs = []
         field_names = snapped_points_layer.fields().names()
+        snap_status_field = self._snap_status_field(field_names)
+        point_transform = self._snapped_to_filled_dem_transform(snapped_points_layer)
 
         for i, feature in enumerate(features):
             geom = feature.geometry()
@@ -92,6 +97,39 @@ class WatershedDelineationMixin(PourPointWorkflowMixin):
 
             self.log_message(f"Processing watershed for point: {name_attr}")
 
+            if snap_status_field is not None:
+                snap_status = feature.attribute(snap_status_field)
+                if snap_status in (None, NULL, ""):
+                    self.log_message(
+                        f"Warning: Skipping point {name_attr}; snapped point has no snap status.")
+                    continue
+                if str(snap_status) == "failed":
+                    self.log_message(
+                        f"Warning: Skipping point {name_attr}; point could not be snapped to the channel network.")
+                    continue
+
+            point_for_flwdir = point
+            if point_transform is not None:
+                try:
+                    point_for_flwdir = point_transform.transform(point_for_flwdir)
+                except Exception as e:
+                    self.log_message(
+                        f"Warning: Skipping point {name_attr}; could not transform to filled DEM CRS: {e}")
+                    continue
+
+            flwdir_xy = self._point_to_flwdir_cell_center(
+                point_for_flwdir.x(),
+                point_for_flwdir.y(),
+                reference,
+                deps,
+            )
+            if flwdir_xy is None:
+                self.log_message(
+                    f"Warning: Skipping point {name_attr}; snapped coordinates "
+                    f"({point_for_flwdir.x():.6f}, {point_for_flwdir.y():.6f}) "
+                    "are outside the filled DEM domain.")
+                continue
+
             watershed_raster_path = os.path.join(
                 watershed_output_folder, f"4_watershed_{clean_name}.tif"
             )
@@ -104,7 +142,8 @@ class WatershedDelineationMixin(PourPointWorkflowMixin):
 
             basin_id = i + 1
             try:
-                basin_map = flwdir.basins(xy=([point.x()], [point.y()]), ids=[basin_id])
+                basin_map = flwdir.basins(
+                    xy=([flwdir_xy[0]], [flwdir_xy[1]]), ids=[basin_id])
             except Exception as e:
                 self.log_message(f"Failed to delineate watershed for {name_attr}: {e}")
                 continue
@@ -222,3 +261,54 @@ class WatershedDelineationMixin(PourPointWorkflowMixin):
             )
         else:
             self.merged_watershed_path = None
+
+    def _snap_status_field(self, field_names: list[str]) -> str | None:
+        """Return the snap status field, accounting for shapefile truncation."""
+        for candidate in ("snap_status", "snap_statu"):
+            if candidate in field_names:
+                return candidate
+        return None
+
+    def _snapped_to_filled_dem_transform(self, snapped_layer: object) -> object | None:
+        """Return a coordinate transform when snapped points and filled DEM CRS differ."""
+        filled_dem_layer = QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
+        if not filled_dem_layer.isValid():
+            return None
+
+        source_crs = snapped_layer.crs()
+        target_crs = filled_dem_layer.crs()
+        if not source_crs.isValid() or not target_crs.isValid():
+            return None
+        if source_crs.authid() == target_crs.authid():
+            return None
+
+        transform = QgsCoordinateTransform(
+            source_crs,
+            target_crs,
+            QgsProject.instance(),
+        )
+        transform.setBallparkTransformsAreAppropriate(True)
+        self.log_message(
+            f"Transforming snapped points from {source_crs.authid()} "
+            f"to filled DEM CRS {target_crs.authid()} for watershed delineation.")
+        return transform
+
+    def _point_to_flwdir_cell_center(
+            self,
+            x: float,
+            y: float,
+            reference: dict,
+            deps: dict) -> tuple[float, float] | None:
+        """Return the raster cell center for a map coordinate, or None if outside."""
+        transform = deps["Affine"].from_gdal(*reference["geotransform"])
+        col_float, row_float = (~transform) * (float(x), float(y))
+        np = deps["np"]
+        row = int(np.floor(row_float))
+        col = int(np.floor(col_float))
+        if row < 0 or col < 0:
+            return None
+        if row >= int(reference["rows"]) or col >= int(reference["cols"]):
+            return None
+
+        center_x, center_y = transform * (col + 0.5, row + 0.5)
+        return float(center_x), float(center_y)
