@@ -686,14 +686,9 @@
   NoGauges_domain   = 1, 1
 
   !> in subdomain(1), this is the id of gauge(1)  --> (1,1)
-  Gauge_id(1,1)       = 398
+  Gauge_id(1,1)       = 350
   !> name of file with timeseries for subdomain(1) at gauge(1) --> (1,1)
-  gauge_filename(1,1) = "00398.txt"
-  !
-  !> in subdomain(2), this is the id of gauge(1) --> (2,1)
-  Gauge_id(2,1)           = 45
-  !> name of file with timeseries for subdomain(2) at gauge(1) --> (2,1)
-  Gauge_filename(2,1)     = "45.txt"
+  gauge_filename(1,1) = "350.txt"
 /
 
 &inflow_gauges

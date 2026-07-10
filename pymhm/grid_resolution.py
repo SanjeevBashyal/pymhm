@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
-from decimal import Decimal, ROUND_CEILING
+from decimal import Decimal, ROUND_FLOOR
 from pathlib import Path
 
 from .project_layout import geometry_folder, meteo_folder
@@ -30,8 +30,8 @@ def cellsize_precision_for_unit(unit: str | None) -> int:
     return PROJECTED_CELLSIZE_PRECISION
 
 
-def ceil_to_precision(value, precision: int) -> float:
-    """Ceil a numeric value to a fixed number of decimal places."""
+def floor_to_precision(value, precision: int) -> float:
+    """Floor a numeric value to a fixed number of decimal places."""
     numeric = float(value)
     if not math.isfinite(numeric):
         return numeric
@@ -39,17 +39,23 @@ def ceil_to_precision(value, precision: int) -> float:
     return float(
         Decimal(str(numeric)).quantize(
             quantum,
-            rounding=ROUND_CEILING,
+            rounding=ROUND_FLOOR,
         )
     )
 
 
-def ceil_cellsize(value, unit: str | None = None,
-                  precision: int | None = None) -> float:
-    """Ceil a grid cellsize using the configured internal CRS precision."""
+def floor_cellsize(value, unit: str | None = None,
+                   precision: int | None = None) -> float:
+    """Floor a grid cellsize using the configured internal CRS precision."""
     if precision is None:
         precision = cellsize_precision_for_unit(unit)
-    return ceil_to_precision(value, precision)
+    return floor_to_precision(value, precision)
+
+
+def ceil_cellsize(value, unit: str | None = None,
+                  precision: int | None = None) -> float:
+    """Compatibility wrapper; cell sizes are floor-normalized now."""
+    return floor_cellsize(value, unit, precision)
 
 
 def display_precision_for_unit(unit: str | None) -> int:
