@@ -2,7 +2,12 @@
 """Execute-all morphology workflow orchestration."""
 from __future__ import annotations
 
-from ..common import os, QMessageBox
+from ..common import (
+    QMessageBox,
+    morph_folder,
+    os,
+    project_geometry_folder,
+)
 from ..classification_writers import ClassificationWritersMixin
 from ..hydrology.aggregate import HydrologyMixin
 from ..latlon import LatLonMixin
@@ -38,7 +43,7 @@ class ExecuteAllMixin(
         14. mask all cropped layers
         15. process lat/lon headers
         16. write geology class definition
-        17. write soil class definition
+        17. verify soil outputs
         18. write all layers (convert to ASCII)
         """
         self.log_message("\n=== Starting Execute All Processing ===")
@@ -78,7 +83,21 @@ class ExecuteAllMixin(
 
             # Step 5: Soil
             self.log_message("\n--- Step 5/18: Process Soil ---")
-            self.process_soil(write_classdefinition=True)
+            soil_raster = os.path.join(
+                project_geometry_folder(self.dialog.project_folder),
+                "3_soil.tif",
+            )
+            soil_definition = os.path.join(
+                morph_folder(self.dialog.project_folder),
+                "soil_classdefinition.txt",
+            )
+            if not self.process_soil(write_classdefinition=True):
+                return fail("Soil processing failed. Aborting Execute All.")
+            if not os.path.exists(soil_raster) or not os.path.exists(
+                    soil_definition):
+                return fail(
+                    "Soil processing did not create both required outputs. "
+                    "Aborting Execute All.")
 
             # Step 6: Geology
             self.log_message("\n--- Step 6/18: Process Geology ---")
@@ -160,9 +179,12 @@ class ExecuteAllMixin(
             self.log_message("\n--- Step 16/18: Write Geology Class Definition ---")
             self.geology_classification_writer()
 
-            # Step 17: Write Soil Class Definition
-            self.log_message("\n--- Step 17/18: Write Soil Class Definition ---")
-            self.soil_classdefinition_writer()
+            # Step 17: Verify Soil Outputs
+            self.log_message("\n--- Step 17/18: Verify Soil Outputs ---")
+            if not os.path.exists(soil_raster) or not os.path.exists(
+                    soil_definition):
+                return fail(
+                    "Required soil outputs are missing. Aborting Execute All.")
 
             # Step 18: Write All Layers (Convert to ASCII)
             self.log_message(
