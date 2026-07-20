@@ -87,6 +87,115 @@ def set_scalar_editor_value(editor, value):
         editor.setText(value_text(value))
 
 
+def derived_default(schema, value=None):
+    """Return one simple derived value with intrinsic scalar components."""
+    source = value if isinstance(value, dict) else {}
+    result = {}
+    for name, component in schema.get("properties", {}).items():
+        if component.get("type") in ("object", "array"):
+            raise ValueError("derived components must be intrinsic scalars")
+        source_name = next(
+            (candidate for candidate in source
+             if str(candidate).lower() == name.lower()),
+            None,
+        )
+        if source_name is not None:
+            result[name] = source[source_name]
+        elif "default" in component:
+            result[name] = component["default"]
+        elif component.get("type") == "boolean":
+            result[name] = False
+        elif component.get("type") in ("integer", "number"):
+            result[name] = component.get("minimum", 0)
+        else:
+            result[name] = ""
+    return result
+
+
+class DerivedValueWidget(QtWidgets.QWidget):
+    """Inline editor for one simple Fortran derived value."""
+
+    def __init__(self, schema, value=None, parent=None):
+        super(DerivedValueWidget, self).__init__(parent)
+        self.schema = schema
+        self.editors = {}
+        layout = QtWidgets.QFormLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        values = derived_default(schema, value)
+        for name, component in schema.get("properties", {}).items():
+            editor = scalar_editor(values[name], component, self)
+            self.editors[name] = editor
+            layout.addRow(component.get("title") or name, editor)
+
+    def value(self):
+        return {
+            name: scalar_editor_value(editor, self.schema["properties"][name])
+            for name, editor in self.editors.items()
+        }
+
+    def value_map(self, base_key):
+        return {base_key: self.value()}
+
+    def reset_value(self, value):
+        values = derived_default(self.schema, value)
+        for name, editor in self.editors.items():
+            set_scalar_editor_value(editor, values[name])
+
+
+class DerivedArrayWidget(QtWidgets.QTableWidget):
+    """Table editor for a one-dimensional array of derived values."""
+
+    def __init__(self, schema, value, domain_infos, parent=None):
+        self.schema = schema
+        self.item_schema = schema.get("items", {})
+        self.component_names = list(self.item_schema.get("properties", {}))
+        self.domain_infos = domain_infos or [
+            {"station_id": "1", "label": "1", "index": 1}]
+        count = len(self.domain_infos) if (
+            shape_parts(schema) and is_max_domains(shape_parts(schema)[0])
+        ) else max(1, len(value) if isinstance(value, list) else 1)
+        super(DerivedArrayWidget, self).__init__(
+            count, len(self.component_names) + 1, parent)
+        self.setHorizontalHeaderLabels(["Domain", *self.component_names])
+        self.editors = []
+        self.reset_value(value)
+        self.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+        self.verticalHeader().setVisible(False)
+        self.setMinimumHeight(min(260, 72 + 32 * count))
+
+    def reset_value(self, value):
+        source = value if isinstance(value, list) else []
+        self.editors = []
+        for row in range(self.rowCount()):
+            label = self.domain_infos[row]["label"] if (
+                row < len(self.domain_infos)) else str(row + 1)
+            self.setItem(row, 0, QtWidgets.QTableWidgetItem(str(label)))
+            values = derived_default(
+                self.item_schema,
+                source[row] if row < len(source) else None,
+            )
+            row_editors = {}
+            for column, name in enumerate(self.component_names, start=1):
+                component = self.item_schema["properties"][name]
+                editor = scalar_editor(values[name], component, self)
+                self.setCellWidget(row, column, editor)
+                row_editors[name] = editor
+            self.editors.append(row_editors)
+
+    def value(self):
+        return [
+            {
+                name: scalar_editor_value(
+                    editor, self.item_schema["properties"][name])
+                for name, editor in row.items()
+            }
+            for row in self.editors
+        ]
+
+    def value_map(self, base_key):
+        return {base_key: self.value()}
+
+
 def normalize_list_value(value, count, default):
     """Normalize one list to a requested length."""
     if isinstance(value, tuple):

@@ -1,487 +1,319 @@
 # -*- coding: utf-8 -*-
-"""Geology class raster preparation."""
+"""Geology raster preparation through :mod:`mhm_tools`."""
 from __future__ import annotations
 
 from ..common import (
+    QMessageBox,
+    QgsRasterLayer,
+    QgsVectorLayer,
+    morph_folder,
     os,
     project_geometry_folder,
-    QMessageBox,
-    QgsVectorLayer,
-    QgsRasterLayer,
-    QgsFeature,
-    QgsFields,
-    create_vector_file_writer,
-    qgs_field,
+)
+from ..core.layer_preparation import LayerPreparationMixin
+from ..core.predecessors import PredecessorMixin
+from ..core.soil_sources import (
+    local_layer_source,
+    materialize_vector_layer,
+    remove_vector_dataset,
 )
 from ..watershed.dem_fill import DemFillMixin
-from ..core.predecessors import PredecessorMixin
-from ..core.layer_preparation import LayerPreparationMixin
+from ...mhm_tools_to_integrate.setup_creation import (
+    format_geology_file,
+    rasterize_geology_map,
+    write_geology_classdefinition_file,
+)
 from .lookup_fields import LookupFieldMixin
 
 
 class GeologyProcessingMixin(
-        LayerPreparationMixin,
-        DemFillMixin,
-        PredecessorMixin,
-        LookupFieldMixin):
-    """Geology class raster preparation."""
+    LayerPreparationMixin,
+    DemFillMixin,
+    PredecessorMixin,
+    LookupFieldMixin,
+):
+    """Prepare an mHM geology-class raster from a vector or raster layer."""
 
-    def process_geology(self, write_classdefinition=True) -> None:
-        """Process geology input into an mHM geology class raster."""
+    def process_geology(self, write_classdefinition=True) -> bool:
+        """Create ``3_geology_processed.tif`` on the filled-DEM grid."""
         if not self.check_prerequisites():
-            return
-
+            return False
         if not self._ensure_filled_dem(self.fill_dem):
-            return
+            return False
 
         layer = self.dialog.mMapLayerComboBox_geology.currentLayer()
         if not layer:
             QMessageBox.warning(
-                self.dialog, "Input Error",
-                "Please select a Geology layer.")
-            return
-
+                self.dialog, "Input Error", "Please select a Geology layer."
+            )
+            return False
         if not isinstance(layer, (QgsVectorLayer, QgsRasterLayer)):
             QMessageBox.warning(
-                self.dialog, "Input Error",
-                "Geology layer must be a vector or raster layer.")
-            return
+                self.dialog,
+                "Input Error",
+                "Geology layer must be a vector or raster layer.",
+            )
+            return False
 
         geometry_folder = project_geometry_folder(self.dialog.project_folder)
+        static_morph_folder = morph_folder(self.dialog.project_folder)
         os.makedirs(geometry_folder, exist_ok=True)
-        self.geology_path = os.path.join(
-            geometry_folder, "3_geology_processed.tif")
+        os.makedirs(static_morph_folder, exist_ok=True)
+        output_path = os.path.join(geometry_folder, "3_geology_processed.tif")
+        classdefinition_path = os.path.join(
+            static_morph_folder, "geology_classdefinition.txt"
+        )
+        metadata_path = os.path.join(geometry_folder, "geology_class_metadata.json")
+        self.geology_path = output_path
 
-        if os.path.exists(self.geology_path):
-            self.log_message("Geology layer already processed. Loading existing file...")
-            self.load_layer(self.geology_path, "Geology")
-            if write_classdefinition:
-                self._write_geology_classdefinition_after_processing()
-            return
-
-        self.log_message("Processing Geology layer...")
-
-        input_crs = self.dialog.get_crs()
-        if not input_crs.isValid():
-            QMessageBox.warning(
-                self.dialog, "CRS Error",
-                "Please set a valid input CRS.")
-            return
-
-        geology_lookup_mapping, geology_lookup_key_field = (
-            self._load_geology_lookup_mapping())
-        if not geology_lookup_mapping or not geology_lookup_key_field:
-            return
-
-        if isinstance(layer, QgsRasterLayer):
-            geology_raster_created = self._process_geology_raster_layer(
-                layer,
-                geology_lookup_mapping,
-                self.geology_path,
-                input_crs,
-                geometry_folder,
+        if os.path.exists(output_path):
+            self.log_message(
+                "Geology layer already processed. Loading existing file..."
             )
-            if geology_raster_created and write_classdefinition:
-                self._write_geology_classdefinition_after_processing()
-            return
+            self.load_layer(output_path, "Geology")
+            if write_classdefinition:
+                return bool(self._write_geology_classdefinition_after_processing())
+            return True
 
-        layer_crs = layer.crs()
-        temp_reprojected_path = None
-        layer_to_rasterize = layer
+        lookup_layer, lookup_mapping_field = self._geology_lookup_input()
+        if lookup_layer is None:
+            return False
 
-        if layer_crs.isValid():
-            if layer_crs.authid() != input_crs.authid():
-                self.log_message(
-                    f"Geology layer CRS ({layer_crs.authid()}) differs from input CRS ({input_crs.authid()}). Reprojecting...")
-                temp_reprojected_path = os.path.join(
-                    geometry_folder, "temp_geology_reprojected.gpkg")
-
-                reprojected_layer = self.reproject_vector_layer(
-                    layer, input_crs, temp_reprojected_path)
-                if reprojected_layer:
-                    layer_to_rasterize = reprojected_layer
-                    self.log_message(
-                        f"Geology layer reprojected successfully to {input_crs.authid()}")
-                else:
-                    self.log_message(
-                        "ERROR: Geology reprojection failed. Aborting geology raster preparation.")
-                    QMessageBox.critical(
-                        self.dialog,
-                        "Reprojection Error",
-                        "Geology layer reprojection failed. The geology raster was not prepared.")
-                    return
-            else:
-                self.log_message(
-                    f"Geology layer CRS ({layer_crs.authid()}) matches input CRS. No reprojection needed.")
-        else:
-            self.log_message(
-                "WARNING: Geology layer CRS is not valid. Proceeding with rasterization...")
-
-        fields = layer_to_rasterize.fields()
-        field_names = [field.name() for field in fields]
-        geology_key_field = self._required_lookup_field(
-            field_names, geology_lookup_key_field)
-
-        if not geology_key_field:
-            QMessageBox.warning(
-                self.dialog, "Input Error",
-                f"Geology layer must contain the selected lookup field '{geology_lookup_key_field}'.")
-            self._cleanup_geology_vector(temp_reprojected_path)
-            return
-
-        self.log_message(
-            f"Using field '{geology_key_field}' for geology class lookup")
-
-        temp_geology_with_class_path = os.path.join(
-            geometry_folder, "temp_geology_with_class.shp")
-        layer_input = self._write_geology_class_layer(
-            layer_to_rasterize,
-            fields,
-            geology_key_field,
-            geology_lookup_mapping,
-            temp_geology_with_class_path,
-            input_crs,
-        )
-        if not layer_input:
-            self._cleanup_geology_vector(temp_reprojected_path)
-            return
-
-        filled_dem_layer = QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
-        if not filled_dem_layer.isValid():
-            self.log_message("ERROR: Cannot read filled DEM layer.")
-            QMessageBox.critical(
-                self.dialog, "Error",
-                "Cannot read filled DEM layer.")
-            self._cleanup_geology_vector(temp_reprojected_path)
-            self._cleanup_geology_vector(temp_geology_with_class_path)
-            return
-
-        raster_extent = filled_dem_layer.extent()
-        width = filled_dem_layer.width()
-        height = filled_dem_layer.height()
-        cell_size_width = (
-            raster_extent.xMaximum() - raster_extent.xMinimum()) / width
-        cell_size_height = (
-            raster_extent.yMaximum() - raster_extent.yMinimum()) / height
-        extent_str = (
-            f"{raster_extent.xMinimum()},{raster_extent.xMaximum()},"
-            f"{raster_extent.yMinimum()},{raster_extent.yMaximum()} "
-            f"[{input_crs.authid()}]"
-        )
-
-        self.log_message(f"Using filled DEM extent: {extent_str}")
-        self.log_message(f"Using filled DEM resolution: {width} x {height} pixels")
-
-        params_rasterize = {
-            'INPUT': layer_input,
-            'FIELD': 'MHM_CLASS',
-            'BURN': 0,
-            'USE_Z': False,
-            'UNITS': 1,
-            'WIDTH': cell_size_width,
-            'HEIGHT': cell_size_height,
-            'EXTENT': extent_str,
-            'NODATA': -9999,
-            'OPTIONS': None,
-            'DATA_TYPE': 5,
-            'INIT': None,
-            'INVERT': False,
-            'EXTRA': '',
-            'OUTPUT': self.geology_path
-        }
-
-        result = self.run_processing_algorithm("gdal:rasterize", params_rasterize)
-        geology_raster_created = result and os.path.exists(self.geology_path)
-        if geology_raster_created:
-            self.load_layer(self.geology_path, "Geology")
-            self.log_message("Geology layer rasterized successfully.")
-        else:
-            self.log_message("ERROR: Geology rasterization failed.")
-            self.geology_path = None
-
-        self._cleanup_geology_vector(temp_reprojected_path)
-        self._cleanup_geology_vector(temp_geology_with_class_path)
-
-        if geology_raster_created and write_classdefinition:
-            self._write_geology_classdefinition_after_processing()
-
-    def _load_geology_lookup_mapping(self):
-        """Return geology lookup mapping and selected table key field."""
-        lookup_layer_combo = getattr(
-            self.dialog, "mMapLayerComboBox_geologyLookup", None)
-        lookup_layer = (
-            lookup_layer_combo.currentLayer()
-            if lookup_layer_combo is not None else None
-        )
-        if not lookup_layer:
-            self.log_message("ERROR: Geology lookup table layer not selected.")
-            QMessageBox.warning(
-                self.dialog, "Input Error",
-                "Please select a Geology lookup table layer.")
-            return None, None
-
-        if not isinstance(lookup_layer, QgsVectorLayer) or not lookup_layer.isValid():
-            self.log_message("ERROR: Geology lookup layer is not valid.")
-            QMessageBox.warning(
-                self.dialog, "Input Error",
-                "Please select a valid Geology lookup table layer.")
-            return None, None
-
-        field_names = lookup_layer.fields().names()
-        key_field = self._selected_lookup_field(
-            "comboBox_geologyLookupField", field_names)
-        if not key_field:
-            self.log_message("ERROR: Please select a geology lookup field.")
-            self.log_message(f"Fields found: {', '.join(field_names)}")
-            QMessageBox.warning(
-                self.dialog, "Input Error",
-                "Please select the geology lookup field that maps the geology layer to the lookup table.")
-            return None, None
-
-        class_field = self._required_lookup_field(field_names, "GEOLOGY_CLASS")
-        if not class_field:
-            self.log_message(
-                "ERROR: Geology lookup layer must contain a GEOLOGY_CLASS field.")
-            self.log_message(f"Fields found: {', '.join(field_names)}")
-            QMessageBox.warning(
-                self.dialog, "Input Error",
-                "Geology lookup layer must contain a GEOLOGY_CLASS field.")
-            return None, None
-
-        self.log_message(
-            f"Using geology lookup fields '{key_field}' -> '{class_field}'")
-        lookup_mapping = {}
-        for feature_index, feature in enumerate(lookup_layer.getFeatures(), start=1):
-            try:
-                lookup_key = self._normalise_lookup_key(feature[key_field])
-                if not lookup_key:
-                    self.log_message(
-                        f"WARNING: Geology lookup row {feature_index} has an empty key. Skipping.")
-                    continue
-
-                class_code = self._coerce_lookup_int(feature[class_field])
-                if class_code is None or class_code <= 0:
-                    self.log_message(
-                        f"WARNING: Geology lookup row {feature_index} has invalid GEOLOGY_CLASS '{feature[class_field]}'. Skipping.")
-                    continue
-
-                lookup_mapping[lookup_key] = class_code
-                if len(lookup_mapping) <= 10:
-                    self.log_message(f"  Mapped: {lookup_key} -> {class_code}")
-            except Exception as e:
-                self.log_message(
-                    f"WARNING: Error parsing geology lookup feature {feature_index}: {e}")
-
-        if lookup_mapping:
-            self.log_message(
-                f"Loaded {len(lookup_mapping)} entries from geology lookup layer.")
-            return lookup_mapping, key_field
-
-        self.log_message("ERROR: Geology lookup layer is empty or could not be parsed.")
-        QMessageBox.warning(
-            self.dialog, "Input Error",
-            "Geology lookup layer is empty or could not be parsed.")
-        return None, None
-
-    def _write_geology_class_layer(
-            self,
-            source_layer,
-            source_fields,
-            source_field_name,
-            lookup_mapping,
-            output_path,
-            output_crs):
-        """Create a temporary geology vector with a numeric MHM_CLASS field."""
-        self.log_message("Adding mapped geology class field to geology layer...")
-        self._remove_vector_output(output_path)
-
-        output_fields = QgsFields()
-        for field in source_fields:
-            output_fields.append(field)
-        output_fields.append(qgs_field("MHM_CLASS", "Int"))
-
-        writer = create_vector_file_writer(
-            output_path,
-            output_fields,
-            source_layer.wkbType(),
-            output_crs,
-        )
-        if writer.hasError():
-            self.log_message(
-                f"ERROR creating temporary geology layer: {writer.errorMessage()}")
-            QMessageBox.critical(
-                self.dialog, "Error",
-                f"Error creating temporary geology layer:\n{writer.errorMessage()}")
-            return None
-
-        features_processed = 0
-        features_mapped = 0
-        features_unmapped = 0
-
-        for feature in source_layer.getFeatures():
-            new_feature = QgsFeature(output_fields)
-            new_feature.setGeometry(feature.geometry())
-
-            attrs = feature.attributes()
-            for index, attr in enumerate(attrs):
-                if index < len(output_fields) - 1:
-                    new_feature.setAttribute(index, attr)
-
-            lookup_key = self._normalise_lookup_key(
-                feature.attribute(source_field_name))
-            class_code = lookup_mapping.get(lookup_key) if lookup_key else None
-            if class_code is not None:
-                new_feature.setAttribute("MHM_CLASS", class_code)
-                features_mapped += 1
-            else:
-                self.log_message(
-                    f"ERROR: No GEOLOGY_CLASS mapping found for {source_field_name}='{feature.attribute(source_field_name)}'.")
-                features_unmapped += 1
-
-            writer.addFeature(new_feature)
-            features_processed += 1
-
-        del writer
-
-        self.log_message(
-            f"Processed {features_processed} geology features. "
-            f"Mapped: {features_mapped}, Unmapped: {features_unmapped}")
-        if features_mapped == 0 or features_unmapped > 0:
-            QMessageBox.warning(
-                self.dialog, "Mapping Error",
-                "Geology mapping failed. Every geology feature must map to a GEOLOGY_CLASS value in the lookup table.")
-            self._remove_vector_output(output_path)
-            return None
-
-        return output_path
-
-    def _process_geology_raster_layer(
-            self,
-            layer,
-            lookup_mapping,
-            output_path,
-            input_crs,
-            geometry_folder):
-        """Prepare a geology class raster from a categorical raster input."""
-        self.log_message("Processing raster geology layer with lookup table...")
-
-        reclass_table = []
-        for lookup_key, class_code in sorted(
-                lookup_mapping.items(),
-                key=lambda item: self._numeric_sort_key(item[0])):
-            try:
-                raster_value = float(lookup_key)
-            except (TypeError, ValueError):
-                self.log_message(
-                    "ERROR: Raster geology inputs require numeric values in the selected lookup field. "
-                    f"Could not convert '{lookup_key}'.")
+        geology_mapping_field = lookup_mapping_field
+        if isinstance(layer, QgsVectorLayer):
+            geology_mapping_field = self._required_lookup_field(
+                layer.fields().names(), lookup_mapping_field
+            )
+            if not geology_mapping_field:
                 QMessageBox.warning(
                     self.dialog,
                     "Input Error",
-                    "Raster geology inputs require numeric values in the selected lookup field.")
+                    "Geology layer must contain the selected lookup field "
+                    f"'{lookup_mapping_field}'.",
+                )
                 return False
 
-            reclass_table.extend([
-                str(raster_value - 0.5),
-                str(raster_value + 0.5),
-                str(int(class_code)),
-            ])
-
-        filled_dem_layer = QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
-        if not filled_dem_layer.isValid():
-            self.log_message("ERROR: Cannot read filled DEM layer.")
-            QMessageBox.critical(
-                self.dialog, "Error",
-                "Cannot read filled DEM layer.")
-            return False
-
-        raster_extent = filled_dem_layer.extent()
-        width = filled_dem_layer.width()
-        height = filled_dem_layer.height()
-        cell_size_width = (
-            raster_extent.xMaximum() - raster_extent.xMinimum()) / width
-        cell_size_height = (
-            raster_extent.yMaximum() - raster_extent.yMinimum()) / height
-        extent_str = (
-            f"{raster_extent.xMinimum()},{raster_extent.xMaximum()},"
-            f"{raster_extent.yMinimum()},{raster_extent.yMaximum()} "
-            f"[{input_crs.authid()}]"
+        temp_lookup = os.path.join(geometry_folder, "temp_geology_lookup.gpkg")
+        temp_vector = os.path.join(geometry_folder, "temp_geology_input.gpkg")
+        temp_raster = os.path.join(geometry_folder, "temp_geology_input.tif")
+        temp_definition = os.path.join(
+            geometry_folder, "temp_geology_classdefinition.txt"
         )
+        dem_crs = self._layer_crs_text(
+            QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
+        )
+        definition_backup = self._read_optional_file(classdefinition_path)
+        metadata_backup = self._read_optional_file(metadata_path)
 
-        aligned_path = os.path.join(
-            geometry_folder, "temp_geology_raster_aligned.tif")
-        params_warp = {
-            'INPUT': layer.source(),
-            'SOURCE_CRS': None,
-            'TARGET_CRS': input_crs,
-            'RESAMPLING': 0,
-            'NODATA': -9999,
-            'TARGET_RESOLUTION': min(cell_size_width, cell_size_height),
-            'OPTIONS': None,
-            'DATA_TYPE': 0,
-            'TARGET_EXTENT': extent_str,
-            'TARGET_EXTENT_CRS': input_crs,
-            'MULTITHREADING': False,
-            'EXTRA': '',
-            'OUTPUT': aligned_path
-        }
+        self.log_message("Processing Geology layer through mhm-tools...")
+        try:
+            lookup_path = local_layer_source(lookup_layer)
+            if lookup_path is None:
+                lookup_path = materialize_vector_layer(lookup_layer, temp_lookup)
 
-        warp_result = self.run_processing_algorithm(
-            "gdal:warpreproject", params_warp)
-        if not warp_result or not os.path.exists(aligned_path):
-            self.log_message("ERROR: Failed to align geology raster to filled DEM grid.")
-            return False
+            if isinstance(layer, QgsVectorLayer):
+                input_path = local_layer_source(layer)
+                if input_path is None:
+                    input_path = materialize_vector_layer(layer, temp_vector)
+                rasterize_geology_map(
+                    input_file=input_path,
+                    dem_file=self.filled_dem_path,
+                    output_file=output_path,
+                    mapping_field=geology_mapping_field,
+                    lookup_table=lookup_path,
+                    lookup_mapping_field=lookup_mapping_field,
+                    input_crs=self._layer_crs_text(layer),
+                    dem_crs=dem_crs,
+                    log=self.log_message,
+                )
+                if write_classdefinition:
+                    write_geology_classdefinition_file(
+                        lookup_table=lookup_path,
+                        output_file=temp_definition,
+                        log=self.log_message,
+                    )
+            else:
+                input_path = local_layer_source(layer)
+                if input_path is None:
+                    input_path = self._materialize_geology_raster(layer, temp_raster)
+                format_geology_file(
+                    input_file=input_path,
+                    dem_file=self.filled_dem_path,
+                    output_file=output_path,
+                    lookup_table=lookup_path,
+                    mapping_field=lookup_mapping_field,
+                    classdefinition_file=temp_definition,
+                    input_crs=self._layer_crs_text(layer),
+                    dem_crs=dem_crs,
+                    log=self.log_message,
+                )
 
-        params_reclass = {
-            'INPUT_RASTER': aligned_path,
-            'RASTER_BAND': 1,
-            'TABLE': reclass_table,
-            'NO_DATA': -9999,
-            'RANGE_BOUNDARIES': 0,
-            'NODATA_FOR_MISSING': True,
-            'DATA_TYPE': 5,
-            'CREATE_OPTIONS': None,
-            'OUTPUT': output_path
-        }
-
-        result = self.run_processing_algorithm(
-            "native:reclassifybytable", params_reclass)
-        geology_raster_created = result and os.path.exists(output_path)
-        if geology_raster_created:
-            self.load_layer(output_path, "Geology")
-            self.log_message("Raster geology layer reclassified successfully.")
-        else:
-            self.log_message("ERROR: Geology raster reclassification failed.")
+            if not os.path.exists(output_path):
+                raise RuntimeError("mhm-tools did not create the geology raster.")
+            if write_classdefinition:
+                if not os.path.exists(temp_definition):
+                    raise RuntimeError(
+                        "mhm-tools did not create geology_classdefinition.txt."
+                    )
+                os.replace(temp_definition, classdefinition_path)
+                self.mark_output_prepared(
+                    classdefinition_path,
+                    name="geology_classdefinition.txt",
+                    loaded=False,
+                )
+                metadata = self._write_geology_metadata_after_processing()
+                if not metadata or not os.path.exists(metadata):
+                    raise RuntimeError(
+                        "pymhm did not create geology_class_metadata.json."
+                    )
+        except Exception as error:
+            self.log_message(f"ERROR preparing geology data: {error}")
+            QMessageBox.critical(
+                self.dialog,
+                "Geology Processing Error",
+                f"Could not prepare the geology data:\n{error}",
+            )
+            self._remove_geology_raster_output(output_path)
+            if write_classdefinition:
+                self._restore_optional_file(classdefinition_path, definition_backup)
+                self._restore_optional_file(metadata_path, metadata_backup)
             self.geology_path = None
+            return False
+        finally:
+            self._cleanup_geology_temporary_inputs(
+                temp_lookup, temp_vector, temp_raster, temp_definition
+            )
 
-        if os.path.exists(aligned_path):
+        self.load_layer(output_path, "Geology")
+        self.log_message("Geology layer prepared successfully.")
+        return True
+
+    def _geology_lookup_input(self):
+        """Return the selected lookup layer and mapping field."""
+        combo = getattr(self.dialog, "mMapLayerComboBox_geologyLookup", None)
+        lookup_layer = combo.currentLayer() if combo is not None else None
+        if not isinstance(lookup_layer, QgsVectorLayer) or not lookup_layer.isValid():
+            QMessageBox.warning(
+                self.dialog,
+                "Input Error",
+                "Please select a valid Geology lookup table layer.",
+            )
+            return None, None
+
+        fields = lookup_layer.fields().names()
+        mapping_field = self._selected_lookup_field(
+            "comboBox_geologyLookupField", fields
+        )
+        if not mapping_field:
+            QMessageBox.warning(
+                self.dialog,
+                "Input Error",
+                "Please select the geology lookup field.",
+            )
+            return None, None
+        if not self._required_lookup_field(fields, "GEOLOGY_CLASS"):
+            QMessageBox.warning(
+                self.dialog,
+                "Input Error",
+                "Geology lookup table must contain a GEOLOGY_CLASS field.",
+            )
+            return None, None
+        self.log_message(
+            f"Using geology lookup fields '{mapping_field}' -> 'GEOLOGY_CLASS'"
+        )
+        return lookup_layer, mapping_field
+
+    def _materialize_geology_raster(self, layer, output_path):
+        """Write a selected QGIS raster to a standalone GeoTIFF."""
+        self._remove_geology_raster_output(output_path)
+        result = self.run_processing_algorithm(
+            "gdal:translate",
+            {
+                "INPUT": layer,
+                "TARGET_CRS": None,
+                "NODATA": None,
+                "COPY_SUBDATASETS": False,
+                "OPTIONS": None,
+                "EXTRA": "",
+                "DATA_TYPE": 0,
+                "OUTPUT": output_path,
+            },
+        )
+        if not result or not os.path.exists(output_path):
+            raise RuntimeError("Could not materialize the selected geology raster.")
+        return output_path
+
+    def _cleanup_geology_temporary_inputs(
+        self, lookup_path, vector_path, raster_path, definition_path
+    ):
+        """Remove path-based copies made from selected QGIS layers."""
+        for vector_output in (lookup_path, vector_path):
             try:
-                os.remove(aligned_path)
-            except Exception as e:
+                remove_vector_dataset(vector_output)
+            except Exception as error:
                 self.log_message(
-                    f"WARNING: Could not delete temporary aligned geology raster: {e}")
+                    "WARNING: Could not remove temporary geology vector "
+                    f"'{vector_output}': {error}"
+                )
+        try:
+            self._remove_geology_raster_output(raster_path)
+        except Exception as error:
+            self.log_message(
+                "WARNING: Could not remove temporary geology raster "
+                f"'{raster_path}': {error}"
+            )
+        try:
+            if os.path.exists(definition_path):
+                os.remove(definition_path)
+        except Exception as error:
+            self.log_message(
+                "WARNING: Could not remove temporary geology classdefinition "
+                f"'{definition_path}': {error}"
+            )
 
-        return bool(geology_raster_created)
+    @staticmethod
+    def _remove_geology_raster_output(path):
+        """Remove a raster and common GDAL sidecars."""
+        for candidate in (path, f"{path}.aux.xml", f"{path}.ovr"):
+            if os.path.exists(candidate):
+                os.remove(candidate)
 
     def _write_geology_classdefinition_after_processing(self):
-        """Write the geology classdefinition when this processor includes the writer mixin."""
+        """Regenerate the definition for a cached geology raster."""
         writer = getattr(self, "geology_classification_writer", None)
         if writer is None:
+            self.log_message("ERROR: Geology classdefinition writer is not available.")
             return None
         return writer()
 
-    def _cleanup_geology_vector(self, path):
-        """Remove a temporary geology vector dataset if it exists."""
-        if path and os.path.exists(path):
-            try:
-                self._remove_vector_output(path)
-            except Exception as e:
-                self.log_message(
-                    f"WARNING: Could not delete temporary geology vector '{path}': {e}")
+    def _write_geology_metadata_after_processing(self):
+        """Write plugin-specific geology parameter metadata."""
+        writer = getattr(self, "geology_class_metadata_writer", None)
+        return writer() if writer is not None else None
 
-    def _numeric_sort_key(self, value):
-        """Sort lookup keys numerically when possible."""
-        try:
-            return (0, float(value))
-        except (TypeError, ValueError):
-            return (1, str(value))
+    @staticmethod
+    def _read_optional_file(path):
+        """Read an existing output so a failed refresh can restore it."""
+        if not os.path.exists(path):
+            return None
+        with open(path, "rb") as source:
+            return source.read()
+
+    @staticmethod
+    def _restore_optional_file(path, content):
+        """Restore an old output, or remove a newly created partial output."""
+        if content is None:
+            if os.path.exists(path):
+                os.remove(path)
+            return
+        with open(path, "wb") as output:
+            output.write(content)
+
+    @staticmethod
+    def _layer_crs_text(layer):
+        """Return a CRS string suitable for assigning missing file metadata."""
+        crs = layer.crs() if layer is not None else None
+        if crs is None or not crs.isValid():
+            return None
+        authid = crs.authid()
+        return authid or crs.toWkt()

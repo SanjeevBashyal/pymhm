@@ -21,8 +21,9 @@ Important packages:
 - `Morphology/`: DEM, watershed, soil, geology, LAI, crop/mask/write-all, latlon, observations.
 - `Meteorology/`: ERA5-Land to mHM forcing preparation.
 - `Configuration/`: namelist schemas/templates/state/rendering/version compatibility.
-- `mhm_tools/`: bundled upstream-style tools. Do not edit unless explicitly asked.
-- `mhm_tools_to_integrate/`: UI-free core logic being separated for reuse and CLI-friendly workflows.
+- `mhm_tools_to_integrate/`: path-oriented adapters and UI-free helpers. Soil
+  and geology adapters under `setup_creation/` delegate computation to the
+  externally installed `mhm_tools` package.
 - `nml-schemas/` and `nml-templates/`: versioned by mHM tool version, currently `v5.13` and `v6`.
 - `project-template/`: versioned project folder skeleton.
 
@@ -32,7 +33,14 @@ Important packages:
 - v5.13 uses `mhm_parameter.nml`; v6 uses `mhm_parameters.nml`.
 - v5.13 schemas/templates live under `nml-schemas/v5.13` and `nml-templates/v5.13`; v6 under `v6`.
 - v5.13 multi-domain template values should be rendered as one-shot arrays where possible, for example `resolution_Hydrology = 12000, 24000`, not repeated `resolution_Hydrology(1)` / `resolution_Hydrology(2)` lines.
-- `mhm_tools` should be called through Python functions/modules, not shelling out to the `mhm-tools` CLI, unless explicitly requested.
+- `mhm_tools` should be called through Python functions/modules, not shelling
+  out to the `mhm-tools` CLI, unless explicitly requested. The dependency floor
+  is currently `mhm-tools>=0.2.2` in both `pyproject.toml` and
+  `requirements.txt`.
+- Despite its legacy name,
+  `mhm_tools_to_integrate._bundled.ensure_bundled_mhm_tools()` currently falls
+  through to the installed package because this tree no longer contains
+  `pymhm/mhm_tools`.
 - UI-facing logs should go through `self.log_message(...)`.
 - Success popups are not wanted for routine generated classdefinition files; log silently unless an error needs user action.
 
@@ -52,8 +60,51 @@ Important packages:
 - The selected lookup field is mandatory. Do not use fallback field names such as `Dominant_S` or `GEO_CLASS`; if the required user-selected mapping cannot be applied, raise/log a clear error.
 - Soil inputs may be vector or raster. The lookup table must include `SOIL_CLASS`; output raster values come from `SOIL_CLASS`.
 - Geology inputs may be vector or raster. The lookup table must include `GEOLOGY_CLASS`; output raster values come from `GEOLOGY_CLASS`.
+- The filled DEM is required for both vector and raster inputs. It defines the
+  exact output CRS, affine transform, extent, width, and height.
+- Vector inputs are handled by `mhm_tools.pre.rasterize_map_data` through
+  `rasterize_soil_map` or `rasterize_geology_map`. Pass the selected source
+  field as the vector mapping field, the selected lookup field as the lookup
+  mapping field, and burn `SOIL_CLASS` or `GEOLOGY_CLASS` respectively.
+- The external `data-converter rasterize-map` CLI requires `-i/--input-file`,
+  `-d/--dem-file`, `-o/--output-file`, and `-b/--burn-field`. Lookup mode adds
+  the paired `-l/--lookup-table` and `-m/--mapping-field` options; direct mode
+  burns the numeric vector field named by `-b`.
+- Do not add Shapely validity checks or `make_valid` calls before rasterizing.
+  The current contract passes geometries directly to Rasterio so invalid or
+  empty features follow Rasterio's normal handling.
+- Raster inputs are handled by `mhm_tools.pre.format_soil_data` or
+  `format_geology_data`. Input and DEM files may be `.asc`, `.tif`/`.tiff`, or
+  `.nc`; categorical alignment must use nearest-neighbour resampling.
+- The corresponding formatter CLIs require `-i`, `-d`, `-o`, `-l`, and `-m`;
+  `-t/--output-type` selects `nc` or `asc`. Across all three commands,
+  `-s/--input-crs` and `-r/--dem-crs` are metadata fallbacks.
+- Forward the QGIS layer CRS as `input_crs` or `dem_crs` only as a fallback for
+  files without embedded metadata. A supplied CRS must not silently override a
+  conflicting embedded CRS. ASCII CRS metadata uses a neighboring `.prj` file.
+- Prefer a direct local provider path. Materialize provider sublayers or
+  non-file-backed vector layers to temporary GeoPackage files and raster layers
+  to temporary GeoTIFF files.
+- `format_soil_data` and `format_geology_data` intentionally expose only `nc`
+  and `asc` output types. The shared `_categorical.format_categorical_file`
+  adapter uses a `TemporaryDirectory`, requests temporary NetCDF output, then
+  writes the plugin's final GeoTIFF. Keep that temporary directory until both
+  the raster and classdefinition have been moved successfully.
 - `soil_classdefinition.txt` and `geology_classdefinition.txt` are written to `data/static/morph`.
-- Geology metadata for configuration/parameters is written to `Z Temp/Geometry/geology_class_metadata.json`. Keep `GEOLOGY_CLASS` and `PARAMETER_VALUE` available there for namelist/parameter configuration.
+- Classdefinition rendering belongs to `mhm_tools`; capture its log records
+  through `mhm_tools_to_integrate.logging.capture_messages` and emit one
+  completion message per file, never one message per definition row.
+- Geology metadata for configuration/parameters is plugin-specific and is
+  written to `Z Temp/Geometry/geology_class_metadata.json`. Keep
+  `GEOLOGY_CLASS` and `PARAMETER_VALUE` validation in `pymhm`; standalone
+  `mhm_tools` geology classdefinition output does not use `PARAMETER_VALUE`.
+- A failed geology refresh must not destroy a previously valid
+  classdefinition or metadata file. Restore prior contents and remove any
+  partial raster output.
+- Existing `3_soil.tif` and `3_geology_processed.tif` files are currently
+  reused based on file existence, without input/lookup provenance checks. When
+  changing cache behavior, prevent an old raster from being paired with a
+  classdefinition generated from a newer lookup table.
 - Prefer GeoPackage (`.gpkg`) for temporary vector outputs; shapefile paths with spaces/backslashes have caused QGIS Processing creation errors.
 
 ## LAI
@@ -84,6 +135,10 @@ Important packages:
 - Many modules import QGIS/PyQt and cannot be fully imported in plain system Python.
 - Useful low-risk checks:
   - `python -m py_compile <changed pure-python files>`
+  - `python3 -m pytest -q` for `tests/test_soil_mhm_tools_adapter.py`,
+    `tests/test_geology_mhm_tools_adapter.py`, and logging-capture tests.
+  - Install the standalone shim before importing `MorphologyProcessor` in a
+    plain-Python MRO smoke test.
   - Targeted render smoke tests for `Configuration/namelist.py` and `Configuration/version_compat.py` using a lightweight fake `pymhm` package import harness.
 - The standalone shell Python may not have `PyYAML`; QGIS Python may. If schema loading fails only because `yaml` is missing in shell Python, note it rather than treating it as a plugin failure.
 - When QGIS behavior matters, reason from code and keep changes scoped; do not claim full runtime verification unless tested inside QGIS.
@@ -107,7 +162,9 @@ Important packages:
 ## Style
 
 - Keep UI code focused on UI state, validation, and logging.
-- Put reusable computation in `mhm_tools_to_integrate` when a task asks for UI-free or CLI-friendly logic.
-- Keep `mhm_tools` unchanged unless explicitly asked.
+- Keep QGIS adapters in `mhm_tools_to_integrate`; put generally reusable raster
+  computation in the external `mhm-tools` project and expose it through a
+  public Python function plus its CLI command where required.
+- Do not copy external `mhm_tools` source back into this repository.
 - Prefer clear errors over silent fallbacks when the user is expected to provide fields/layers.
 - Keep changes narrow and aligned with existing mixin/module boundaries.

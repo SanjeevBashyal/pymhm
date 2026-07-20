@@ -2,9 +2,11 @@
 """Processor for schema-driven mHM configuration namelists."""
 from __future__ import annotations
 
+import copy
 import os
 from typing import Any
 
+from nml_tools import json_to_namelist
 from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox
 
 from ..grid_resolution import ceil_cellsize
@@ -28,13 +30,13 @@ from .namelist import (
     canonical_name,
     template_block_order,
     template_values,
-    write_rendered_namelist,
 )
+from .nmljson import NmlJsonStore, atomic_write_text
 from .path_defaults import configuration_path_defaults
 from .paths import namelist_output_dir, output_path, template_path, version_key
 from .schema_loader import config_schemas, output_schemas, parameter_schema_lookup
+from .profile_values import namelist_values
 from .state import ConfigurationStateStore
-from .version_compat import render_values_for_version
 
 
 ConfigPage = dict[str, Any]
@@ -47,7 +49,9 @@ class ConfigurationProcessor(SimulationProcessor):
     def __init__(self, dialog: Any) -> None:
         super(ConfigurationProcessor, self).__init__(dialog)
         self.state_store = ConfigurationStateStore(dialog)
+        self.nml_store = NmlJsonStore(dialog)
         self.configuration_state = self.state_store.empty()
+        self.nml_document = self.nml_store.empty()
         self._last_mhm_values: ConfigValues | None = None
 
     def selected_version(self) -> str:
@@ -60,25 +64,34 @@ class ConfigurationProcessor(SimulationProcessor):
     def load_project_state(self) -> None:
         """Load saved Configuration-tab state for the selected project."""
         self.configuration_state = self.state_store.load()
-        if hasattr(self.dialog, "lineEdit_loadConfiguration"):
-            path = self.state_store.path()
-            self.dialog.lineEdit_loadConfiguration.setText(path or "")
-
-        version = self.configuration_state.get("mhm_version")
+        self.nml_document = self.nml_store.load(self.selected_version())
+        version = (
+            self.configuration_state.get("mhm_version")
+            or self.nml_document.get("mhm_version")
+        )
         if version and hasattr(self.dialog, "comboBox_mHMversion"):
             combo = self.dialog.comboBox_mHMversion
             index = combo.findText(version)
             if index >= 0:
                 combo.setCurrentIndex(index)
 
+        legacy = self.configuration_state.pop(
+            "_legacy_namelist_settings", None)
+        if isinstance(legacy, dict):
+            self.migrate_legacy_settings(legacy)
+
+        if hasattr(self.dialog, "lineEdit_loadConfiguration"):
+            self.dialog.lineEdit_loadConfiguration.setText(
+                self.nml_store.path() or "")
+
         self._last_mhm_values = self.kind_state("mhm") or None
         self.refresh_status_indicators()
-        path = self.state_store.path()
+        path = self.nml_store.path()
         if path and os.path.exists(path):
-            self.log_message(f"Configuration state loaded: {path}")
+            self.log_message(f"Namelist configuration loaded: {path}")
 
     def browse_configuration_file(self) -> bool:
-        """Load a configuration settings JSON file selected by the user."""
+        """Import a namelist-profile JSON file selected by the user."""
         if not self.ensure_project_folder():
             return False
 
@@ -92,24 +105,26 @@ class ConfigurationProcessor(SimulationProcessor):
             return False
         try:
             import json
-            with open(file_path, "r", encoding="utf-8") as state_file:
-                state = json.load(state_file)
-            if not isinstance(state, dict):
-                raise ValueError("Configuration settings file is not a JSON object.")
-            state.setdefault("settings", {})
-            self.configuration_state = state
-            self.save_state()
+            with open(file_path, "r", encoding="utf-8") as profile_file:
+                document = json.load(profile_file)
+            if not isinstance(document, dict):
+                raise ValueError("Namelist configuration is not a JSON object.")
+            if not isinstance(document.get("file_profiles"), dict):
+                raise ValueError("Namelist configuration has no file_profiles object.")
+            self.nml_document = document
+            self.nml_store.save(self.nml_document)
             if hasattr(self.dialog, "lineEdit_loadConfiguration"):
                 self.dialog.lineEdit_loadConfiguration.setText(
-                    self.state_store.path() or file_path)
-            version = state.get("mhm_version")
+                    self.nml_store.path() or file_path)
+            version = document.get("mhm_version")
             if version and hasattr(self.dialog, "comboBox_mHMversion"):
                 index = self.dialog.comboBox_mHMversion.findText(version)
                 if index >= 0:
                     self.dialog.comboBox_mHMversion.setCurrentIndex(index)
+            self.save_state()
             self._last_mhm_values = self.kind_state("mhm") or None
             self.refresh_status_indicators()
-            self.log_message(f"Configuration settings imported: {file_path}")
+            self.log_message(f"Namelist configuration imported: {file_path}")
             return True
         except Exception as exc:
             self.report_error("Load Configuration Settings", exc)
@@ -121,7 +136,7 @@ class ConfigurationProcessor(SimulationProcessor):
         self.state_store.save(self.configuration_state)
         if hasattr(self.dialog, "lineEdit_loadConfiguration"):
             self.dialog.lineEdit_loadConfiguration.setText(
-                self.state_store.path() or "")
+                self.nml_store.path() or "")
 
     def handle_version_changed(self) -> None:
         """Persist the selected version and refresh project paths/status."""
@@ -134,16 +149,40 @@ class ConfigurationProcessor(SimulationProcessor):
 
     def kind_state(self, kind: str) -> dict[str, Any]:
         """Return saved values for a namelist kind."""
-        return (
-            self.configuration_state
-            .setdefault("settings", {})
-            .setdefault(kind, {})
-        )
+        profile = self.nml_store.profile(self.nml_document, kind)
+        values = profile.get("editor_values")
+        return values if isinstance(values, dict) else {}
 
-    def set_kind_state(self, kind: str, values: dict[str, Any]) -> None:
-        """Save values for a namelist kind into the state object."""
-        self.configuration_state.setdefault("settings", {})[kind] = values
-        self.save_state()
+    def migrate_legacy_settings(self, settings: dict[str, Any]) -> None:
+        """Move legacy state-file namelist settings into nmljson profiles."""
+        mhm_values = settings.get("mhm") or {}
+        pages_by_kind = {
+            "mhm": self.build_config_pages(),
+            "parameters": self.build_parameter_pages(mhm_values),
+            "outputs": self.build_output_pages(),
+        }
+        for kind, pages in pages_by_kind.items():
+            editor_values = settings.get(kind)
+            profile = self.nml_store.profile(self.nml_document, kind)
+            if not isinstance(editor_values, dict) or profile.get("values"):
+                continue
+            converted = namelist_values(
+                self.selected_version(),
+                kind,
+                editor_values,
+                pages,
+                self.dialog,
+            )
+            self.nml_store.set_profile(
+                self.nml_document,
+                kind,
+                converted,
+                self.selected_version(),
+                editor_values=editor_values,
+                dimensions=self.profile_dimensions(kind),
+            )
+        self.nml_store.save(self.nml_document)
+        self.state_store.save(self.configuration_state)
 
     def configure_mhm(self) -> bool:
         """Open the mHM configuration dialog and save mhm.nml on OK."""
@@ -200,9 +239,7 @@ class ConfigurationProcessor(SimulationProcessor):
             if editor.exec_() != editor.Accepted:
                 return False
             values = editor.collect_values()
-            include_blocks = self.render_include_blocks(pages, parameter_mode)
-            self.set_kind_state(kind, values)
-            self.write_kind(kind, values, include_blocks=include_blocks)
+            self.write_kind(kind, values, pages=pages)
             if kind == "mhm":
                 self._last_mhm_values = values
             return True
@@ -219,8 +256,7 @@ class ConfigurationProcessor(SimulationProcessor):
             config_pages = self.build_config_pages()
             config_values = self.kind_state("mhm") or self.default_values_from_pages(config_pages)
             config_values = self.apply_current_resolution_values(config_values)
-            self.set_kind_state("mhm", config_values)
-            self.write_kind("mhm", config_values)
+            self.write_kind("mhm", config_values, pages=config_pages)
             self._last_mhm_values = config_values
 
             parameter_pages = self.build_parameter_pages(config_values)
@@ -228,20 +264,18 @@ class ConfigurationProcessor(SimulationProcessor):
                 parameter_pages,
                 parameter_mode=True,
             )
-            self.set_kind_state("parameters", parameter_values)
             self.write_kind(
                 "parameters",
                 parameter_values,
-                include_blocks=self.render_include_blocks(
-                    parameter_pages,
-                    parameter_mode=True,
-                ),
+                pages=parameter_pages,
             )
 
             output_pages = self.build_output_pages()
-            output_values = self.kind_state("outputs") or self.default_values_from_pages(output_pages)
-            self.set_kind_state("outputs", output_values)
-            self.write_kind("outputs", output_values)
+            output_values = (
+                self.kind_state("outputs")
+                or self.default_values_from_pages(output_pages)
+            )
+            self.write_kind("outputs", output_values, pages=output_pages)
 
             self.log_message("Schema-driven namelist files created successfully.")
             return True
@@ -253,35 +287,64 @@ class ConfigurationProcessor(SimulationProcessor):
             self,
             kind: str,
             values: dict[str, Any],
-            include_blocks: list[str] | None = None) -> str:
-        """Render and save one namelist kind."""
+            pages: list[ConfigPage] | None = None) -> str:
+        """Save one file profile and render it through nml-tools."""
         project_folder = self.dialog.project_folder
         ensure_project_structure(project_folder, self.selected_version())
         os.makedirs(namelist_output_dir(project_folder), exist_ok=True)
-        template = template_path(self.selected_version(), kind)
         destination = output_path(project_folder, kind, self.selected_version())
-        render_values = render_values_for_version(
+        if pages is None:
+            pages = self.pages_for_kind(kind)
+        source_values = (
+            self.apply_current_resolution_values(values)
+            if kind == "mhm" else values
+        )
+        if kind == "parameters" and version_key(self.selected_version()) == "v5.13":
+            pages = self.build_parameter_pages({}, include_all=True)
+            source_values = self.merge_generated_defaults(
+                self.default_values_from_pages(pages, parameter_mode=True),
+                values,
+            )
+        render_values = namelist_values(
             self.selected_version(),
             kind,
-            self.apply_current_resolution_values(values) if kind == "mhm" else values,
+            source_values,
+            pages,
             self.dialog,
         )
-        write_rendered_namelist(
-            template, destination, render_values, include_blocks=include_blocks)
+        self.nml_store.set_profile(
+            self.nml_document,
+            kind,
+            render_values,
+            self.selected_version(),
+            editor_values=values,
+            dimensions=self.profile_dimensions(kind),
+        )
+        profile = self.nml_store.profile(self.nml_document, kind)
+        atomic_write_text(destination, json_to_namelist(profile))
+        self.nml_store.save(self.nml_document)
+        self.save_state()
         self.log_message(f"Written: {destination}")
         self.refresh_status_indicators()
         return destination
 
-    def render_include_blocks(
+    def pages_for_kind(
             self,
-            pages: list[ConfigPage],
-            parameter_mode: bool = False) -> list[str] | None:
-        """Return template blocks to render, or None to preserve the template."""
-        if not parameter_mode:
-            return None
-        if version_key(self.selected_version()) == "v5.13":
-            return None
-        return [page["block"] for page in pages]
+            kind: str) -> list[ConfigPage]:
+        """Return schema pages when a caller did not already build them."""
+        if kind == "mhm":
+            return self.build_config_pages()
+        if kind == "parameters":
+            return self.build_parameter_pages(self.current_mhm_values())
+        if kind == "outputs":
+            return self.build_output_pages()
+        raise ValueError(f"Unknown namelist profile kind: {kind}")
+
+    def profile_dimensions(self, kind: str) -> dict[str, int]:
+        """Return dimensions needed to interpret the saved profile arrays."""
+        if kind == "parameters":
+            return {"max_geo_units": geology_class_count(self.dialog)}
+        return {"max_domains": domain_count(self.dialog)}
 
     def build_config_pages(self) -> list[ConfigPage]:
         """Build page data for the mHM configuration dialog."""
@@ -291,15 +354,26 @@ class ConfigurationProcessor(SimulationProcessor):
         """Build page data for the output configuration dialog."""
         return self.pages_from_schemas(output_schemas(self.selected_version()), "outputs")
 
-    def build_parameter_pages(self, config_values: dict[str, Any]) -> list[ConfigPage]:
+    def build_parameter_pages(
+            self,
+            config_values: dict[str, Any],
+            include_all: bool = False) -> list[ConfigPage]:
         """Build parameter pages required by selected mHM process cases."""
         schema_lookup = parameter_schema_lookup(self.selected_version())
-        selected_blocks = self.parameter_blocks_for_config(config_values)
         ordered_blocks = self.ordered_template_blocks("parameters")
+        schema_blocks = [
+            "petm2" if block == "pet0" else block
+            for block in ordered_blocks
+        ]
+        selected_blocks = (
+            schema_blocks
+            if include_all
+            else self.parameter_blocks_for_config(config_values)
+        )
         selected_keys = {canonical_name(block) for block in selected_blocks}
 
         ordered_selected = [
-            block for block in ordered_blocks
+            block for block in schema_blocks
             if canonical_name(block) in selected_keys
         ]
         for block in selected_blocks:
@@ -618,15 +692,39 @@ class ConfigurationProcessor(SimulationProcessor):
         """Return a non-parameter default from template, schema, or type."""
         if value is not None:
             return value
+        prop_type = prop_schema.get("type")
+        if prop_type == "array":
+            examples = prop_schema.get("examples") or []
+            if examples:
+                return copy.deepcopy(
+                    examples[0] if isinstance(examples[0], list) else examples)
+            item = prop_schema.get("items", {})
+            item_value = self.general_default(None, item)
+            shape = prop_schema.get("x-fortran-shape")
+            dimensions = shape if isinstance(shape, list) else [shape]
+
+            def filled(index: int) -> Any:
+                if index >= len(dimensions):
+                    return copy.deepcopy(item_value)
+                dimension = dimensions[index]
+                count = (
+                    domain_count(self.dialog)
+                    if str(dimension).lower() == "max_domains"
+                    else dimension if isinstance(dimension, int) else 1
+                )
+                return [filled(index + 1) for _ in range(max(1, count))]
+
+            return filled(0)
+        if prop_type == "object":
+            return {
+                name: self.general_default(None, component)
+                for name, component in prop_schema.get("properties", {}).items()
+            }
         if "default" in prop_schema:
             return prop_schema["default"]
-        item_default = prop_schema.get("items", {}).get("default")
-        if item_default is not None:
-            return item_default
         examples = prop_schema.get("examples") or []
         if examples:
             return examples[0]
-        prop_type = prop_schema.get("type")
         if prop_type == "boolean":
             return False
         if prop_type == "integer":

@@ -35,6 +35,7 @@ dependencies = [
     "pandas>=1.3.0",
     "PyQt5>=5.15",
     "mhm-tools>=0.2.2",
+    "nml-tools",
 ]
 
 [project.optional-dependencies]

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from typing import Any
 
 from ..project_layout import (
@@ -38,11 +39,6 @@ class ConfigurationStateStore:
         return {
             "version": 1,
             "mhm_version": "",
-            "settings": {
-                "mhm": {},
-                "parameters": {},
-                "outputs": {},
-            },
         }
 
     def load(self) -> dict[str, Any]:
@@ -58,10 +54,9 @@ class ConfigurationStateStore:
                 raise ValueError("Configuration state is not a JSON object.")
             state.setdefault("version", 1)
             state.setdefault("mhm_version", "")
-            settings = state.setdefault("settings", {})
-            settings.setdefault("mhm", {})
-            settings.setdefault("parameters", {})
-            settings.setdefault("outputs", {})
+            settings = state.pop("settings", None)
+            if isinstance(settings, dict):
+                state["_legacy_namelist_settings"] = settings
             return state
         except Exception as exc:
             self.dialog.log_message(
@@ -74,13 +69,30 @@ class ConfigurationStateStore:
         if not path:
             return
 
-        state = dict(state or self.empty())
+        state = {
+            key: value
+            for key, value in dict(state or self.empty()).items()
+            if key not in ("settings", "_legacy_namelist_settings")
+        }
         state["version"] = 1
         state["updated_at"] = utc_timestamp()
         state["project_layout"] = self.project_layout()
         try:
-            with open(path, "w", encoding="utf-8") as state_file:
-                json.dump(state, state_file, indent=2, sort_keys=True)
+            directory = os.path.dirname(path) or "."
+            os.makedirs(directory, exist_ok=True)
+            descriptor, temporary = tempfile.mkstemp(
+                prefix=".pymhm-state-", dir=directory)
+            try:
+                with os.fdopen(descriptor, "w", encoding="utf-8") as state_file:
+                    json.dump(state, state_file, indent=2, sort_keys=True)
+                    state_file.write("\n")
+                os.replace(temporary, path)
+            except Exception:
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
+                raise
         except Exception as exc:
             self.dialog.log_message(
                 f"WARNING: Could not save configuration state: {exc}")

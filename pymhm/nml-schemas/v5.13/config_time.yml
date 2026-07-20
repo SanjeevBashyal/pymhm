@@ -1,51 +1,64 @@
 title: Time configuration
-description: Configuration for simulation and evaluation time periods in mHM.
+description: Configuration for mHM 5.13 simulation and evaluation periods.
 x-fortran-namelist: config_time
 type: object
 properties:
-  sim_start:
+  warming_Days:
     type: array
     items:
-      type: string
-      x-fortran-len: buf
+      type: integer
+      x-fortran-kind: i4
+      default: 0
+      minimum: 0
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
-    examples: ["2020-06-01 00:00", "2025-01-01"]
-    title: Simulation start
-    description: |-
-      Start date of the simulation. Only hours are supported; minutes and seconds are set to zero.
-      Format: YYYY-MM-DD [hh[:mm[:ss]]]
-  eval_start:
+    title: Warming days
+    description: Number of warming days before evaluation for each domain.
+  eval_Per:
     type: array
-    items:
-      type: string
-      x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
-    examples: ["2021-01-01 00:00", "2025-02-15"]
-    title: Evaluation start
-    description: |-
-      Start date of the evaluation period. Only hours are supported; minutes and seconds are set to zero.
-      Format: YYYY-MM-DD [hh[:mm[:ss]]]
-  sim_end:
-    type: array
+    title: Evaluation periods
     items:
-      type: string
-      x-fortran-len: buf
-    x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
-    examples: ["2022-01-01 00:00", "2026-01-01"]
-    title: Simulation end
-    description: |-
-      End date of the simulation. Only hours are supported; minutes and seconds are set to zero.
-      Format: YYYY-MM-DD [hh[:mm[:ss]]]
-  share_time_period:
-    type: boolean
-    default: false
-    title: Share time period between domains
-    description: |-
-      Share the same simulation and evaluation time periods between all domains taking the values from the first domain.
-      If set to false, different time periods can be set for each domain.
+      type: object
+      x-fortran-type: eval_period_t
+      properties:
+        yStart:
+          type: integer
+          x-fortran-kind: i4
+          default: 1990
+          title: Start year
+        mStart:
+          type: integer
+          x-fortran-kind: i4
+          minimum: 1
+          maximum: 12
+          default: 1
+          title: Start month
+        dStart:
+          type: integer
+          x-fortran-kind: i4
+          minimum: 1
+          maximum: 31
+          default: 1
+          title: Start day
+        yEnd:
+          type: integer
+          x-fortran-kind: i4
+          default: 1990
+          title: End year
+        mEnd:
+          type: integer
+          x-fortran-kind: i4
+          minimum: 1
+          maximum: 12
+          default: 12
+          title: End month
+        dEnd:
+          type: integer
+          x-fortran-kind: i4
+          minimum: 1
+          maximum: 31
+          default: 31
+          title: End day
   timestep:
     type: array
     items:
@@ -53,16 +66,8 @@ properties:
       x-fortran-kind: i4
       default: 1
     x-fortran-shape: max_domains
-    title: Time step of the simulation
-    description: Time step of the simulation (1 or 24, in hours).
+    title: Simulation time step
   share_time_step:
     type: boolean
     default: true
     title: Share time step between domains
-    description: |-
-      Share the same time step value between all domains taking the value from the first domain.
-      If set to false, different time step values can be set for each domain.
-# required:
-#   - sim_start
-#   - eval_start
-#   - sim_end

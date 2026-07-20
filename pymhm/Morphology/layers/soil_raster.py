@@ -105,6 +105,9 @@ class SoilRasterMixin(
         temp_raster = os.path.join(geometry_folder, "temp_soil_input.tif")
         temp_classdefinition = os.path.join(
             geometry_folder, "temp_soil_classdefinition.txt")
+        dem_crs = self._layer_crs_text(
+            QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
+        )
 
         self.log_message("Processing Soil layer through mhm-tools...")
         try:
@@ -123,6 +126,8 @@ class SoilRasterMixin(
                     mapping_field=soil_mapping_field,
                     lookup_table=lookup_path,
                     lookup_mapping_field=lookup_mapping_field,
+                    input_crs=self._layer_crs_text(layer),
+                    dem_crs=dem_crs,
                     log=self.log_message,
                 )
                 if write_classdefinition:
@@ -138,11 +143,13 @@ class SoilRasterMixin(
                         layer, temp_raster)
                 format_soil_file(
                     input_file=input_path,
+                    dem_file=self.filled_dem_path,
                     output_file=output_path,
                     lookup_table=lookup_path,
                     mapping_field=lookup_mapping_field,
-                    reference_file=self.filled_dem_path,
                     classdefinition_file=temp_classdefinition,
+                    input_crs=self._layer_crs_text(layer),
+                    dem_crs=dem_crs,
                     log=self.log_message,
                 )
 
@@ -239,3 +246,12 @@ class SoilRasterMixin(
                 "ERROR: Soil classdefinition writer is not available.")
             return None
         return writer()
+
+    @staticmethod
+    def _layer_crs_text(layer):
+        """Return a CRS string suitable for assigning missing file metadata."""
+        crs = layer.crs() if layer is not None else None
+        if crs is None or not crs.isValid():
+            return None
+        authid = crs.authid()
+        return authid or crs.toWkt()

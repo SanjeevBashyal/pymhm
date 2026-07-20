@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Soil setup adapters for :mod:`mhm_tools`."""
+"""Geology setup adapters for :mod:`mhm_tools`."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -10,7 +10,7 @@ from ..logging import capture_messages
 from ._categorical import format_categorical_file
 
 
-def rasterize_soil_map(
+def rasterize_geology_map(
     input_file: str | Path,
     dem_file: str | Path,
     output_file: str | Path,
@@ -22,7 +22,7 @@ def rasterize_soil_map(
     dem_crs=None,
     log: Callable[[str], None] | None = None,
 ) -> Path:
-    """Rasterize and classify a vector soil map on the DEM grid."""
+    """Rasterize and classify a vector geology map on the DEM grid."""
     ensure_bundled_mhm_tools()
     from mhm_tools.pre import rasterize_map_data
 
@@ -34,7 +34,7 @@ def rasterize_soil_map(
             "mapping_field": mapping_field,
             "lookup_table": lookup_table,
             "lookup_mapping_field": lookup_mapping_field,
-            "lookup_value_field": "SOIL_CLASS",
+            "lookup_value_field": "GEOLOGY_CLASS",
         }
         if dem_crs is not None:
             kwargs["dem_crs"] = dem_crs
@@ -43,7 +43,7 @@ def rasterize_soil_map(
         return Path(rasterize_map_data(**kwargs))
 
 
-def format_soil_file(
+def format_geology_file(
     input_file: str | Path,
     dem_file: str | Path,
     output_file: str | Path,
@@ -55,14 +55,14 @@ def format_soil_file(
     dem_crs=None,
     log: Callable[[str], None] | None = None,
 ) -> Path:
-    """Reclassify a raster soil map and align it to the DEM grid."""
+    """Reclassify a raster geology map on the DEM grid."""
     ensure_bundled_mhm_tools()
-    from mhm_tools.pre import format_soil_data
+    from mhm_tools.pre import format_geology_data
 
     with capture_messages(log):
         return format_categorical_file(
-            formatter=format_soil_data,
-            kind="soil",
+            formatter=format_geology_data,
+            kind="geology",
             input_file=input_file,
             dem_file=dem_file,
             output_file=output_file,
@@ -74,24 +74,24 @@ def format_soil_file(
         )
 
 
-def write_soil_classdefinition_file(
+def write_geology_classdefinition_file(
     lookup_table: str | Path,
     output_file: str | Path,
     *,
     log: Callable[[str], None] | None = None,
 ) -> Path:
-    """Write an mHM soil classdefinition through :mod:`mhm_tools`."""
+    """Write an mHM geology classdefinition through :mod:`mhm_tools`."""
     ensure_bundled_mhm_tools()
-    from mhm_tools.pre import write_soil_classdefinition
+    from mhm_tools.pre import write_geology_classdefinition
 
     output = Path(output_file)
     output.parent.mkdir(parents=True, exist_ok=True)
     with capture_messages(log):
-        return Path(write_soil_classdefinition(lookup_table, output))
+        return Path(write_geology_classdefinition(lookup_table, output))
 
 
 __all__ = [
-    "format_soil_file",
-    "rasterize_soil_map",
-    "write_soil_classdefinition_file",
+    "format_geology_file",
+    "rasterize_geology_map",
+    "write_geology_classdefinition_file",
 ]

@@ -45,6 +45,7 @@ def v513_mhm_values(values: ConfigValues, dialog: Any | None = None) -> ConfigVa
     _time_periods(result, merged, count)
     _meteo_weights(result, merged)
     _optimization(result, merged)
+    _finalize_indexed_values(result)
     return result
 
 
@@ -154,13 +155,7 @@ def _first_domain(
 def _put(result: ConfigValues, block: str, name: str, value: Any) -> None:
     if value is None:
         return
-    result.setdefault(canonical_name(block), {})[canonical_name(name)] = value
-
-
-def _put_key(result: ConfigValues, block: str, key: str, value: Any) -> None:
-    if value is None:
-        return
-    result.setdefault(canonical_name(block), {})[canonical_name(key)] = value
+    result.setdefault(block, {})[name] = value
 
 
 def _put_index(
@@ -171,8 +166,22 @@ def _put_index(
         value: Any) -> None:
     if value is None:
         return
-    block_values = result.setdefault(canonical_name(block), {})
-    block_values[f"{canonical_name(name)}__domain{index}"] = value
+    block_values = result.setdefault(block, {})
+    indexed = block_values.setdefault(name, {"__indexed__": {}})
+    indexed["__indexed__"][index] = value
+
+
+def _finalize_indexed_values(result: ConfigValues) -> None:
+    """Replace temporary indexed mappings with converter-ready arrays."""
+    for block_values in result.values():
+        for name, value in list(block_values.items()):
+            if not isinstance(value, dict) or "__indexed__" not in value:
+                continue
+            indexed = value["__indexed__"]
+            indices = sorted(indexed)
+            if indices != list(range(1, len(indices) + 1)):
+                raise ValueError(f"indexed values for '{name}' must be contiguous")
+            block_values[name] = [indexed[index] for index in indices]
 
 
 def _path_text(value: Any, fallback: str = "") -> str:
@@ -403,7 +412,7 @@ def _mainconfig_mhm_mrm(
         result,
         "mainconfig_mhm_mrm",
         "timestep",
-        _first_domain(values, "config_time", "time_step", 1),
+        _first_domain(values, "config_time", "timestep", 1),
     )
     _put(
         result,
@@ -610,11 +619,16 @@ def _process_selection(result: ConfigValues, values: ConfigValues) -> None:
         (10, "neutrons"),
         (11, "temperature_routing"),
     )
+    defaults = (1, 1, 1, 1, 0, 1, 1, 3, 1, 0, 0)
+    process_cases = []
     for index, name in mapping:
         value = _value(values, "config_processes", name, None)
+        if value is None:
+            value = defaults[index - 1]
         if name == "pet" and value == -2:
             value = 0
-        _put_key(result, "processSelection", f"processcase{index}", value)
+        process_cases.append(value)
+    _put(result, "processSelection", "processCase", process_cases)
 
 
 def _soil_lai_landcover(result: ConfigValues, values: ConfigValues) -> None:
@@ -659,12 +673,15 @@ def _soil_lai_landcover(result: ConfigValues, values: ConfigValues) -> None:
         "land_cover_path",
         _first_domain(values, "config_input", "lai_class_path", "data/static/morph/lc.asc"),
     )
-    start_year = (
+    periods = _value(values, "config_time", "eval_Per", None)
+    first_period = periods[0] if isinstance(periods, list) and periods else {}
+    last_period = periods[-1] if isinstance(periods, list) and periods else {}
+    start_year = _component_value(first_period, "yStart") or (
         (_date_parts(_first_domain(values, "config_time", "sim_start", None)) or [None])[0]
         or (_date_parts(_first_domain(values, "config_time", "eval_start", None)) or [None])[0]
         or 1900
     )
-    end_year = (
+    end_year = _component_value(last_period, "yEnd") or (
         (_date_parts(_first_domain(values, "config_time", "sim_end", None)) or [None])[0]
         or 2100
     )
@@ -719,10 +736,48 @@ def _parse_date(value: Any) -> datetime | None:
         return None
 
 
+def _component_value(value: Any, name: str, default: Any = None) -> Any:
+    """Return a derived component using forgiving input-name matching."""
+    if not isinstance(value, dict):
+        return default
+    key = canonical_name(name)
+    for component, component_value in value.items():
+        if canonical_name(component) == key:
+            return component_value
+    return default
+
+
+def _evaluation_periods(value: Any) -> list[dict[str, Any]]:
+    """Normalize configured evaluation-period objects to exact components."""
+    if not isinstance(value, list):
+        return []
+    names = ("yStart", "mStart", "dStart", "yEnd", "mEnd", "dEnd")
+    periods = []
+    for item in value:
+        if not isinstance(item, dict):
+            return []
+        period = {
+            name: _component_value(item, name)
+            for name in names
+            if _component_value(item, name) is not None
+        }
+        periods.append(period)
+    return periods
+
+
 def _time_periods(
         result: ConfigValues,
         values: ConfigValues,
         count: int) -> None:
+    periods = _evaluation_periods(
+        _value(values, "config_time", "eval_Per", None))
+    warming = _value(values, "config_time", "warming_Days", None)
+    if periods:
+        if warming is not None:
+            _put(result, "time_periods", "warming_Days", warming)
+        _put(result, "time_periods", "eval_Per", periods)
+        return
+
     starts: list[tuple[int, int, int] | None] = []
     ends: list[tuple[int, int, int] | None] = []
     warming_days: list[int | None] = []
@@ -740,23 +795,21 @@ def _time_periods(
     if all(day is not None for day in warming_days):
         _put(result, "time_periods", "warming_Days", warming_days)
 
-    start_keys = ("eval_Per%yStart", "eval_Per%mStart", "eval_Per%dStart")
-    for offset, key in enumerate(start_keys):
-        values_for_key = [
-            parts[offset] for parts in starts
-            if parts is not None
-        ]
-        if len(values_for_key) == count:
-            _put(result, "time_periods", key, values_for_key)
-
-    end_keys = ("eval_Per%yEnd", "eval_Per%mEnd", "eval_Per%dEnd")
-    for offset, key in enumerate(end_keys):
-        values_for_key = [
-            parts[offset] for parts in ends
-            if parts is not None
-        ]
-        if len(values_for_key) == count:
-            _put(result, "time_periods", key, values_for_key)
+    if len([item for item in starts if item is not None]) != count:
+        return
+    if len([item for item in ends if item is not None]) != count:
+        return
+    _put(result, "time_periods", "eval_Per", [
+        {
+            "yStart": starts[index][0],
+            "mStart": starts[index][1],
+            "dStart": starts[index][2],
+            "yEnd": ends[index][0],
+            "mEnd": ends[index][1],
+            "dEnd": ends[index][2],
+        }
+        for index in range(count)
+    ])
 
 
 def _meteo_weights(result: ConfigValues, values: ConfigValues) -> None:

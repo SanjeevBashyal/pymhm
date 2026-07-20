@@ -1161,21 +1161,68 @@
             </item>
            </layout>
           </item>
-          <item>
-           <spacer name="verticalSpacer_6">
-            <property name="orientation">
-             <enum>Qt::Vertical</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>20</width>
-              <height>40</height>
-             </size>
-            </property>
-           </spacer>
-          </item>
          </layout>
         </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_nml">
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="label_nml">
+           <property name="text">
+            <string>Namelist</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton_edit_nmls">
+           <property name="maximumSize">
+            <size>
+             <width>23</width>
+             <height>23</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>Write all morphological layers</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="resources.qrc">
+             <normaloff>:/plugins/pymhm/Resources/write.png</normaloff>:/plugins/pymhm/Resources/write.png</iconset>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_nml">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_config">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
        </item>
       </layout>
      </widget>
@@ -2219,231 +2266,7 @@
         <number>4</number>
        </property>
        <item>
-        <widget class="QGroupBox" name="groupBox_namelistConfiguration">
-         <property name="title">
-          <string>Namelist</string>
-         </property>
-         <layout class="QGridLayout" name="gridLayout_5">
-          <item row="1" column="0">
-           <layout class="QGridLayout" name="gridLayout_namelistConfiguration" columnstretch="5,0">
-            <item row="1" column="1">
-             <widget class="QLabel" name="label_mHMConfigurationStatus">
-              <property name="minimumSize">
-               <size>
-                <width>90</width>
-                <height>22</height>
-               </size>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>120</width>
-                <height>22</height>
-               </size>
-              </property>
-              <property name="toolTip">
-               <string>mhm.nml has not been saved yet.</string>
-              </property>
-              <property name="styleSheet">
-               <string notr="true">QLabel {
-    background-color: #b42318;
-    color: white;
-    border-radius: 8px;
-    padding: 2px 8px;
-    font-weight: 600;
-}</string>
-              </property>
-              <property name="text">
-               <string>Not saved</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="1">
-             <widget class="QLabel" name="label_statusHeading">
-              <property name="text">
-               <string>Status</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-             </widget>
-            </item>
-            <item row="3" column="0">
-             <widget class="QPushButton" name="pushButton_configureOutputs">
-              <property name="text">
-               <string>Outputs</string>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="0">
-             <widget class="QPushButton" name="pushButton_configureParameters">
-              <property name="text">
-               <string>Parameters</string>
-              </property>
-             </widget>
-            </item>
-            <item row="3" column="1">
-             <widget class="QLabel" name="label_outputConfigurationStatus">
-              <property name="minimumSize">
-               <size>
-                <width>90</width>
-                <height>22</height>
-               </size>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>120</width>
-                <height>22</height>
-               </size>
-              </property>
-              <property name="toolTip">
-               <string>mhm_outputs.nml has not been saved yet.</string>
-              </property>
-              <property name="styleSheet">
-               <string notr="true">QLabel {
-    background-color: #b42318;
-    color: white;
-    border-radius: 8px;
-    padding: 2px 8px;
-    font-weight: 600;
-}</string>
-              </property>
-              <property name="text">
-               <string>Not saved</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="0">
-             <widget class="QLabel" name="label_configurationSettingsHeading">
-              <property name="text">
-               <string>Configuration Settings</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="0">
-             <widget class="QPushButton" name="pushButton_configureMHM">
-              <property name="text">
-               <string>mHM</string>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="1">
-             <widget class="QLabel" name="label_parametersConfigurationStatus">
-              <property name="minimumSize">
-               <size>
-                <width>90</width>
-                <height>22</height>
-               </size>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>120</width>
-                <height>22</height>
-               </size>
-              </property>
-              <property name="toolTip">
-               <string>Parameter namelist has not been saved yet.</string>
-              </property>
-              <property name="styleSheet">
-               <string notr="true">QLabel {
-    background-color: #b42318;
-    color: white;
-    border-radius: 8px;
-    padding: 2px 8px;
-    font-weight: 600;
-}</string>
-              </property>
-              <property name="text">
-               <string>Not saved</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item row="0" column="0">
-           <layout class="QHBoxLayout" name="horizontalLayout_loadConfiguration" stretch="0,0,0">
-            <property name="topMargin">
-             <number>0</number>
-            </property>
-            <item>
-             <widget class="QLabel" name="label_loadConfiguration">
-              <property name="text">
-               <string>Load from file:</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="lineEdit_loadConfiguration"/>
-            </item>
-            <item>
-             <widget class="QPushButton" name="pushButton_browseConfiguration">
-              <property name="minimumSize">
-               <size>
-                <width>0</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>40</width>
-                <height>16777215</height>
-               </size>
-              </property>
-              <property name="text">
-               <string>...</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
         <layout class="QHBoxLayout" name="horizontalLayout_valid_row1">
-         <item>
-          <widget class="QPushButton" name="pushButton_createNML">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="minimumSize">
-            <size>
-             <width>25</width>
-             <height>25</height>
-            </size>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>25</width>
-             <height>25</height>
-            </size>
-           </property>
-           <property name="toolTip">
-            <string>Prepares all namelist files</string>
-           </property>
-           <property name="text">
-            <string/>
-           </property>
-           <property name="icon">
-            <iconset resource="resources.qrc">
-             <normaloff>:/plugins/pymhm/Resources/run.png</normaloff>:/plugins/pymhm/Resources/run.png</iconset>
-           </property>
-          </widget>
-         </item>
          <item>
           <spacer name="horizontalSpacer_valid_1">
            <property name="orientation">

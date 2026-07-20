@@ -120,6 +120,7 @@ def test_vector_process_uses_direct_paths_and_writes_both_outputs(
 
     assert processor.process_soil()
     assert calls["rasterize"]["input_file"] == str(soil_file)
+    assert calls["rasterize"]["dem_file"] == str(dem_file)
     assert calls["rasterize"]["lookup_table"] == str(lookup_file)
     assert Path(calls["rasterize"]["output_file"]).name == "3_soil.tif"
     definition = (
@@ -165,6 +166,7 @@ def test_raster_process_discards_definition_when_legacy_flag_is_false(
 
     assert processor.process_soil(write_classdefinition=False)
     assert calls["input_file"] == str(soil_file)
+    assert calls["dem_file"] == str(dem_file)
     assert calls["lookup_table"] == str(lookup_file)
     final_definition = (
         tmp_path / "project" / "data" / "static" / "morph" / "soil_classdefinition.txt"

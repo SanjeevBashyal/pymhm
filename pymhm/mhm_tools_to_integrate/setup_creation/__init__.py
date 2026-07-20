@@ -8,6 +8,11 @@ from .soil import (
     rasterize_soil_map,
     write_soil_classdefinition_file,
 )
+from .geology import (
+    format_geology_file,
+    rasterize_geology_map,
+    write_geology_classdefinition_file,
+)
 
 
 __all__ = ["TerrainBackend", "TerrainProducts", "create_terrain_products"]
@@ -17,4 +22,9 @@ __all__ += [
     "format_soil_file",
     "rasterize_soil_map",
     "write_soil_classdefinition_file",
+]
+__all__ += [
+    "format_geology_file",
+    "rasterize_geology_map",
+    "write_geology_classdefinition_file",
 ]

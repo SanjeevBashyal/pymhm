@@ -5,6 +5,8 @@ from qgis.PyQt import QtCore, QtWidgets
 
 from .array_editors import (
     ArrayValueWidget,
+    DerivedArrayWidget,
+    DerivedValueWidget,
     InlineArrayWidget,
     is_max_domains,
     is_string_item,
@@ -260,6 +262,9 @@ class NamelistEditorDialog(QtWidgets.QDialog):
         value = self.general_default(value, prop_schema)
         if prop_schema.get("type") == "array":
             item_schema = prop_schema.get("items", {})
+            if item_schema.get("type") == "object":
+                return DerivedArrayWidget(
+                    prop_schema, value, self.domain_infos, self)
             if is_string_item(item_schema):
                 line_edit = QtWidgets.QLineEdit(self)
                 line_edit.setText(self.array_value_to_text(value))
@@ -273,6 +278,9 @@ class NamelistEditorDialog(QtWidgets.QDialog):
                 self.domain_infos,
                 self,
             )
+
+        if prop_schema.get("type") == "object":
+            return DerivedValueWidget(prop_schema, value, self)
 
         if "enum" in prop_schema:
             combo = QtWidgets.QComboBox(self)
@@ -377,6 +385,8 @@ class NamelistEditorDialog(QtWidgets.QDialog):
         elif isinstance(widget, ArrayValueWidget):
             widget._value = widget.normalized_value(value)
             widget.update_summary()
+        elif isinstance(widget, (DerivedValueWidget, DerivedArrayWidget)):
+            widget.reset_value(value)
         elif isinstance(widget, QtWidgets.QLineEdit):
             if prop_schema.get("type") == "array":
                 widget.setText(self.array_value_to_text(value))
@@ -416,7 +426,11 @@ class NamelistEditorDialog(QtWidgets.QDialog):
             values.setdefault(block_key, {})
             widget = info["widget"]
             base_key = canonical_name(name)
-            if isinstance(widget, (ArrayValueWidget, InlineArrayWidget)):
+            if isinstance(widget, (
+                    ArrayValueWidget,
+                    InlineArrayWidget,
+                    DerivedValueWidget,
+                    DerivedArrayWidget)):
                 values[block_key].update(widget.value_map(base_key))
             else:
                 values[block_key][base_key] = self.read_general_widget(
@@ -459,6 +473,8 @@ class NamelistEditorDialog(QtWidgets.QDialog):
         if isinstance(widget, InlineArrayWidget):
             return widget.value()
         if isinstance(widget, ArrayValueWidget):
+            return widget.value()
+        if isinstance(widget, (DerivedValueWidget, DerivedArrayWidget)):
             return widget.value()
         if prop_schema.get("type") == "array":
             return self.parse_array_text(widget.text(), prop_schema)

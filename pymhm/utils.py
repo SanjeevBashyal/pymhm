@@ -3,6 +3,7 @@
 Utility functions and base classes for pymhm dialog processing
 """
 import os
+import sys
 from qgis.PyQt.QtWidgets import QMessageBox
 from qgis.core import (
     QgsProject,
@@ -27,7 +28,9 @@ class DialogUtils:
     def log_message(self, message):
         """Appends a message to the log text browser."""
         try:
-            print(message)
+            console = getattr(sys, "__stdout__", None)
+            if console is not None:
+                print(message, file=console)
         except Exception:
             pass
         self.LogText.append(message)

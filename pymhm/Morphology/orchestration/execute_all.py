@@ -42,7 +42,7 @@ class ExecuteAllMixin(
         13. crop all layers
         14. mask all cropped layers
         15. process lat/lon headers
-        16. write geology class definition
+        16. verify geology class definition
         17. verify soil outputs
         18. write all layers (convert to ASCII)
         """
@@ -101,7 +101,32 @@ class ExecuteAllMixin(
 
             # Step 6: Geology
             self.log_message("\n--- Step 6/18: Process Geology ---")
-            self.process_geology(write_classdefinition=True)
+            geology_raster = os.path.join(
+                project_geometry_folder(self.dialog.project_folder),
+                "3_geology_processed.tif",
+            )
+            geology_definition = os.path.join(
+                morph_folder(self.dialog.project_folder),
+                "geology_classdefinition.txt",
+            )
+            geology_metadata = os.path.join(
+                project_geometry_folder(self.dialog.project_folder),
+                "geology_class_metadata.json",
+            )
+            if not self.process_geology(write_classdefinition=True):
+                return fail("Geology processing failed. Aborting Execute All.")
+            if not all(
+                os.path.exists(path)
+                for path in (
+                    geology_raster,
+                    geology_definition,
+                    geology_metadata,
+                )
+            ):
+                return fail(
+                    "Geology processing did not create all required outputs. "
+                    "Aborting Execute All."
+                )
 
             # Step 7: Flow Accumulation
             self.log_message("\n--- Step 7/18: Process Flow Accumulation ---")
@@ -175,9 +200,20 @@ class ExecuteAllMixin(
             self.log_message("\n--- Step 15/18: Process Lat/Lon Headers ---")
             self.process_lat_lon()
 
-            # Step 16: Write Geology Class Definition
-            self.log_message("\n--- Step 16/18: Write Geology Class Definition ---")
-            self.geology_classification_writer()
+            # Step 16: Verify Geology Class Definition
+            self.log_message("\n--- Step 16/18: Verify Geology Class Definition ---")
+            if not all(
+                os.path.exists(path)
+                for path in (
+                    geology_raster,
+                    geology_definition,
+                    geology_metadata,
+                )
+            ):
+                return fail(
+                    "Required geology outputs are missing. "
+                    "Aborting Execute All."
+                )
 
             # Step 17: Verify Soil Outputs
             self.log_message("\n--- Step 17/18: Verify Soil Outputs ---")

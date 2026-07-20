@@ -13,6 +13,14 @@ from ..common import (
     NULL,
 )
 from ..core.base import BaseProcessingMixin
+from ..core.soil_sources import (
+    local_layer_source,
+    materialize_vector_layer,
+    remove_vector_dataset,
+)
+from ...mhm_tools_to_integrate.setup_creation import (
+    write_geology_classdefinition_file,
+)
 
 
 class GeologyClassificationWriterMixin(BaseProcessingMixin):
@@ -25,26 +33,6 @@ class GeologyClassificationWriterMixin(BaseProcessingMixin):
         if not self.check_prerequisites():
             return None
 
-        lookup_layer_combo = getattr(
-            self.dialog, "mMapLayerComboBox_geologyLookup", None)
-        lookup_layer = (
-            lookup_layer_combo.currentLayer()
-            if lookup_layer_combo is not None else None
-        )
-        if not lookup_layer:
-            self.log_message("ERROR: Geology lookup table layer not selected.")
-            QMessageBox.warning(
-                self.dialog, "Input Error",
-                "Please select a Geology lookup table layer.")
-            return None
-
-        if not isinstance(lookup_layer, QgsVectorLayer) or not lookup_layer.isValid():
-            self.log_message("ERROR: Selected geology lookup layer is not valid.")
-            QMessageBox.warning(
-                self.dialog, "Input Error",
-                "Please select a valid Geology lookup table layer.")
-            return None
-
         morph_output_folder = morph_folder(self.dialog.project_folder)
         os.makedirs(morph_output_folder, exist_ok=True)
         output_file = os.path.join(
@@ -53,36 +41,23 @@ class GeologyClassificationWriterMixin(BaseProcessingMixin):
         os.makedirs(geometry_output_folder, exist_ok=True)
         metadata_file = os.path.join(
             geometry_output_folder, "geology_class_metadata.json")
+        temporary_lookup = os.path.join(
+            geometry_output_folder, "temp_geology_classdefinition_lookup.gpkg")
+        temporary_output = os.path.join(
+            geometry_output_folder, "temp_geology_classdefinition.txt")
 
         try:
-            field_names, rows = self._lookup_layer_rows(lookup_layer)
-            output_rows = self._geology_classdefinition_rows(field_names, rows)
-            if not output_rows:
-                raise ValueError("No valid geology classdefinition rows were found.")
-
-            with open(output_file, "w", encoding="utf-8") as output:
-                output.write(f"nGeo_Formations  {len(output_rows)}\n")
-                output.write("GeoParam(i)   ClassUnit     Karstic      Description\n")
-                for row in output_rows:
-                    output.write(
-                        f"{row['geo_param']:10d}\t"
-                        f"{row['class_unit']:10d}     "
-                        f"{row['karstic']:10d}      "
-                        f"GeoUnit-{row['class_unit']}\n"
-                    )
-                output.write("!<-END\n")
-                output.write("\n")
-                output.write("\n")
-                output.write("!***********************************\n")
-                output.write("! NOTES\n")
-                output.write("!***********************************\n")
-                output.write("1 = Karstic\n")
-                output.write("0 = Non-karstic\n")
-                output.write("\n")
-                output.write("IMPORTANT ::\n")
-                output.write(
-                    "   Ordering has to be according to the ordering in mhm_parameter.nml\n")
-                output.write("   (namelist: geoparameter)\n")
+            lookup_layer, output_rows = self._selected_geology_rows()
+            lookup_path = local_layer_source(lookup_layer)
+            if lookup_path is None:
+                lookup_path = materialize_vector_layer(
+                    lookup_layer, temporary_lookup)
+            write_geology_classdefinition_file(
+                lookup_table=lookup_path,
+                output_file=temporary_output,
+                log=self.log_message,
+            )
+            os.replace(temporary_output, output_file)
 
             self.log_message(
                 f"Geology classification definition file written successfully: {output_file}")
@@ -106,6 +81,41 @@ class GeologyClassificationWriterMixin(BaseProcessingMixin):
                 self.dialog, "Error",
                 f"Error writing geology classification file:\n{e}")
             return None
+        finally:
+            try:
+                remove_vector_dataset(temporary_lookup)
+            except Exception as error:
+                self.log_message(
+                    "WARNING: Could not remove temporary geology lookup "
+                    f"'{temporary_lookup}': {error}")
+            if os.path.exists(temporary_output):
+                os.remove(temporary_output)
+
+    def geology_class_metadata_writer(self) -> str | None:
+        """Write the plugin-specific geology parameter metadata JSON."""
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
+        os.makedirs(geometry_folder, exist_ok=True)
+        metadata_file = os.path.join(
+            geometry_folder, "geology_class_metadata.json")
+        try:
+            _lookup_layer, output_rows = self._selected_geology_rows()
+            self._write_geology_class_metadata(metadata_file, output_rows)
+            return metadata_file
+        except Exception as error:
+            self.log_message(f"ERROR writing geology class metadata: {error}")
+            return None
+
+    def _selected_geology_rows(self):
+        """Return the selected lookup layer and validated definition rows."""
+        combo = getattr(self.dialog, "mMapLayerComboBox_geologyLookup", None)
+        lookup_layer = combo.currentLayer() if combo is not None else None
+        if not isinstance(lookup_layer, QgsVectorLayer) or not lookup_layer.isValid():
+            raise ValueError("Please select a valid Geology lookup table layer.")
+        field_names, rows = self._lookup_layer_rows(lookup_layer)
+        output_rows = self._geology_classdefinition_rows(field_names, rows)
+        if not output_rows:
+            raise ValueError("No valid geology classdefinition rows were found.")
+        return lookup_layer, output_rows
 
     def _lookup_layer_rows(self, lookup_layer):
         """Return lookup field names and feature rows from a QGIS table layer."""
