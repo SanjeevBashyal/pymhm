@@ -1,0 +1,74 @@
+title: Project configuration
+description: Configuration for the overall project setup in mHM.
+x-fortran-namelist: config_project
+type: object
+properties:
+  project_details:
+    type: string
+    x-fortran-len: buf
+    default: mHM project
+    title: Project name
+  setup_description:
+    type: string
+    x-fortran-len: buf
+    default: Model run
+    title: Description of the setup
+  simulation_type:
+    type: string
+    x-fortran-len: buf
+    default: Simulation
+    title: Type of simulation
+    description: |-
+      e.g. hindcast simulation, seasonal forecast, climate projection
+  Conventions:
+    type: string
+    x-fortran-len: buf
+    default: None
+    title: Convention used for dataset
+  contact:
+    type: string
+    x-fortran-len: buf
+    default: Developer
+    title: Contact details, incl. PI name, modellers
+  mHM_details:
+    type: string
+    x-fortran-len: buf
+    default: Research unit
+    title: Developing institution
+  history:
+    type: string
+    x-fortran-len: buf
+    default: Model run version 1
+    title: Some details on data/model run version.
+  optimize:
+    type: boolean
+    default: false
+    title: Enable optimization
+    description: |-
+      Whether to run parameter optimization.
+  n_domains:
+    type: integer
+    x-fortran-kind: i4
+    default: 1
+    title: Number of domains
+    description: Number of domains to be simulated.
+  n_geo_units:
+    type: integer
+    x-fortran-kind: i4
+    default: 25
+    title: Number of geological units
+    description: Number of geological units in the global parameter set.
+  max_layers:
+    type: integer
+    x-fortran-kind: i4
+    default: 10
+    minimum: 1
+    title: Maximum number of soil layers
+    description: Maximum number of soil-layer entries stored per domain in this namelist file.
+  read_domains_from_dirs:
+    type: boolean
+    default: false
+    title: Flag for separate domains
+    description: |-
+      Read domain configurations from namelists in separate directories.
+      Only "config_project", "config_domain", "config_processes" and "config_optimize" are read from this file then.
