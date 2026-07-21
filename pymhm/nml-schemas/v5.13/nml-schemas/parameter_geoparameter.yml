@@ -9,8 +9,18 @@ properties:
     items:
       type: number
       x-fortran-kind: dp
-    x-fortran-shape: [5, max_geo_units]
-    x-fortran-flex-tail-dims: 1
+    x-fortran-shape: [max_geo_units, 5]
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Geo unit
+          label-template: "Geo unit {index}"
+        "2":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
+      table:
+        row-axis: 1
+        column-axis: 2
     description: |-
       Geological parameters (ordering according to class-definition file)
       These parameters are NOT REGIONALIZED yet, i.e. these are <beta> and not <gamma>

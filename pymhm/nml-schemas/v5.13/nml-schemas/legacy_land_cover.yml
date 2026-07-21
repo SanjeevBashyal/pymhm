@@ -1,0 +1,28 @@
+title: Land-cover periods
+x-fortran-namelist: LCover
+type: object
+properties:
+  nLCoverScene:
+    type: integer
+    minimum: 1
+    default: 1
+  LCoverYearStart:
+    type: array
+    items:
+      type: integer
+    x-fortran-shape: 1
+    examples: [[1900]]
+  LCoverYearEnd:
+    type: array
+    items:
+      type: integer
+    x-fortran-shape: 1
+    examples: [[2100]]
+  LCoverfName:
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+      format: file-path
+    x-fortran-shape: 1
+    examples: [[lc.asc]]

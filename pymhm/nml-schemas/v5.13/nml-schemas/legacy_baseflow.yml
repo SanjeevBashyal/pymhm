@@ -1,0 +1,15 @@
+title: Baseflow-index settings
+x-fortran-namelist: baseflow_config
+type: object
+properties:
+  BFI_calc:
+    type: boolean
+    default: true
+  BFI_obs:
+    type: array
+    items:
+      type: number
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[0.5]]
+

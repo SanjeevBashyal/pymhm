@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import re
 import shlex
 import site
@@ -25,6 +26,13 @@ IMPORT_NAME_BY_PACKAGE = {
 }
 
 _LAST_RESULT = None
+
+
+def configure_qtpy_api() -> str:
+    """Make QtPy use the PyQt5 binding provided by QGIS and pymhm."""
+
+    os.environ["QT_API"] = "pyqt5"
+    return os.environ["QT_API"]
 
 
 @dataclass
@@ -63,6 +71,7 @@ def ensure_qgis_runtime_dependencies(parent=None, prompt=True) -> BootstrapResul
 
     global _LAST_RESULT
 
+    configure_qtpy_api()
     add_user_site()
     dependencies = read_qgis_requirements()
     missing = [dependency for dependency in dependencies if not can_import(dependency)]

@@ -1,0 +1,18 @@
+title: mRM configuration
+x-fortran-namelist: mainconfig_mrm
+type: object
+properties:
+  ALMA_convention:
+    type: boolean
+    default: false
+  varnametotalrunoff:
+    type: string
+    x-fortran-len: buf
+    default: total_runoff
+  filenametotalrunoff:
+    type: string
+    x-fortran-len: buf
+    default: total_runoff
+  gw_coupling:
+    type: boolean
+    default: false

@@ -1,0 +1,58 @@
+title: Shared mHM and mRM configuration
+x-fortran-namelist: mainconfig_mhm_mrm
+type: object
+properties:
+  mhm_file_RestartIn:
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+      format: file-path
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[restart/mhm_restart_in.nc]]
+  mrm_file_RestartIn:
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+      format: file-path
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[restart/mrm_restart_in.nc]]
+  resolution_Routing:
+    type: array
+    items:
+      type: number
+      exclusiveMinimum: 0
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[1.0]]
+  timestep:
+    type: integer
+    enum: [1, 24]
+    default: 1
+  read_restart:
+    type: boolean
+    default: false
+  mrm_read_river_network:
+    type: boolean
+    default: false
+  read_old_style_restart_bounds:
+    type: boolean
+    default: false
+  restart_reset_fluxes_states:
+    type: boolean
+    default: false
+  optimize:
+    type: boolean
+    default: false
+  optimize_restart:
+    type: boolean
+    default: false
+  opti_method:
+    type: integer
+    default: 1
+  opti_function:
+    type: integer
+    default: 10

@@ -1,0 +1,40 @@
+title: Main configuration
+x-fortran-namelist: mainconfig
+type: object
+properties:
+  iFlag_cordinate_sys:
+    type: integer
+    enum: [0, 1]
+    default: 0
+  nDomains:
+    type: integer
+    minimum: 1
+    default: 1
+  resolution_Hydrology:
+    type: array
+    items:
+      type: number
+      exclusiveMinimum: 0
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[1.0]]
+  L0Domain:
+    type: array
+    items:
+      type: integer
+      minimum: 1
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[1]]
+  write_restart:
+    type: boolean
+    default: false
+  read_opt_domain_data:
+    type: array
+    items:
+      type: integer
+      minimum: 0
+      maximum: 6
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[0]]

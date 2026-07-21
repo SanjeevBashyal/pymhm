@@ -1,0 +1,11 @@
+title: Pan evaporation
+x-fortran-namelist: panEvapo
+type: object
+properties:
+  evap_coeff:
+    type: array
+    items:
+      type: number
+    x-fortran-shape: 12
+    examples: [[1.3, 1.2, 0.72, 0.75, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.5]]
+

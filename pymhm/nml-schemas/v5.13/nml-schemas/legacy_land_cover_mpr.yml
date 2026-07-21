@@ -1,0 +1,10 @@
+title: Land-cover MPR configuration
+x-fortran-namelist: LCover_MPR
+type: object
+properties:
+  fracSealed_cityArea:
+    type: number
+    minimum: 0
+    maximum: 1
+    default: 0.6
+

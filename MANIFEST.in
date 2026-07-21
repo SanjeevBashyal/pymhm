@@ -19,7 +19,6 @@ recursive-include pymhm *.ui
 recursive-include pymhm *.yml
 recursive-include pymhm i18n/*
 graft pymhm/nml-schemas
-graft pymhm/nml-templates
 graft pymhm/project-template
 graft pymhm/Resources
 

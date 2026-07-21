@@ -241,13 +241,11 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.morphology_processor = MorphologyProcessor(self)
         self.meteorology_processor = MeteorologyProcessor(self)
         self.configuration_processor = ConfigurationProcessor(self)
-        self.simulation_processor = self.configuration_processor
 
         # --- Connect signals and slots ---
         self.configure_page_aliases()
         self.connect_signals()
         self.refresh_grid_resolution_controls()
-        self.configuration_processor.refresh_status_indicators()
 
     def configure_widget_aliases(self):
         """Keep renamed widgets compatible with older dialog code."""
@@ -475,24 +473,6 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             )
 
         # Configuration/execution processing - delegate to processor
-        if hasattr(self, "pushButton_configureMHM"):
-            self.connect_processor_button(
-                self.pushButton_configureMHM,
-                "Configure mHM",
-                self.configuration_processor.configure_mhm,
-            )
-        if hasattr(self, "pushButton_configureParameters"):
-            self.connect_processor_button(
-                self.pushButton_configureParameters,
-                "Configure Parameters",
-                self.configuration_processor.configure_parameters,
-            )
-        if hasattr(self, "pushButton_configureOutputs"):
-            self.connect_processor_button(
-                self.pushButton_configureOutputs,
-                "Configure Outputs",
-                self.configuration_processor.configure_outputs,
-            )
         if hasattr(self, "pushButton_createLatLon"):
             self.connect_processor_button(
                 self.pushButton_createLatLon,
@@ -500,11 +480,13 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 self.morphology_processor.process_lat_lon,
             )
             self.update_latlon_button_state()
-        self.connect_processor_button(
-            self.pushButton_createNML,
-            "Create Namelists",
-            self.configuration_processor.create_nml_files,
-        )
+        if hasattr(self, "pushButton_edit_nmls"):
+            self.pushButton_edit_nmls.setToolTip("Edit mHM namelists")
+            self.connect_processor_button(
+                self.pushButton_edit_nmls,
+                "Edit Namelists",
+                self.configuration_processor.edit_namelists,
+            )
         run_mhm_button = getattr(self, "pushButton_execute_mHM", None)
         if run_mhm_button is None:
             run_mhm_button = getattr(self, "pushButton_RUN", None)
@@ -527,10 +509,6 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if hasattr(self, "comboBox_mHMversion"):
             self.comboBox_mHMversion.currentIndexChanged.connect(
                 lambda index=None: self.configuration_processor.handle_version_changed()
-            )
-        if hasattr(self, "pushButton_browseConfiguration"):
-            self.pushButton_browseConfiguration.clicked.connect(
-                self.configuration_processor.browse_configuration_file
             )
         self.connect_input_state_signals()
         self.connect_input_state_teardown_guards()
@@ -1615,11 +1593,6 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         if hasattr(self, "lineEdit_land_cover_lookup"):
             widgets.append(("land_cover_lookup_file", self.lineEdit_land_cover_lookup))
-        if hasattr(self, "lineEdit_loadConfiguration"):
-            widgets.append(
-                ("configuration_settings_file", self.lineEdit_loadConfiguration)
-            )
-
         return widgets
 
     def input_state_path(self):
@@ -1681,6 +1654,10 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         crs = self.get_crs()
         state = {
             "version": 1,
+            "mhm_version": (
+                self.comboBox_mHMversion.currentText().strip()
+                if hasattr(self, "comboBox_mHMversion") else ""
+            ),
             "layers": layers,
             "text_inputs": text_inputs,
             "lookup_fields": lookup_fields,
@@ -1736,6 +1713,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         self._loading_input_state = True
         try:
+            self.restore_mhm_version(state.get("mhm_version", ""))
             self.restore_grid_resolution_preferences(
                 state.get("grid_resolutions", {}))
             self.restore_text_inputs(state.get("text_inputs", {}))
@@ -1749,6 +1727,15 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self._loading_input_state = False
 
         self.log_message(f"Input state loaded: {state_path}")
+
+    def restore_mhm_version(self, version):
+        """Restore the saved mHM version selection."""
+        combo_box = getattr(self, "comboBox_mHMversion", None)
+        if combo_box is None or not version:
+            return
+        index = combo_box.findText(str(version))
+        if index >= 0:
+            combo_box.setCurrentIndex(index)
 
     def restore_grid_resolution_preferences(self, grid_resolutions):
         """Restore preferred L1/L11 selections for the next combo population."""
@@ -1956,8 +1943,6 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.refresh_morphology_workflow_button_states()
             self.meteorology_processor.load_project_state()
             self.refresh_grid_resolution_controls()
-            self.configuration_processor.load_project_state()
-            self.configuration_processor.refresh_status_indicators()
 
     def on_tab_changed(self, index):
         """Switches the stacked widget page when the tab is changed."""
@@ -1966,7 +1951,6 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.stackedWidget.setCurrentWidget(page)
         else:
             self.stackedWidget.setCurrentIndex(index)
-        self.configuration_processor.refresh_status_indicators()
         self.log_message(f"Switched to '{self.tabWidget.tabText(index)}' tab.")
 
     def page_for_tab_index(self, index):

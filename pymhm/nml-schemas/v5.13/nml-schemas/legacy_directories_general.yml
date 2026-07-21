@@ -1,0 +1,68 @@
+title: General directories
+x-fortran-namelist: directories_general
+type: object
+properties:
+  dirConfigOut:
+    type: string
+    x-fortran-len: buf
+    format: directory-path
+    default: output/
+  dirCommonFiles:
+    type: string
+    x-fortran-len: buf
+    format: directory-path
+    default: data/static/morph/
+  dir_Morpho:
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+      format: directory-path
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[data/static/morph/]]
+  dir_LCover:
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+      format: directory-path
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[data/static/morph/]]
+  mhm_file_RestartOut:
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+      format: file-path
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[restart/mhm_restart_out.nc]]
+  mrm_file_RestartOut:
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+      format: file-path
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[restart/mrm_restart_out.nc]]
+  dir_Out:
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+      format: directory-path
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[output/]]
+  file_LatLon:
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+      format: file-path
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[data/latlon.nc]]

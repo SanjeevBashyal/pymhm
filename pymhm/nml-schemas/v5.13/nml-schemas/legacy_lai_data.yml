@@ -1,0 +1,12 @@
+title: LAI input configuration
+x-fortran-namelist: LAI_data_information
+type: object
+properties:
+  timeStep_LAI_input:
+    type: integer
+    default: 1
+  inputFormat_gridded_LAI:
+    type: string
+    x-fortran-len: buf
+    enum: [nc]
+    default: nc

@@ -1,0 +1,13 @@
+title: MPR directories
+x-fortran-namelist: directories_MPR
+type: object
+properties:
+  dir_gridded_LAI:
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+      format: directory-path
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[data/lai/]]

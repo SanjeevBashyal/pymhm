@@ -1,0 +1,32 @@
+title: Project description
+x-fortran-namelist: project_description
+type: object
+properties:
+  project_details:
+    type: string
+    x-fortran-len: buf
+    default: mHM project
+  setup_description:
+    type: string
+    x-fortran-len: buf
+    default: Model run
+  simulation_type:
+    type: string
+    x-fortran-len: buf
+    default: Simulation
+  Conventions:
+    type: string
+    x-fortran-len: buf
+    default: None
+  contact:
+    type: string
+    x-fortran-len: buf
+    default: Developer
+  mHM_details:
+    type: string
+    x-fortran-len: buf
+    default: Research unit
+  history:
+    type: string
+    x-fortran-len: buf
+    default: Model run version 1

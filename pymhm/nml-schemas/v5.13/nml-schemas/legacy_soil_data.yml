@@ -1,0 +1,24 @@
+title: Soil database and layers
+x-fortran-namelist: soildata
+type: object
+properties:
+  iFlag_soilDB:
+    type: integer
+    enum: [0, 1]
+    default: 0
+  tillageDepth:
+    type: integer
+    default: 200
+  nSoilHorizons_mHM:
+    type: integer
+    minimum: 1
+    default: 2
+  soil_Depth:
+    type: array
+    items:
+      type: number
+      exclusiveMinimum: 0
+    x-fortran-shape: max_layers
+    x-fortran-flex-tail-dims: 1
+    examples: [[200.0]]
+

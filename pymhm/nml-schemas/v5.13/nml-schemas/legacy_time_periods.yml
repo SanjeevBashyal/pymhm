@@ -1,0 +1,27 @@
+title: Simulation periods
+x-fortran-namelist: time_periods
+type: object
+properties:
+  warming_Days:
+    type: array
+    items:
+      type: integer
+      minimum: 0
+      default: 0
+    x-fortran-shape: max_domains
+    examples: [[0]]
+  eval_Per:
+    type: array
+    x-fortran-shape: max_domains
+    items:
+      type: object
+      x-fortran-type: eval_period_t
+      properties:
+        yStart: {type: integer, default: 1990}
+        mStart: {type: integer, minimum: 1, maximum: 12, default: 1}
+        dStart: {type: integer, minimum: 1, maximum: 31, default: 1}
+        yEnd: {type: integer, default: 1990}
+        mEnd: {type: integer, minimum: 1, maximum: 12, default: 12}
+        dEnd: {type: integer, minimum: 1, maximum: 31, default: 31}
+    examples:
+      - - {yStart: 1990, mStart: 1, dStart: 1, yEnd: 1990, mEnd: 12, dEnd: 31}

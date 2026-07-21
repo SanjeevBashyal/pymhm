@@ -1,0 +1,16 @@
+title: Evaluation gauges
+x-fortran-namelist: evaluation_gauges
+type: object
+properties:
+  nGaugesTotal:
+    type: integer
+    minimum: 0
+    default: 1
+  NoGauges_domain:
+    type: array
+    items:
+      type: integer
+      minimum: 0
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[1]]

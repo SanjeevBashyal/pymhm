@@ -1,5 +1,3 @@
-required-versions = ">=0.3.3,<0.4"
-
 [helper]
 path = "src/nml/nml_helper.f90"
 module = "nml_helper"
@@ -265,14 +263,6 @@ mod_path = "src/nml/nml_output_mrm.f90"
 doc_path = "doc/nml/output_mrm.md"
 
 [[file_profiles]]
-name = "meta"
-title = "Meta configuration"
-description = "Project-level configuration for combined mHM runs."
-default_file = "meta.nml"
-namelists = ["config_project", "config_domain", "config_processes", "config_optimize"]
-required = ["config_project", "config_processes"]
-
-[[file_profiles]]
 name = "main"
 title = "Main configuration"
 description = "Domain-local runtime configuration for mHM."
@@ -298,14 +288,14 @@ required = ["config_project", "config_resolution", "config_time"]
 name = "output"
 title = "Output configuration"
 description = "Output namelists for mHM and mRM."
-default_file = "outputs.nml"
+default_file = "mhm_outputs.nml"
 namelists = ["output_mhm", "output_mrm"]
 
 [[file_profiles]]
 name = "parameter"
 title = "Parameter configuration"
 description = "Process parameter namelists for mHM."
-default_file = "parameter.nml"
+default_file = "mhm_parameters.nml"
 namelists = [
   "interception1",
   "snow1",
@@ -329,21 +319,3 @@ namelists = [
   "geoparameter",
   "rivertemp1",
 ]
-
-[[templates]]
-path = "mhm-template.nml"
-profile = "main"
-doc_mode = "documented"
-value_mode = "filled"
-
-[[templates]]
-path = "mhm-para-template.nml"
-profile = "parameter"
-doc_mode = "documented"
-value_mode = "filled"
-
-[[templates]]
-path = "mhm-output-template.nml"
-profile = "output"
-doc_mode = "documented"
-value_mode = "filled"

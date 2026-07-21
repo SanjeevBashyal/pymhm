@@ -1,6 +1,6 @@
 title: PET - Case -1
 description: Parameters for PET (case -1 - LAI correction).
-x-fortran-namelist: petm1
+x-fortran-namelist: PETminus1
 type: object
 properties:
   PET_a_forest:

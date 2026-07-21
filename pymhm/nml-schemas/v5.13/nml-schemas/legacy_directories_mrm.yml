@@ -1,0 +1,19 @@
+title: mRM directories
+x-fortran-namelist: directories_mRM
+type: object
+properties:
+  dir_Gauges: &domain_directory
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+      format: directory-path
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[data/observation/streamflow/]]
+  dir_Total_Runoff:
+    <<: *domain_directory
+    examples: [[output/]]
+  dir_Bankfull_Runoff:
+    <<: *domain_directory
+    examples: [[data/static/morph/]]
