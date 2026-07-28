@@ -4,13 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from ..common import (
-    os,
-    project_geometry_folder,
-    math,
-    QMessageBox,
-    processing,
-)
+from ..common import QMessageBox, math, os, processing, project_geometry_folder
 from ..core.base import BaseProcessingMixin
 from ..core.naming import NamingAndRangeMixin
 
@@ -24,9 +18,12 @@ class BandLandCoverHelperMixin(BaseProcessingMixin, NamingAndRangeMixin):
         """Return a processed land-use raster, creating it if required."""
         geometry_folder = project_geometry_folder(self.dialog.project_folder)
         expected_path = os.path.join(geometry_folder, "3_land_use.tif")
+        ready_path = getattr(self, "categorical_ready_outputs", {}).get("lc")
 
         if self.land_use_layer and os.path.exists(self.land_use_layer):
             return self.land_use_layer
+        if ready_path and os.path.exists(ready_path):
+            return ready_path
         if os.path.exists(expected_path):
             self.land_use_layer = expected_path
             return expected_path
@@ -44,6 +41,9 @@ class BandLandCoverHelperMixin(BaseProcessingMixin, NamingAndRangeMixin):
 
         if self.land_use_layer and os.path.exists(self.land_use_layer):
             return self.land_use_layer
+        ready_path = getattr(self, "categorical_ready_outputs", {}).get("lc")
+        if ready_path and os.path.exists(ready_path):
+            return ready_path
         if os.path.exists(expected_path):
             self.land_use_layer = expected_path
             return expected_path

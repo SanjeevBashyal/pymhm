@@ -1,0 +1,179 @@
+"""Focused tests for project-file and QGIS input selection helpers."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from pymhm.standalone_qgis import install
+
+install(force=True)
+
+# isort: off
+from qgis.core import (  # noqa: E402
+    QgsCoordinateReferenceSystem,
+    QgsProject,
+    QgsRasterLayer,
+    QgsVectorLayer,
+)
+from qgis.PyQt import QtWidgets  # noqa: E402
+
+from pymhm.input_selection import (  # noqa: E402
+    EXCLUDED_PROJECT_FOLDERS,
+    InputComboAdapter,
+    LookupConfigDialog,
+    loaded_qgis_items,
+    scan_project_inputs,
+)
+# isort: on
+
+_APPLICATION = None
+
+
+def _app():
+    global _APPLICATION
+    _APPLICATION = (
+        QtWidgets.QApplication.instance()
+        or _APPLICATION
+        or QtWidgets.QApplication([])
+    )
+    return _APPLICATION
+
+
+def _touch(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("", encoding="utf-8")
+    return path
+
+
+def test_scanner_filters_case_insensitively_and_prunes_only_owned_roots(tmp_path):
+    wanted = _touch(tmp_path / "0 GIS" / "DEM.TIF")
+    nested_named_data = _touch(tmp_path / "inputs" / "data" / "nested.asc")
+    _touch(tmp_path / "0 GIS" / "ignore.shp")
+    for folder in EXCLUDED_PROJECT_FOLDERS:
+        _touch(tmp_path / folder / "excluded.tif")
+
+    items = scan_project_inputs(tmp_path, "dem")
+
+    assert [item.label for item in items] == [
+        "0 GIS/DEM.TIF",
+        "inputs/data/nested.asc",
+    ]
+    assert [item.data["path"] for item in items] == [
+        str(wanted.resolve()),
+        str(nested_named_data.resolve()),
+    ]
+
+
+def test_scanner_uses_input_specific_extensions(tmp_path):
+    for filename in (
+        "dem.nc",
+        "grid.asc",
+        "raster.tif",
+        "points.shp",
+        "table.csv",
+        "table.txt",
+    ):
+        _touch(tmp_path / filename)
+
+    assert {item.label for item in scan_project_inputs(tmp_path, "dem")} == {
+        "dem.nc",
+        "grid.asc",
+        "raster.tif",
+    }
+    assert [item.label for item in scan_project_inputs(tmp_path, "pour_points")] == [
+        "points.shp"
+    ]
+    assert {item.label for item in scan_project_inputs(tmp_path, "soil")} == {
+        "dem.nc",
+        "grid.asc",
+        "points.shp",
+        "raster.tif",
+    }
+    assert {item.label for item in scan_project_inputs(tmp_path, "lookup")} == {
+        "table.csv",
+        "table.txt",
+    }
+
+
+def test_adapter_returns_file_layer_without_adding_it_to_project(tmp_path):
+    _app()
+    raster = _touch(tmp_path / "dem.tif")
+    combo = QtWidgets.QComboBox()
+    adapter = InputComboAdapter(combo, "dem")
+    item = scan_project_inputs(tmp_path, "dem")[0]
+    adapter.addItem(item.label, item.data)
+    before = dict(QgsProject.instance().mapLayers())
+
+    layer = adapter.currentLayer()
+
+    assert isinstance(layer, QgsRasterLayer)
+    assert layer.source() == str(raster)
+    assert adapter.source_path() == str(raster.resolve())
+    assert QgsProject.instance().mapLayers() == before
+
+
+def test_adapter_selects_loaded_layer_and_emits_layer(tmp_path):
+    _app()
+    vector_path = _touch(tmp_path / "points.shp")
+    layer = QgsVectorLayer(str(vector_path), "Outlets", "ogr")
+    layer.setCrs(QgsCoordinateReferenceSystem("EPSG:32645"))
+    combo = QtWidgets.QComboBox()
+    adapter = InputComboAdapter(combo, "pour_points")
+    received = []
+    adapter.layerChanged.connect(received.append)
+
+    adapter.setLayer(layer)
+
+    assert adapter.currentLayer() is layer
+    assert adapter.source_path() == str(vector_path)
+    assert combo.currentText() == "Outlets [EPSG:32645]"
+    assert received[-1] is layer
+
+
+def test_loaded_qgis_items_filter_type_and_include_crs(tmp_path):
+    raster_path = _touch(tmp_path / "dem.tif")
+    vector_path = _touch(tmp_path / "points.shp")
+    raster = QgsRasterLayer(str(raster_path), "DEM")
+    vector = QgsVectorLayer(str(vector_path), "Outlets", "ogr")
+    raster.setCrs(QgsCoordinateReferenceSystem("EPSG:3035"))
+    project = QgsProject()
+    project.addMapLayer(vector)
+    project.addMapLayer(raster)
+
+    items = loaded_qgis_items("dem", project)
+
+    assert [item.label for item in items] == ["DEM [EPSG:3035]"]
+    assert items[0].data["layer"] is raster
+
+
+def test_lookup_dialog_lists_tables_and_requires_both_fields(tmp_path):
+    _app()
+    table = tmp_path / "inputs" / "soil.txt"
+    table.parent.mkdir(parents=True)
+    table.write_text(
+        "map_code\tclass_id\tname\nWR\t1\tRegosol\nCM\t2\tCambisol\n",
+        encoding="utf-8",
+    )
+    _touch(tmp_path / "data" / "ignored.csv")
+
+    dialog = LookupConfigDialog(tmp_path)
+
+    assert dialog.lookup_table_combo.count() == 1
+    assert dialog.lookup_table_combo.currentText() == "inputs/soil.txt"
+    assert {
+        dialog.mapping_field_combo.itemText(index)
+        for index in range(dialog.mapping_field_combo.count())
+    } == {"map_code", "class_id", "name"}
+    assert dialog.selected_config() is None
+
+    dialog.mapping_field_combo.setCurrentText("map_code")
+    dialog.class_field_combo.setCurrentText("class_id")
+    config = dialog.selected_config()
+
+    assert config is not None
+    assert config.lookup_table == str(table.resolve())
+    assert config.mapping_field == "map_code"
+    assert config.class_field == "class_id"

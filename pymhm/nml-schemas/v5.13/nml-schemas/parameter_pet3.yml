@@ -1,6 +1,6 @@
 title: PET - Case 3
 description: Parameters for PET (case 3 - Penman-Monteith).
-x-fortran-namelist: pet3
+x-fortran-namelist: PET3
 type: object
 properties:
   canopyheigth_forest:

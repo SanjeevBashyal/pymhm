@@ -23,4 +23,3 @@ properties:
   fnight_strd:
     <<: *monthly_values
     examples: [[0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45]]
-

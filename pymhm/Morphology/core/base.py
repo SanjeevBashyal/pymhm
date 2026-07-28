@@ -5,12 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from ..common import (
-    os,
-    json,
-    processing,
-    DialogUtils,
-)
+from ..common import DialogUtils, json, os, processing
 from .processing_state import ProcessingStateMixin
 
 
@@ -57,6 +52,7 @@ class BaseProcessingMixin(ProcessingStateMixin):
         
         # Layer processing paths
         self.geology_path = None
+        self.categorical_ready_outputs = {}
         
         # Flag to skip loading layers (used in execute_all_processing)
         self.skip_loading = False

@@ -3,6 +3,14 @@
 value = 256
 doc = "String buffer length."
 
+[constants.max_gauges]
+value = 200
+doc = "Maximum number of gauges per domain."
+
+[constants.max_lcover_scenes]
+value = 50
+doc = "Maximum number of land-cover scenes."
+
 [dimensions]
 [dimensions.max_domains]
 default = 100
@@ -18,79 +26,91 @@ doc = "Maximum number of soil layers."
 
 [[namelists]]
 name = "project_description"
-schema = "nml-schemas/legacy_project_description.yml"
+schema = "nml-schemas/config_project_description.yml"
 
 [[namelists]]
 name = "mainconfig"
-schema = "nml-schemas/legacy_mainconfig.yml"
+schema = "nml-schemas/config_mainconfig.yml"
 
 [[namelists]]
 name = "mainconfig_mhm_mrm"
-schema = "nml-schemas/legacy_mainconfig_mhm_mrm.yml"
+schema = "nml-schemas/config_mainconfig_mhm_mrm.yml"
 
 [[namelists]]
 name = "mainconfig_mrm"
-schema = "nml-schemas/legacy_mainconfig_mrm.yml"
+schema = "nml-schemas/config_mainconfig_mrm.yml"
+
+[[namelists]]
+name = "config_riv_temp"
+schema = "nml-schemas/config_riv_temp.yml"
 
 [[namelists]]
 name = "directories_general"
-schema = "nml-schemas/legacy_directories_general.yml"
+schema = "nml-schemas/config_directories_general.yml"
 
 [[namelists]]
 name = "directories_mHM"
-schema = "nml-schemas/legacy_directories_mhm.yml"
+schema = "nml-schemas/config_directories_mhm.yml"
 
 [[namelists]]
 name = "directories_mRM"
-schema = "nml-schemas/legacy_directories_mrm.yml"
+schema = "nml-schemas/config_directories_mrm.yml"
+
+[[namelists]]
+name = "optional_data"
+schema = "nml-schemas/config_optional_data.yml"
 
 [[namelists]]
 name = "processSelection"
-schema = "nml-schemas/legacy_process_selection.yml"
+schema = "nml-schemas/config_process_selection.yml"
 
 [[namelists]]
 name = "LCover"
-schema = "nml-schemas/legacy_land_cover.yml"
+schema = "nml-schemas/config_land_cover.yml"
 
 [[namelists]]
 name = "time_periods"
-schema = "nml-schemas/legacy_time_periods.yml"
+schema = "nml-schemas/config_time_periods.yml"
 
 [[namelists]]
 name = "soildata"
-schema = "nml-schemas/legacy_soil_data.yml"
+schema = "nml-schemas/config_soil_data.yml"
 
 [[namelists]]
 name = "LAI_data_information"
-schema = "nml-schemas/legacy_lai_data.yml"
+schema = "nml-schemas/config_lai_data.yml"
 
 [[namelists]]
 name = "LCover_MPR"
-schema = "nml-schemas/legacy_land_cover_mpr.yml"
+schema = "nml-schemas/config_land_cover_mpr.yml"
 
 [[namelists]]
 name = "directories_MPR"
-schema = "nml-schemas/legacy_directories_mpr.yml"
+schema = "nml-schemas/config_directories_mpr.yml"
 
 [[namelists]]
 name = "evaluation_gauges"
-schema = "nml-schemas/legacy_evaluation_gauges.yml"
+schema = "nml-schemas/config_evaluation_gauges.yml"
+
+[[namelists]]
+name = "inflow_gauges"
+schema = "nml-schemas/config_inflow_gauges.yml"
 
 [[namelists]]
 name = "panEvapo"
-schema = "nml-schemas/legacy_pan_evapo.yml"
+schema = "nml-schemas/config_pan_evapo.yml"
 
 [[namelists]]
 name = "nightDayRatio"
-schema = "nml-schemas/legacy_night_day_ratio.yml"
+schema = "nml-schemas/config_night_day_ratio.yml"
 
 [[namelists]]
 name = "Optimization"
-schema = "nml-schemas/legacy_optimization.yml"
+schema = "nml-schemas/config_optimization.yml"
 
 [[namelists]]
 name = "baseflow_config"
-schema = "nml-schemas/legacy_baseflow.yml"
+schema = "nml-schemas/config_baseflow.yml"
 
 [[namelists]]
 name = "interception1"
@@ -121,12 +141,12 @@ name = "directRunoff1"
 schema = "nml-schemas/parameter_directrunoff1.yml"
 
 [[namelists]]
-name = "PET0"
-schema = "nml-schemas/parameter_petm2.yml"
-
-[[namelists]]
 name = "PETminus1"
 schema = "nml-schemas/parameter_petm1.yml"
+
+[[namelists]]
+name = "PET0"
+schema = "nml-schemas/parameter_petm2.yml"
 
 [[namelists]]
 name = "PET1"
@@ -178,7 +198,7 @@ schema = "nml-schemas/parameter_rivertemp1.yml"
 
 [[namelists]]
 name = "NLoutputResults"
-schema = "nml-schemas/legacy_output_results.yml"
+schema = "nml-schemas/config_output_results.yml"
 
 [[file_profiles]]
 name = "main"
@@ -190,9 +210,11 @@ namelists = [
   "mainconfig",
   "mainconfig_mhm_mrm",
   "mainconfig_mrm",
+  "config_riv_temp",
   "directories_general",
   "directories_mHM",
   "directories_mRM",
+  "optional_data",
   "processSelection",
   "LCover",
   "time_periods",
@@ -201,6 +223,7 @@ namelists = [
   "LCover_MPR",
   "directories_MPR",
   "evaluation_gauges",
+  "inflow_gauges",
   "panEvapo",
   "nightDayRatio",
   "Optimization",
@@ -235,8 +258,8 @@ namelists = [
   "soilmoisture3",
   "soilmoisture4",
   "directRunoff1",
-  "PET0",
   "PETminus1",
+  "PET0",
   "PET1",
   "PET2",
   "PET3",
@@ -248,5 +271,4 @@ namelists = [
   "neutrons1",
   "neutrons2",
   "geoparameter",
-  "rivertemp1",
 ]

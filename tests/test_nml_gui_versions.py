@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 from nml_tools import json_to_namelist
@@ -19,6 +20,52 @@ from pymhm.vSpecific import build_dimensions, build_initial_values
 
 
 SCHEMAS = Path(__file__).resolve().parents[1] / "pymhm" / "nml-schemas"
+V5_MAIN_GROUPS = [
+    "project_description",
+    "mainconfig",
+    "mainconfig_mhm_mrm",
+    "mainconfig_mrm",
+    "config_riv_temp",
+    "directories_general",
+    "directories_mHM",
+    "directories_mRM",
+    "optional_data",
+    "processSelection",
+    "LCover",
+    "time_periods",
+    "soildata",
+    "LAI_data_information",
+    "LCover_MPR",
+    "directories_MPR",
+    "evaluation_gauges",
+    "inflow_gauges",
+    "panEvapo",
+    "nightDayRatio",
+    "Optimization",
+    "baseflow_config",
+]
+V5_PARAMETER_GROUPS = [
+    "interception1",
+    "snow1",
+    "soilmoisture1",
+    "soilmoisture2",
+    "soilmoisture3",
+    "soilmoisture4",
+    "directRunoff1",
+    "PETminus1",
+    "PET0",
+    "PET1",
+    "PET2",
+    "PET3",
+    "interflow1",
+    "percolation1",
+    "routing1",
+    "routing2",
+    "routing3",
+    "neutrons1",
+    "neutrons2",
+    "geoparameter",
+]
 
 
 class Dialog:
@@ -100,6 +147,61 @@ def test_version_projects_have_model_filenames_and_dimensions(tmp_path: Path) ->
         "output": "mhm_outputs.nml",
         "parameter": "mhm_parameters.nml",
     }
+
+
+def test_v513_schemas_match_reference_groups_and_fields(tmp_path: Path) -> None:
+    root = SCHEMAS / "v5.13"
+    project = load_project(root, tmp_path)
+    main = project.profile("main")
+    parameter = project.profile("parameter")
+
+    assert [page.name for page in main.pages] == V5_MAIN_GROUPS
+    assert [page.name for page in parameter.pages] == V5_PARAMETER_GROUPS
+    assert not list((root / "nml-schemas").glob("legacy_*.yml"))
+    assert "legacy_" not in (root / "nml-config.toml").read_text(encoding="utf-8")
+
+    schemas = {page.name: page.schema for page in main.pages}
+    assert list(schemas["config_riv_temp"]["properties"]) == [
+        "albedo_water",
+        "pt_a_water",
+        "emissivity_water",
+        "turb_heat_ex_coeff",
+        "max_iter",
+        "delta_iter",
+        "step_iter",
+        "riv_widths_file",
+        "riv_widths_name",
+        "dir_riv_widths",
+    ]
+    assert list(schemas["optional_data"]["properties"]) == [
+        "dir_soil_moisture",
+        "nSoilHorizons_sm_input",
+        "timeStep_sm_input",
+        "dir_neutrons",
+        "dir_evapotranspiration",
+        "timeStep_et_input",
+        "dir_tws",
+        "timeStep_tws_input",
+        "dir_spf",
+        "timeStep_spf_input",
+        "weight_for_optional_data",
+        "snow_water_equivalent_threshold_for_spf",
+    ]
+    assert list(schemas["inflow_gauges"]["properties"]) == [
+        "nInflowGaugesTotal",
+        "NoInflowGauges_domain",
+        "InflowGauge_id",
+        "InflowGauge_filename",
+        "InflowGauge_Headwater",
+    ]
+    assert "bound_error" in schemas["directories_mHM"]["properties"]
+    assert {"Gauge_id", "gauge_filename"} <= set(
+        schemas["evaluation_gauges"]["properties"]
+    )
+    for name in ("LCoverYearStart", "LCoverYearEnd", "LCoverfName"):
+        field = schemas["LCover"]["properties"][name]
+        assert field["x-fortran-shape"] == "max_lcover_scenes"
+        assert field["x-fortran-flex-tail-dims"] == 1
 
 
 def test_initial_values_render_version_specific_main_groups(tmp_path: Path) -> None:
@@ -209,11 +311,18 @@ def test_every_profile_form_constructs_and_renders(tmp_path: Path) -> None:
             }
             rendered = render_profile(project, profile, values, dimensions)
             assert rendered
+            assert re.findall(r"(?m)^&([A-Za-z][A-Za-z0-9_]*)$", rendered) == [
+                page.name for page in profile.pages
+            ]
+            if version == "5.13" and profile.name == "main":
+                assert "&config_riv_temp\n" in rendered
+                assert "&optional_data\n" in rendered
+                assert "&inflow_gauges\n" in rendered
             if version == "5.13" and profile.name == "output":
                 assert "&NLoutputResults\n" in rendered
                 assert "outputFlxState(1)" in rendered
             if version == "5.13" and profile.name == "parameter":
-                assert "&PET0\n" in rendered
-                assert "&PETminus1\n" in rendered
+                assert rendered.index("&PETminus1\n") < rendered.index("&PET0\n")
+                assert "&rivertemp1\n" not in rendered
             editor.close()
     assert application is not None

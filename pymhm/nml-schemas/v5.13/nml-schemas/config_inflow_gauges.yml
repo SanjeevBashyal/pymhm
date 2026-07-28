@@ -1,0 +1,38 @@
+title: Inflow gauges
+x-fortran-namelist: inflow_gauges
+type: object
+properties:
+  nInflowGaugesTotal:
+    type: integer
+    minimum: 0
+    default: 0
+  NoInflowGauges_domain:
+    type: array
+    items:
+      type: integer
+      minimum: 0
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[0]]
+  InflowGauge_id:
+    type: array
+    items:
+      type: integer
+    x-fortran-shape: [max_domains, max_gauges]
+    x-fortran-flex-tail-dims: 2
+    examples: [[[-9]]]
+  InflowGauge_filename:
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+    x-fortran-shape: [max_domains, max_gauges]
+    x-fortran-flex-tail-dims: 2
+    examples: [[[""]]]
+  InflowGauge_Headwater:
+    type: array
+    items:
+      type: boolean
+    x-fortran-shape: [max_domains, max_gauges]
+    x-fortran-flex-tail-dims: 2
+    examples: [[[false]]]

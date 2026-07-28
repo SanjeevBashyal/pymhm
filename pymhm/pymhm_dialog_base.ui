@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>776</width>
-    <height>903</height>
+    <width>825</width>
+    <height>907</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -30,7 +30,7 @@
     <number>9</number>
    </property>
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_4">
+    <layout class="QHBoxLayout" name="horizontalLayout_mHMversion">
      <property name="leftMargin">
       <number>10</number>
      </property>
@@ -110,13 +110,13 @@
        <number>9</number>
       </property>
       <property name="topMargin">
-       <number>3</number>
+       <number>2</number>
       </property>
       <property name="rightMargin">
        <number>9</number>
       </property>
       <property name="bottomMargin">
-       <number>3</number>
+       <number>2</number>
       </property>
       <item>
        <widget class="QLabel" name="label_ProjectFolder">
@@ -166,6 +166,16 @@
         </property>
        </widget>
       </item>
+      <item>
+       <widget class="QCheckBox" name="checkBox_enableFolderSearch">
+        <property name="toolTip">
+         <string>Enable file searching within the folder</string>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
@@ -178,7 +188,7 @@
       </sizepolicy>
      </property>
      <property name="currentIndex">
-      <number>0</number>
+      <number>1</number>
      </property>
      <widget class="QWidget" name="tab_geometry">
       <attribute name="title">
@@ -205,128 +215,220 @@
          <property name="title">
           <string>Inputs</string>
          </property>
-         <layout class="QGridLayout" name="gridLayout" columnstretch="1,0,0">
+         <layout class="QGridLayout" name="gridLayout" columnstretch="1,3,1">
           <property name="verticalSpacing">
            <number>3</number>
           </property>
-          <item row="3" column="0">
-           <widget class="QLabel" name="label_land_cover_layer">
-            <property name="text">
-             <string>Land Cover Layer:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="0">
-           <widget class="QLabel" name="label_soil_layer">
-            <property name="text">
-             <string>Soil Layer:</string>
-            </property>
-           </widget>
-          </item>
           <item row="6" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout_lai_time" stretch="2,1">
-            <item>
-             <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_laiLookup">
-              <property name="minimumSize">
-               <size>
-                <width>75</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="statusTip">
-               <string>Lookup table...</string>
-              </property>
-              <property name="currentText">
-               <string extracomment="Lookup table..."/>
-              </property>
-              <property name="placeholderText">
-               <string>Lookup table...</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QComboBox" name="comboBox_laiLookupField"/>
-            </item>
-           </layout>
-          </item>
-          <item row="5" column="1">
-           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_geology">
+           <widget class="QComboBox" name="comboBox_lai_inputType">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+              <horstretch>1</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>150</width>
+              <height>16777215</height>
+             </size>
+            </property>
             <property name="toolTip">
-             <string>Select the geology layer</string>
+             <string>LAI Input Type</string>
+            </property>
+            <property name="currentIndex">
+             <number>-1</number>
+            </property>
+            <item>
+             <property name="text">
+              <string>Long Term Mean Monthly Gridded Data (NetCDF)</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>LAI Classes and Lookup Table</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Daily Gridded Data (NetCDF)</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Monthly Gridded Data (NetCDF)</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Yearly Gridded Data (NetCDF)</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="5" column="2">
+           <widget class="QComboBox" name="comboBox_geology_inputType">
+            <property name="currentIndex">
+             <number>-1</number>
+            </property>
+            <item>
+             <property name="text">
+              <string>mHM_ready</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Lookup Table</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_dem">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>DEM Raster Layer:</string>
             </property>
            </widget>
           </item>
-          <item row="4" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout_soilLookup" stretch="2,1">
+          <item row="3" column="2">
+           <widget class="QComboBox" name="comboBox_landCover_inputType">
+            <property name="currentIndex">
+             <number>-1</number>
+            </property>
             <item>
-             <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_soilLookup">
-              <property name="minimumSize">
-               <size>
-                <width>75</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="statusTip">
-               <string>Lookup table...</string>
-              </property>
-              <property name="currentText">
-               <string extracomment="Lookup table..."/>
-              </property>
-              <property name="placeholderText">
-               <string>Lookup table...</string>
-              </property>
-             </widget>
+             <property name="text">
+              <string>mHM_ready</string>
+             </property>
             </item>
             <item>
-             <widget class="QComboBox" name="comboBox_soilLookupField"/>
+             <property name="text">
+              <string>Lookup Table</string>
+             </property>
             </item>
-           </layout>
+           </widget>
           </item>
-          <item row="0" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout_L0Replace"/>
-          </item>
-          <item row="4" column="1">
-           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_soil">
-            <property name="toolTip">
-             <string>Select the soil layer</string>
+          <item row="5" column="0">
+           <widget class="QLabel" name="label_geology_layer">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>Geology Layer:</string>
             </property>
            </widget>
+          </item>
+          <item row="1" column="2">
+           <layout class="QHBoxLayout" name="horizontalLayout_field_label"/>
           </item>
           <item row="6" column="0">
            <widget class="QLabel" name="label_lai_file">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
             <property name="text">
              <string>Leaf Area Index File:</string>
             </property>
            </widget>
           </item>
-          <item row="3" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout_landCoverLookup" stretch="2,1">
+          <item row="1" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_demInput">
             <item>
-             <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_landCoverLookup">
-              <property name="minimumSize">
+             <widget class="QComboBox" name="comboBox_demInput"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_browseDEMInput">
+              <property name="maximumSize">
                <size>
-                <width>75</width>
-                <height>0</height>
+                <width>40</width>
+                <height>16777215</height>
                </size>
               </property>
-              <property name="statusTip">
-               <string>Lookup table...</string>
+              <property name="toolTip">
+               <string>Select Project Folder</string>
               </property>
-              <property name="currentText">
-               <string extracomment="Lookup table..."/>
-              </property>
-              <property name="placeholderText">
-               <string>Lookup table...</string>
+              <property name="text">
+               <string>...</string>
               </property>
              </widget>
             </item>
-            <item>
-             <widget class="QComboBox" name="comboBox_landCoverLookupField"/>
-            </item>
            </layout>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="label_land_cover_layer">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>Land Cover Layer:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QgsProjectionSelectionWidget" name="mProjectionSelectionWidget_crs">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="toolTip">
+             <string>Select the Coordinate Reference System for processing</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="label_soil_layer">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>Soil Layer:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="2">
+           <widget class="QComboBox" name="comboBox_soil_inputType">
+            <property name="currentIndex">
+             <number>-1</number>
+            </property>
+            <item>
+             <property name="text">
+              <string>mHM_ready</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Lookup Table</string>
+             </property>
+            </item>
+           </widget>
           </item>
           <item row="2" column="0">
            <widget class="QLabel" name="label_pour_points">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
             <property name="toolTip">
              <string>Required: STATION_ID in the Attribute Table</string>
             </property>
@@ -335,122 +437,133 @@
             </property>
            </widget>
           </item>
-          <item row="5" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout_geologyLookup" stretch="2,1">
-            <item>
-             <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_geologyLookup">
-              <property name="minimumSize">
-               <size>
-                <width>75</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="statusTip">
-               <string>Lookup table...</string>
-              </property>
-              <property name="currentText">
-               <string extracomment="Lookup table..."/>
-              </property>
-              <property name="placeholderText">
-               <string>Lookup table...</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QComboBox" name="comboBox_geologyLookupField"/>
-            </item>
-           </layout>
-          </item>
-          <item row="6" column="1">
-           <layout class="QHBoxLayout" name="horizontalLayout_lai" stretch="1,4">
-            <item>
-             <widget class="QComboBox" name="comboBox_laiInputType">
-              <property name="toolTip">
-               <string>LAI Input Type</string>
-              </property>
-              <property name="currentIndex">
-               <number>-1</number>
-              </property>
-              <item>
-               <property name="text">
-                <string>Long Term Mean Monthly Gridded Data (NetCDF)</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>LAI Classes and Lookup Table</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>Daily Gridded Data (NetCDF)</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>Monthly Gridded Data (NetCDF)</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>Yearly Gridded Data (NetCDF)</string>
-               </property>
-              </item>
-             </widget>
-            </item>
-            <item>
-             <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_LAI_Class"/>
-            </item>
-           </layout>
-          </item>
-          <item row="3" column="1">
-           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_land_cover">
-            <property name="toolTip">
-             <string>Select the land cover layer</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_pour_points">
-            <property name="toolTip">
-             <string>Select the vector layer containing pour points (outlets)</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_dem">
-            <property name="toolTip">
-             <string>Select the Digital Elevation Model (DEM) raster layer</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="label_dem">
-            <property name="text">
-             <string>DEM Raster Layer:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="5" column="0">
-           <widget class="QLabel" name="label_geology_layer">
-            <property name="text">
-             <string>Geology Layer:</string>
-            </property>
-           </widget>
-          </item>
           <item row="0" column="0">
            <widget class="QLabel" name="label_crs">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
             <property name="text">
              <string>CRS:</string>
             </property>
            </widget>
           </item>
-          <item row="0" column="1">
-           <widget class="QgsProjectionSelectionWidget" name="mProjectionSelectionWidget_crs">
-            <property name="toolTip">
-             <string>Select the Coordinate Reference System for processing</string>
-            </property>
-           </widget>
+          <item row="2" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_pourPointInput">
+            <item>
+             <widget class="QComboBox" name="comboBox_pourPointInput"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_browsePourPointInput">
+              <property name="maximumSize">
+               <size>
+                <width>40</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="toolTip">
+               <string>Select Project Folder</string>
+              </property>
+              <property name="text">
+               <string>...</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="3" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_landCoverInput">
+            <item>
+             <widget class="QComboBox" name="comboBox_landCoverInput"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_browseLandCoverInput">
+              <property name="maximumSize">
+               <size>
+                <width>40</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="toolTip">
+               <string>Select Project Folder</string>
+              </property>
+              <property name="text">
+               <string>...</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="4" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_soilInput">
+            <item>
+             <widget class="QComboBox" name="comboBox_soilInput"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_soilInput">
+              <property name="maximumSize">
+               <size>
+                <width>40</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="toolTip">
+               <string>Select Project Folder</string>
+              </property>
+              <property name="text">
+               <string>...</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="5" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_geologyInput">
+            <item>
+             <widget class="QComboBox" name="comboBox_geologyInput"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_geologyInput">
+              <property name="maximumSize">
+               <size>
+                <width>40</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="toolTip">
+               <string>Select Project Folder</string>
+              </property>
+              <property name="text">
+               <string>...</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="6" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_laiInput">
+            <item>
+             <widget class="QComboBox" name="comboBox_laiInput"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_laiInput">
+              <property name="maximumSize">
+               <size>
+                <width>40</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="toolTip">
+               <string>Select Project Folder</string>
+              </property>
+              <property name="text">
+               <string>...</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
           </item>
          </layout>
         </widget>
@@ -483,30 +596,82 @@
           <string>Inputs</string>
          </property>
          <layout class="QVBoxLayout" name="verticalLayout">
+          <property name="spacing">
+           <number>3</number>
+          </property>
+          <property name="topMargin">
+           <number>4</number>
+          </property>
+          <property name="bottomMargin">
+           <number>4</number>
+          </property>
           <item>
-           <layout class="QHBoxLayout" name="horizontalLayout">
+           <layout class="QHBoxLayout" name="horizontalLayout_precipitation" stretch="2,4,1,2">
             <item>
-             <widget class="QLabel" name="label_meteo_folder">
+             <widget class="QLabel" name="label_precipitationFolder">
               <property name="text">
-               <string>Meteorology Data Folder:</string>
+               <string>Precipitation Folder:</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QLineEdit" name="lineEdit_meteo_folder">
+             <widget class="QComboBox" name="comboBox_precipitationFolder">
               <property name="toolTip">
-               <string>Path to folder containing meteorological data</string>
-              </property>
-              <property name="readOnly">
-               <bool>true</bool>
-              </property>
-              <property name="placeholderText">
-               <string>Select meteorology data folder...</string>
+               <string>Select the precipitation data folder</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="pushButton_browse_meteo_folder">
+             <widget class="QPushButton" name="pushButton_browsePrecipitationFolder">
+              <property name="maximumSize">
+               <size>
+                <width>40</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="toolTip">
+               <string>Browse for precipitation data folder</string>
+              </property>
+              <property name="text">
+               <string>...</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboBox_precipitationDataSource">
+              <property name="toolTip">
+               <string>Select the precipitation data source</string>
+              </property>
+              <property name="currentIndex">
+               <number>-1</number>
+              </property>
+              <item>
+               <property name="text">
+                <string>ERA5Land</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_temperature" stretch="2,4,1,2">
+            <item>
+             <widget class="QLabel" name="label_temperatureFolder">
+              <property name="text">
+               <string>Temperature Folder:</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboBox_temperatureFolder">
+              <property name="toolTip">
+               <string>Select the temperature data folder</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_browseTemperatureFolder">
               <property name="maximumSize">
                <size>
                 <width>40</width>
@@ -522,101 +687,53 @@
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="pushButton_meteo_runSave">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
+             <widget class="QComboBox" name="comboBox_temperatureDataSource">
+              <property name="currentIndex">
+               <number>-1</number>
               </property>
-              <property name="minimumSize">
-               <size>
-                <width>25</width>
-                <height>25</height>
-               </size>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>25</width>
-                <height>25</height>
-               </size>
-              </property>
-              <property name="toolTip">
-               <string>Compile and save meteo nc files</string>
-              </property>
-              <property name="text">
-               <string/>
-              </property>
-              <property name="icon">
-               <iconset resource="resources.qrc">
-                <normaloff>:/plugins/pymhm/Resources/runSave.png</normaloff>:/plugins/pymhm/Resources/runSave.png</iconset>
-              </property>
+              <item>
+               <property name="text">
+                <string>ERA5Land</string>
+               </property>
+              </item>
              </widget>
             </item>
            </layout>
           </item>
           <item>
-           <layout class="QHBoxLayout" name="horizontalLayout_L2" stretch="3,1,1,5">
+           <layout class="QHBoxLayout" name="horizontalLayout_pet" stretch="2,4,1,2">
             <item>
-             <widget class="QLabel" name="label_L2">
-              <property name="minimumSize">
-               <size>
-                <width>30</width>
-                <height>0</height>
-               </size>
+             <widget class="QLabel" name="label_petFolder">
+              <property name="text">
+               <string>PET Folder:</string>
               </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboBox_pet">
+              <property name="toolTip">
+               <string>Select the pet data folder</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_browsePetFolder">
               <property name="maximumSize">
                <size>
-                <width>16777215</width>
+                <width>40</width>
                 <height>16777215</height>
                </size>
               </property>
-              <property name="text">
-               <string>L2 Resolution:</string>
+              <property name="toolTip">
+               <string>Browse for meteorology data folder</string>
               </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
+              <property name="text">
+               <string>...</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QLabel" name="label_L2Resolution">
-              <property name="minimumSize">
-               <size>
-                <width>25</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="text">
-               <string/>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="label_L2ResolutionUnit">
-              <property name="minimumSize">
-               <size>
-                <width>25</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="text">
-               <string/>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <spacer name="horizontalSpacer_L2">
-              <property name="orientation">
-               <enum>Qt::Horizontal</enum>
-              </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>40</width>
-                <height>20</height>
-               </size>
-              </property>
-             </spacer>
+             <widget class="QComboBox" name="comboBox_petDataSource"/>
             </item>
            </layout>
           </item>
@@ -705,13 +822,137 @@
             </item>
            </layout>
           </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_L2" stretch="0,1,1,0,0,5,0">
+            <item>
+             <widget class="QLabel" name="label_L2">
+              <property name="minimumSize">
+               <size>
+                <width>30</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>16777215</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>Raw L2 Resolution:</string>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_L2Resolution">
+              <property name="minimumSize">
+               <size>
+                <width>25</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label_L2ResolutionUnit">
+              <property name="minimumSize">
+               <size>
+                <width>25</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="Line" name="line_9">
+              <property name="orientation">
+               <enum>Qt::Vertical</enum>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="label">
+              <property name="text">
+               <string>TextLabel</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="horizontalSpacer_L2">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_executeMeteoMorphSetup">
+              <property name="minimumSize">
+               <size>
+                <width>25</width>
+                <height>25</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>25</width>
+                <height>25</height>
+               </size>
+              </property>
+              <property name="toolTip">
+               <string>Crop, Mask and Write all morphological inputs</string>
+              </property>
+              <property name="text">
+               <string/>
+              </property>
+              <property name="icon">
+               <iconset resource="resources.qrc">
+                <normaloff>:/plugins/pymhm/Resources/run.png</normaloff>:/plugins/pymhm/Resources/run.png</iconset>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
          </layout>
         </widget>
        </item>
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout_latLon">
          <item>
-          <widget class="QPushButton" name="pushButton_executeMorphSetup">
+          <spacer name="horizontalSpacer_latLon">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton_meteo_runSave">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
            <property name="minimumSize">
             <size>
              <width>25</width>
@@ -725,29 +966,16 @@
             </size>
            </property>
            <property name="toolTip">
-            <string>Crop, Mask and Write all morphological inputs</string>
+            <string>Compile and save meteo nc files</string>
            </property>
            <property name="text">
             <string/>
            </property>
            <property name="icon">
             <iconset resource="resources.qrc">
-             <normaloff>:/plugins/pymhm/Resources/run.png</normaloff>:/plugins/pymhm/Resources/run.png</iconset>
+             <normaloff>:/plugins/pymhm/Resources/runSave.png</normaloff>:/plugins/pymhm/Resources/runSave.png</iconset>
            </property>
           </widget>
-         </item>
-         <item>
-          <spacer name="horizontalSpacer_latLon">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>40</width>
-             <height>20</height>
-            </size>
-           </property>
-          </spacer>
          </item>
          <item>
           <widget class="QPushButton" name="pushButton_cropAll">
@@ -824,7 +1052,7 @@
         </layout>
        </item>
        <item>
-        <spacer name="verticalSpacer_3">
+        <spacer name="verticalSpacer_meteoInputs">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
          </property>
@@ -1528,7 +1756,7 @@
    <item>
     <widget class="QStackedWidget" name="stackedWidget">
      <property name="currentIndex">
-      <number>0</number>
+      <number>1</number>
      </property>
      <widget class="QWidget" name="page_geometry">
       <layout class="QVBoxLayout" name="verticalLayout_page_geom">
@@ -2422,7 +2650,7 @@
     </widget>
    </item>
    <item>
-    <widget class="Line" name="lineLog">
+    <widget class="Line" name="line_Log">
      <property name="orientation">
       <enum>Qt::Horizontal</enum>
      </property>
@@ -2436,7 +2664,7 @@
     </widget>
    </item>
    <item>
-    <widget class="QGroupBox" name="groupBox">
+    <widget class="QGroupBox" name="groupBox_externals">
      <property name="title">
       <string/>
      </property>
@@ -2498,11 +2726,6 @@
   </layout>
  </widget>
  <customwidgets>
-  <customwidget>
-   <class>QgsMapLayerComboBox</class>
-   <extends>QComboBox</extends>
-   <header>qgsmaplayercombobox.h</header>
-  </customwidget>
   <customwidget>
    <class>QgsProjectionSelectionWidget</class>
    <extends>QWidget</extends>

@@ -14,7 +14,8 @@ plugin folder:
 - `pymhm/standalone_qgis.py`: Qt-backed fallback for opening the plugin dialog
   without QGIS installed.
 - `pymhm/mhm_tools_to_integrate/`: path-oriented adapters and reusable helpers;
-  soil and geology adapters call the installed `mhm_tools` Python API.
+  the categorical adapter calls the installed `mhm_tools` Python API for land
+  cover, soil, and geology.
 - `setup.py`, `pyproject.toml`, `MANIFEST.in`: PyPI package metadata.
 
 Read `pymhm/AGENTS.md` before making plugin-internal changes. It contains the
@@ -61,14 +62,14 @@ Reusable computation should move toward QGIS-free file/path/data APIs.
   `mhm-tools` CLI.
 - `rasterize_map_data` burns vector attributes directly or maps them through a
   lookup table, always using the filled DEM's exact grid.
-- `format_soil_data` and `format_geology_data` accept categorical and DEM
-  rasters in ASCII, GeoTIFF, or NetCDF form and align categories to the DEM
-  with nearest-neighbour resampling.
+- `format_soil_data`, `format_geology_data`, and `format_lc_data` accept
+  categorical and DEM rasters in ASCII, GeoTIFF, or NetCDF form and align
+  categories to the DEM with nearest-neighbour resampling.
 - Shared raster file I/O and alignment live in `mhm_tools.common.file_handler`;
   `mhm_tools.common.rasterize` is intentionally limited to `rasterize_vector`.
-- The corresponding external CLI commands are in the `data-converter` group:
-  `rasterize-map`, `format-soil-data`, and `format-geology-data`. All require a
-  DEM; the two formatters write NetCDF or ASCII plus their classdefinition.
+- The corresponding external CLI commands are `data-converter rasterize-map`
+  and `data-converter format-data`; the latter requires
+  `--type soil|geology|lc`, a mapping field, and a class field.
 - QGIS-specific layer selection, materialization, logging, output placement,
   and geology parameter metadata remain in `pymhm`. See `pymhm/AGENTS.md` for
   the detailed contract and current caveats.

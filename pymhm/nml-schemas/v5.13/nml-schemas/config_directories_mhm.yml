@@ -7,6 +7,9 @@ properties:
     x-fortran-len: buf
     enum: [nc]
     default: nc
+  bound_error:
+    type: boolean
+    default: true
   dir_Precipitation: &domain_directory
     type: array
     items:

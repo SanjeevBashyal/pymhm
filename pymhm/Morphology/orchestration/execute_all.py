@@ -2,13 +2,7 @@
 """Execute-all morphology workflow orchestration."""
 from __future__ import annotations
 
-from ..common import (
-    QMessageBox,
-    morph_folder,
-    os,
-    project_geometry_folder,
-)
-from ..classification_writers import ClassificationWritersMixin
+from ..common import QMessageBox, morph_folder, os, project_geometry_folder
 from ..hydrology.aggregate import HydrologyMixin
 from ..latlon import LatLonMixin
 from ..layers import LayerProcessingMixin
@@ -20,7 +14,6 @@ class ExecuteAllMixin(
     HydrologyMixin,
     LayerProcessingMixin,
     LatLonMixin,
-    ClassificationWritersMixin,
 ):
     """Execute-all morphology workflow orchestration."""
 
@@ -79,7 +72,15 @@ class ExecuteAllMixin(
 
             # Step 4: Land Cover
             self.log_message("\n--- Step 4/18: Process Land Cover ---")
-            self.process_land_use()
+            if not self.process_land_use():
+                return fail("Land Cover processing failed. Aborting Execute All.")
+            land_cover_ready = self._categorical_mode("lc") == "mhm_ready"
+            if land_cover_ready and not os.path.exists(
+                self.categorical_ready_outputs.get("lc", "")
+            ):
+                return fail(
+                    "mHM-ready Land Cover output is missing. Aborting Execute All."
+                )
 
             # Step 5: Soil
             self.log_message("\n--- Step 5/18: Process Soil ---")
@@ -93,6 +94,8 @@ class ExecuteAllMixin(
             )
             if not self.process_soil(write_classdefinition=True):
                 return fail("Soil processing failed. Aborting Execute All.")
+            if self._categorical_mode("soil") == "mhm_ready":
+                soil_raster = self.categorical_ready_outputs.get("soil", "")
             if not os.path.exists(soil_raster) or not os.path.exists(
                     soil_definition):
                 return fail(
@@ -115,6 +118,8 @@ class ExecuteAllMixin(
             )
             if not self.process_geology(write_classdefinition=True):
                 return fail("Geology processing failed. Aborting Execute All.")
+            if self._categorical_mode("geology") == "mhm_ready":
+                geology_raster = self.categorical_ready_outputs.get("geology", "")
             if not all(
                 os.path.exists(path)
                 for path in (

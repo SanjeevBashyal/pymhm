@@ -1,0 +1,49 @@
+title: Optional calibration data
+x-fortran-namelist: optional_data
+type: object
+properties:
+  dir_soil_moisture: &domain_directory
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+      format: directory-path
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[data/optional_data/]]
+  nSoilHorizons_sm_input:
+    type: integer
+    minimum: 1
+    default: 1
+  timeStep_sm_input:
+    type: integer
+    enum: [-3, -2, -1]
+    default: -2
+  dir_neutrons:
+    <<: *domain_directory
+  dir_evapotranspiration:
+    <<: *domain_directory
+  timeStep_et_input:
+    type: integer
+    enum: [-3, -2, -1]
+    default: -2
+  dir_tws:
+    <<: *domain_directory
+  timeStep_tws_input:
+    type: integer
+    enum: [-3, -2, -1]
+    default: -2
+  dir_spf:
+    <<: *domain_directory
+  timeStep_spf_input:
+    type: integer
+    enum: [-3, -2, -1]
+    default: -1
+  weight_for_optional_data:
+    type: integer
+    minimum: 0
+    default: 1
+  snow_water_equivalent_threshold_for_spf:
+    type: integer
+    minimum: 0
+    default: 0

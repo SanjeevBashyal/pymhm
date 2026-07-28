@@ -1,0 +1,231 @@
+"""Tests for the unified path-based categorical mhm-tools adapter."""
+
+import contextlib
+import sys
+from pathlib import Path
+from types import ModuleType
+
+import pytest
+
+from pymhm.mhm_tools_to_integrate.setup_creation import categorical
+
+
+def _touch(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()
+    return path
+
+
+def _install_fake_mhm_tools(monkeypatch, **functions):
+    package = ModuleType("mhm_tools")
+    pre = ModuleType("mhm_tools.pre")
+    for name, function in functions.items():
+        setattr(pre, name, function)
+    package.pre = pre
+    monkeypatch.setitem(sys.modules, "mhm_tools", package)
+    monkeypatch.setitem(sys.modules, "mhm_tools.pre", pre)
+    monkeypatch.setattr(categorical, "ensure_bundled_mhm_tools", lambda: package)
+
+
+def _capture_counter(monkeypatch):
+    calls = []
+
+    @contextlib.contextmanager
+    def fake_capture(log):
+        calls.append(log)
+        yield
+
+    monkeypatch.setattr(categorical, "capture_messages", fake_capture)
+    return calls
+
+
+def test_raster_soil_formats_and_moves_canonical_outputs(tmp_path, monkeypatch):
+    input_file = _touch(tmp_path / "input" / "soil.asc")
+    dem_file = _touch(tmp_path / "input" / "dem.tif")
+    lookup_table = _touch(tmp_path / "input" / "soil.csv")
+    output_file = tmp_path / "geometry" / "3_soil.tif"
+    definition_file = tmp_path / "morph" / "soil_classdefinition.txt"
+    formatter_calls = []
+
+    def format_soil_data(**kwargs):
+        formatter_calls.append(kwargs)
+        kwargs["output_path"].joinpath("soil_class.tif").write_bytes(b"soil")
+        kwargs["output_path"].joinpath("soil_classdefinition.txt").write_text(
+            "definition\n", encoding="utf-8"
+        )
+
+    _install_fake_mhm_tools(monkeypatch, format_soil_data=format_soil_data)
+    captures = _capture_counter(monkeypatch)
+    log = lambda _message: None
+
+    result = categorical.prepare_categorical_file(
+        "soil",
+        input_file,
+        dem_file,
+        output_file,
+        lookup_table,
+        "map_code",
+        "SOIL_CLASS",
+        classdefinition_file=definition_file,
+        input_crs="EPSG:4326",
+        dem_crs="EPSG:32645",
+        log=log,
+    )
+
+    assert result == output_file
+    assert output_file.read_bytes() == b"soil"
+    assert definition_file.read_text(encoding="utf-8") == "definition\n"
+    assert captures == [log]
+    assert len(formatter_calls) == 1
+    call = formatter_calls[0]
+    temporary_path = call.pop("output_path")
+    assert temporary_path.parent == output_file.parent
+    assert call == {
+        "input_file": input_file,
+        "dem_file": dem_file,
+        "lookup_table": lookup_table,
+        "mapping_field": "map_code",
+        "class_field": "SOIL_CLASS",
+        "output_type": "tif",
+        "input_crs": "EPSG:4326",
+        "dem_crs": "EPSG:32645",
+    }
+    assert not temporary_path.exists()
+
+
+def test_vector_geology_rasterizes_then_uses_identity_mapping(tmp_path, monkeypatch):
+    input_file = _touch(tmp_path / "input" / "geology.shp")
+    dem_file = _touch(tmp_path / "input" / "dem.asc")
+    lookup_table = _touch(tmp_path / "input" / "geology.csv")
+    output_file = tmp_path / "geometry" / "3_geology_processed.tif"
+    definition_file = tmp_path / "morph" / "geology_classdefinition.txt"
+    rasterize_calls = []
+    formatter_calls = []
+
+    def rasterize_map_data(**kwargs):
+        rasterize_calls.append(kwargs)
+        kwargs["output_file"].write_bytes(b"rasterized")
+
+    def format_geology_data(**kwargs):
+        formatter_calls.append(kwargs)
+        assert kwargs["input_file"].read_bytes() == b"rasterized"
+        kwargs["output_path"].joinpath("geology_class.tif").write_bytes(b"geology")
+        kwargs["output_path"].joinpath("geology_classdefinition.txt").write_text(
+            "definition\n", encoding="utf-8"
+        )
+
+    _install_fake_mhm_tools(
+        monkeypatch,
+        rasterize_map_data=rasterize_map_data,
+        format_geology_data=format_geology_data,
+    )
+    captures = _capture_counter(monkeypatch)
+
+    categorical.prepare_categorical_file(
+        "geology",
+        input_file,
+        dem_file,
+        output_file,
+        lookup_table,
+        "GEO_CLASS",
+        "GEOLOGY_CLASS",
+        is_vector=True,
+        classdefinition_file=definition_file,
+        input_crs="EPSG:4326",
+        dem_crs="EPSG:32645",
+    )
+
+    assert output_file.read_bytes() == b"geology"
+    assert definition_file.read_text(encoding="utf-8") == "definition\n"
+    assert captures == [None]
+    assert len(rasterize_calls) == len(formatter_calls) == 1
+    rasterize_call = rasterize_calls[0]
+    temporary_input = rasterize_call.pop("output_file")
+    assert rasterize_call == {
+        "input_file": input_file,
+        "dem_file": dem_file,
+        "mapping_field": "GEO_CLASS",
+        "lookup_table": lookup_table,
+        "lookup_mapping_field": "GEO_CLASS",
+        "lookup_value_field": "GEOLOGY_CLASS",
+        "input_crs": "EPSG:4326",
+        "dem_crs": "EPSG:32645",
+    }
+    formatter_call = formatter_calls[0]
+    assert formatter_call["input_file"] == temporary_input
+    assert formatter_call["output_path"] == temporary_input.parent
+    assert "input_crs" not in formatter_call
+    assert formatter_call == {
+        "input_file": temporary_input,
+        "dem_file": dem_file,
+        "output_path": temporary_input.parent,
+        "lookup_table": lookup_table,
+        "mapping_field": "GEOLOGY_CLASS",
+        "class_field": "GEOLOGY_CLASS",
+        "output_type": "tif",
+        "dem_crs": "EPSG:32645",
+    }
+    assert not temporary_input.parent.exists()
+
+
+def test_land_cover_dispatches_without_classdefinition(tmp_path, monkeypatch):
+    input_file = _touch(tmp_path / "input" / "lc.nc")
+    dem_file = _touch(tmp_path / "input" / "dem.nc")
+    lookup_table = tmp_path / "input" / "lc.txt"
+    lookup_table.parent.mkdir(parents=True, exist_ok=True)
+    lookup_table.write_text(
+        "grid_value\tLC_CLASS\n1\t2\n",
+        encoding="utf-8",
+    )
+    output_file = tmp_path / "geometry" / "3_land_use.tif"
+    formatter_calls = []
+    lookup_text = []
+
+    def format_lc_data(**kwargs):
+        formatter_calls.append(kwargs)
+        lookup_text.append(kwargs["lookup_table"].read_text(encoding="utf-8"))
+        kwargs["output_path"].joinpath("lc.tif").write_bytes(b"land cover")
+
+    _install_fake_mhm_tools(monkeypatch, format_lc_data=format_lc_data)
+
+    categorical.prepare_categorical_file(
+        "lc",
+        input_file,
+        dem_file,
+        output_file,
+        lookup_table,
+        "grid_value",
+        "LC_CLASS",
+    )
+
+    assert output_file.read_bytes() == b"land cover"
+    call = formatter_calls[0]
+    temporary_path = call.pop("output_path")
+    normalized_lookup = call.pop("lookup_table")
+    assert call == {
+        "input_file": input_file,
+        "dem_file": dem_file,
+        "mapping_field": "grid_value",
+        "class_field": "LC_CLASS",
+        "output_type": "tif",
+    }
+    assert normalized_lookup == temporary_path / "lookup.csv"
+    assert lookup_text == ["grid_value,LC_CLASS\n1,2\n"]
+    assert not normalized_lookup.exists()
+
+
+def test_rejects_unknown_kind_and_land_cover_definition(tmp_path):
+    common = (
+        tmp_path / "input.tif",
+        tmp_path / "dem.tif",
+        tmp_path / "output.tif",
+        tmp_path / "lookup.csv",
+        "source",
+        "target",
+    )
+    with pytest.raises(ValueError, match="kind must"):
+        categorical.prepare_categorical_file("water", *common)
+    with pytest.raises(ValueError, match="does not write"):
+        categorical.prepare_categorical_file(
+            "lc", *common, classdefinition_file=tmp_path / "definition.txt"
+        )

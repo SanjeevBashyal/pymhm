@@ -1,6 +1,6 @@
 title: Direct runoff - Case 1
 description: Parameters for Direct sealed area runoff.
-x-fortran-namelist: directrunoff1
+x-fortran-namelist: directRunoff1
 type: object
 properties:
   imperviousStorageCapacity:

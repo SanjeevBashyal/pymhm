@@ -2,13 +2,8 @@
 """Geometry output cleanup and in-memory path reset."""
 from __future__ import annotations
 
-from ..common import (
-    os,
-    project_geometry_folder,
-    QMessageBox,
-    QgsProject,
-    processing,
-)
+from ..common import (QgsProject, QMessageBox, os, processing,
+                      project_geometry_folder)
 from ..core.base import BaseProcessingMixin
 
 
@@ -23,7 +18,7 @@ class ResetGeometryMixin(BaseProcessingMixin):
         3. Resetting all path attributes
         """
         from qgis.PyQt.QtWidgets import QMessageBox
-        
+
         # Confirm with user
         reply = QMessageBox.question(
             self.dialog, "Reset Geometry",
@@ -114,6 +109,7 @@ class ResetGeometryMixin(BaseProcessingMixin):
         self.gauge_position_path = None
         self.geology_path = None
         self.land_use_layer = None
+        self.categorical_ready_outputs = {}
         self.dem_layer = None
         self.processing_state = {"version": 1, "outputs": {}, "workflows": {}}
         self.save_processing_state()

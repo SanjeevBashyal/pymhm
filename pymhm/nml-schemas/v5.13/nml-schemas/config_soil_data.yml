@@ -21,4 +21,3 @@ properties:
     x-fortran-shape: max_layers
     x-fortran-flex-tail-dims: 1
     examples: [[200.0]]
-

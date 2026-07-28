@@ -1,6 +1,6 @@
 title: PET - Case 1
 description: Parameters for PET (case 1 - Hargreaves-Samani).
-x-fortran-namelist: pet1
+x-fortran-namelist: PET1
 type: object
 properties:
   minCorrectionFactorPET:

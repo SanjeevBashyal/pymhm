@@ -1,0 +1,45 @@
+title: River-temperature configuration
+x-fortran-namelist: config_riv_temp
+type: object
+properties:
+  albedo_water:
+    type: number
+    default: 0.15
+  pt_a_water:
+    type: number
+    default: 1.26
+  emissivity_water:
+    type: number
+    default: 0.96
+  turb_heat_ex_coeff:
+    type: number
+    default: 20.0
+  max_iter:
+    type: integer
+    minimum: 1
+    default: 50
+  delta_iter:
+    type: number
+    minimum: 0.0
+    default: 0.01
+  step_iter:
+    type: number
+    minimum: 0.0
+    default: 5.0
+  riv_widths_file:
+    type: string
+    x-fortran-len: buf
+    default: Q_bkfl
+  riv_widths_name:
+    type: string
+    x-fortran-len: buf
+    default: P_bkfl
+  dir_riv_widths:
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+      format: directory-path
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[data/optional_data/]]

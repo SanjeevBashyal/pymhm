@@ -10,13 +10,15 @@ properties:
     type: array
     items:
       type: integer
-    x-fortran-shape: 1
+    x-fortran-shape: max_lcover_scenes
+    x-fortran-flex-tail-dims: 1
     examples: [[1900]]
   LCoverYearEnd:
     type: array
     items:
       type: integer
-    x-fortran-shape: 1
+    x-fortran-shape: max_lcover_scenes
+    x-fortran-flex-tail-dims: 1
     examples: [[2100]]
   LCoverfName:
     type: array
@@ -24,5 +26,6 @@ properties:
       type: string
       x-fortran-len: buf
       format: file-path
-    x-fortran-shape: 1
+    x-fortran-shape: max_lcover_scenes
+    x-fortran-flex-tail-dims: 1
     examples: [[lc.asc]]

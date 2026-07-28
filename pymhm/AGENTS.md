@@ -21,9 +21,9 @@ Important packages:
 - `Morphology/`: DEM, watershed, soil, geology, LAI, crop/mask/write-all, latlon, observations.
 - `Meteorology/`: ERA5-Land to mHM forcing preparation.
 - `Configuration/`: namelist schemas/templates/state/rendering/version compatibility.
-- `mhm_tools_to_integrate/`: path-oriented adapters and UI-free helpers. Soil
-  and geology adapters under `setup_creation/` delegate computation to the
-  externally installed `mhm_tools` package.
+- `mhm_tools_to_integrate/`: path-oriented adapters and UI-free helpers. The
+  categorical adapter under `setup_creation/` delegates land-cover, soil, and
+  geology computation to the externally installed `mhm_tools` package.
 - `nml-schemas/` and `nml-templates/`: versioned by mHM tool version, currently `v5.13` and `v6`.
 - `project-template/`: versioned project folder skeleton.
 
@@ -53,59 +53,35 @@ Important packages:
 - `pushButton_writeAll` writes masked rasters to ASCII files using mHM-compatible headers.
 - Check raster dimensions across levels: L0 must be an integer multiple of L1, and L1/L11 must be compatible with L2 as required by mHM.
 
-## Soil And Geology
+## Categorical Morphology Inputs
 
-- Soil and geology lookup tables are selected from QGIS with `QgsMapLayerComboBox`, not file-only inputs.
-- The lookup field combo boxes beside each lookup table must be populated from the selected lookup layer fields.
-- The selected lookup field is mandatory. Do not use fallback field names such as `Dominant_S` or `GEO_CLASS`; if the required user-selected mapping cannot be applied, raise/log a clear error.
-- Soil inputs may be vector or raster. The lookup table must include `SOIL_CLASS`; output raster values come from `SOIL_CLASS`.
-- Geology inputs may be vector or raster. The lookup table must include `GEOLOGY_CLASS`; output raster values come from `GEOLOGY_CLASS`.
-- The filled DEM is required for both vector and raster inputs. It defines the
-  exact output CRS, affine transform, extent, width, and height.
-- Vector inputs are handled by `mhm_tools.pre.rasterize_map_data` through
-  `rasterize_soil_map` or `rasterize_geology_map`. Pass the selected source
-  field as the vector mapping field, the selected lookup field as the lookup
-  mapping field, and burn `SOIL_CLASS` or `GEOLOGY_CLASS` respectively.
-- The external `data-converter rasterize-map` CLI requires `-i/--input-file`,
-  `-d/--dem-file`, `-o/--output-file`, and `-b/--burn-field`. Lookup mode adds
-  the paired `-l/--lookup-table` and `-m/--mapping-field` options; direct mode
-  burns the numeric vector field named by `-b`.
+- Plain input combo boxes are exposed through compatibility adapters under the
+  former `mMapLayerComboBox_*` names. Loaded QGIS layers are always listed;
+  folder searching optionally adds relative project paths.
+- Land cover, soil, and geology use either `mHM_ready` or `Lookup Table` mode.
+  Lookup mode stores an explicit CSV or delimited TXT lookup file, mapping
+  field, and class field.
+- `mhm_tools.pre.rasterize_map_data`, `format_soil_data`,
+  `format_geology_data`, and `format_lc_data` perform all categorical raster
+  computation. Do not restore local QGIS reclassification or guessed mappings.
+- Vector lookup processing burns the selected class field. Its follow-up
+  formatter must therefore map `class_field` to itself; do not map the original
+  source field a second time.
+- The filled DEM defines the exact target grid and CRS. Original input and DEM
+  CRS arguments are missing-metadata fallbacks, and must not override
+  conflicting embedded metadata.
+- Lookup mode retains `3_land_use.tif`, `3_soil.tif`, and
+  `3_geology_processed.tif` for the existing crop/mask/write workflow.
+- Soil and geology classdefinitions are produced once by their formatter and
+  moved to `data/static/morph`. Only geology `PARAMETER_VALUE` metadata remains
+  plugin-specific in `Z Temp/Geometry/geology_class_metadata.json`.
+- `mHM_ready` accepts local `.asc`, `.nc`, or `.tif` rasters, copies them to
+  `data/static/morph`, and bypasses categorical crop/mask/write processing.
+  Soil and geology require their existing classdefinition in that folder;
+  geology also requires its plugin metadata in `Z Temp/Geometry`.
+- Prefer direct local paths. Materialize provider sublayers and non-file-backed
+  QGIS layers only at the plugin boundary.
 - Do not add Shapely validity checks or `make_valid` calls before rasterizing.
-  The current contract passes geometries directly to Rasterio so invalid or
-  empty features follow Rasterio's normal handling.
-- Raster inputs are handled by `mhm_tools.pre.format_soil_data` or
-  `format_geology_data`. Input and DEM files may be `.asc`, `.tif`/`.tiff`, or
-  `.nc`; categorical alignment must use nearest-neighbour resampling.
-- The corresponding formatter CLIs require `-i`, `-d`, `-o`, `-l`, and `-m`;
-  `-t/--output-type` selects `nc` or `asc`. Across all three commands,
-  `-s/--input-crs` and `-r/--dem-crs` are metadata fallbacks.
-- Forward the QGIS layer CRS as `input_crs` or `dem_crs` only as a fallback for
-  files without embedded metadata. A supplied CRS must not silently override a
-  conflicting embedded CRS. ASCII CRS metadata uses a neighboring `.prj` file.
-- Prefer a direct local provider path. Materialize provider sublayers or
-  non-file-backed vector layers to temporary GeoPackage files and raster layers
-  to temporary GeoTIFF files.
-- `format_soil_data` and `format_geology_data` intentionally expose only `nc`
-  and `asc` output types. The shared `_categorical.format_categorical_file`
-  adapter uses a `TemporaryDirectory`, requests temporary NetCDF output, then
-  writes the plugin's final GeoTIFF. Keep that temporary directory until both
-  the raster and classdefinition have been moved successfully.
-- `soil_classdefinition.txt` and `geology_classdefinition.txt` are written to `data/static/morph`.
-- Classdefinition rendering belongs to `mhm_tools`; capture its log records
-  through `mhm_tools_to_integrate.logging.capture_messages` and emit one
-  completion message per file, never one message per definition row.
-- Geology metadata for configuration/parameters is plugin-specific and is
-  written to `Z Temp/Geometry/geology_class_metadata.json`. Keep
-  `GEOLOGY_CLASS` and `PARAMETER_VALUE` validation in `pymhm`; standalone
-  `mhm_tools` geology classdefinition output does not use `PARAMETER_VALUE`.
-- A failed geology refresh must not destroy a previously valid
-  classdefinition or metadata file. Restore prior contents and remove any
-  partial raster output.
-- Existing `3_soil.tif` and `3_geology_processed.tif` files are currently
-  reused based on file existence, without input/lookup provenance checks. When
-  changing cache behavior, prevent an old raster from being paired with a
-  classdefinition generated from a newer lookup table.
-- Prefer GeoPackage (`.gpkg`) for temporary vector outputs; shapefile paths with spaces/backslashes have caused QGIS Processing creation errors.
 
 ## LAI
 
@@ -135,8 +111,8 @@ Important packages:
 - Many modules import QGIS/PyQt and cannot be fully imported in plain system Python.
 - Useful low-risk checks:
   - `python -m py_compile <changed pure-python files>`
-  - `python3 -m pytest -q` for `tests/test_soil_mhm_tools_adapter.py`,
-    `tests/test_geology_mhm_tools_adapter.py`, and logging-capture tests.
+  - `python3 -m pytest -q` for the categorical adapter, input-selection,
+    processing, and logging-capture tests under `tests/`.
   - Install the standalone shim before importing `MorphologyProcessor` in a
     plain-Python MRO smoke test.
   - Targeted render smoke tests for `Configuration/namelist.py` and `Configuration/version_compat.py` using a lightweight fake `pymhm` package import harness.

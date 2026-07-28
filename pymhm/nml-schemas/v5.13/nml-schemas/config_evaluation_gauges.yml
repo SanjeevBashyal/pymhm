@@ -1,0 +1,31 @@
+title: Evaluation gauges
+x-fortran-namelist: evaluation_gauges
+type: object
+properties:
+  nGaugesTotal:
+    type: integer
+    minimum: 0
+    default: 1
+  NoGauges_domain:
+    type: array
+    items:
+      type: integer
+      minimum: 0
+    x-fortran-shape: max_domains
+    x-fortran-flex-tail-dims: 1
+    examples: [[1]]
+  Gauge_id:
+    type: array
+    items:
+      type: integer
+    x-fortran-shape: [max_domains, max_gauges]
+    x-fortran-flex-tail-dims: 2
+    examples: [[[398]]]
+  gauge_filename:
+    type: array
+    items:
+      type: string
+      x-fortran-len: buf
+    x-fortran-shape: [max_domains, max_gauges]
+    x-fortran-flex-tail-dims: 2
+    examples: [[["00398.txt"]]]
