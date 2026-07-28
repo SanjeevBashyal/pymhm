@@ -32,12 +32,8 @@ class ExecuteAllMixin(
         10. channel network
         11. snap
         12. upslope area
-        13. crop all layers
-        14. mask all cropped layers
-        15. process lat/lon headers
-        16. verify geology class definition
-        17. verify soil outputs
-        18. write all layers (convert to ASCII)
+        13. verify geology class definition
+        14. verify soil outputs
         """
         self.log_message("\n=== Starting Execute All Processing ===")
 
@@ -57,21 +53,21 @@ class ExecuteAllMixin(
                 return False
 
             # Step 1: Fill DEM
-            self.log_message("\n--- Step 1/18: Fill DEM ---")
+            self.log_message("\n--- Step 1/14: Fill DEM ---")
             self.without_layer_loading(self.fill_dem)
             if not self.filled_dem_path or not os.path.exists(self.filled_dem_path):
                 return fail("Fill DEM failed. Aborting Execute All.")
 
             # Step 2: Slope
-            self.log_message("\n--- Step 2/18: Process Slope ---")
+            self.log_message("\n--- Step 2/14: Process Slope ---")
             self.process_slope()
 
             # Step 3: Aspect
-            self.log_message("\n--- Step 3/18: Process Aspect ---")
+            self.log_message("\n--- Step 3/14: Process Aspect ---")
             self.process_aspect()
 
             # Step 4: Land Cover
-            self.log_message("\n--- Step 4/18: Process Land Cover ---")
+            self.log_message("\n--- Step 4/14: Process Land Cover ---")
             if not self.process_land_use():
                 return fail("Land Cover processing failed. Aborting Execute All.")
             land_cover_ready = self._categorical_mode("lc") == "mhm_ready"
@@ -83,7 +79,7 @@ class ExecuteAllMixin(
                 )
 
             # Step 5: Soil
-            self.log_message("\n--- Step 5/18: Process Soil ---")
+            self.log_message("\n--- Step 5/14: Process Soil ---")
             soil_raster = os.path.join(
                 project_geometry_folder(self.dialog.project_folder),
                 "3_soil.tif",
@@ -103,7 +99,7 @@ class ExecuteAllMixin(
                     "Aborting Execute All.")
 
             # Step 6: Geology
-            self.log_message("\n--- Step 6/18: Process Geology ---")
+            self.log_message("\n--- Step 6/14: Process Geology ---")
             geology_raster = os.path.join(
                 project_geometry_folder(self.dialog.project_folder),
                 "3_geology_processed.tif",
@@ -134,7 +130,7 @@ class ExecuteAllMixin(
                 )
 
             # Step 7: Flow Accumulation
-            self.log_message("\n--- Step 7/18: Process Flow Accumulation ---")
+            self.log_message("\n--- Step 7/14: Process Flow Accumulation ---")
             self.process_flow_accumulation()
             if not self.flow_accumulation_path or not os.path.exists(
                 self.flow_accumulation_path
@@ -142,7 +138,7 @@ class ExecuteAllMixin(
                 return fail("Flow Accumulation failed. Aborting Execute All.")
 
             # Step 8: Flow Direction
-            self.log_message("\n--- Step 8/18: Process Flow Direction ---")
+            self.log_message("\n--- Step 8/14: Process Flow Direction ---")
             self.process_flow_direction()
             if not self.flow_direction_path or not os.path.exists(
                 self.flow_direction_path
@@ -151,12 +147,12 @@ class ExecuteAllMixin(
 
             # Step 9: ID Gauges (Gauge Position) - Note: requires snap points, will be processed after step 11
             self.log_message(
-                "\n--- Step 9/18: Process ID Gauges (deferred until after snap points) ---"
+                "\n--- Step 9/14: Process ID Gauges (deferred until after snap points) ---"
             )
             # This will be processed after snap points in step 11
 
             # Step 10: Channel Network
-            self.log_message("\n--- Step 10/18: Process Channel Network ---")
+            self.log_message("\n--- Step 10/14: Process Channel Network ---")
             self.process_channel_network()
             if not self.channel_network_vector_path or not os.path.exists(
                 self.channel_network_vector_path
@@ -164,7 +160,7 @@ class ExecuteAllMixin(
                 return fail("Channel Network failed. Aborting Execute All.")
 
             # Step 11: Snap Points
-            self.log_message("\n--- Step 11/18: Snap Points ---")
+            self.log_message("\n--- Step 11/14: Snap Points ---")
             if not self.check_prerequisites(needs_pour_points=True):
                 self.log_message(
                     "WARNING: Pour points not available. Skipping Snap Points step."
@@ -176,12 +172,12 @@ class ExecuteAllMixin(
                     self.snapped_points_path
                 ):
                     self.log_message(
-                        "\n--- Processing Step 9/18: ID Gauges (now that snap points are available) ---"
+                        "\n--- Processing Step 9/14: ID Gauges (now that snap points are available) ---"
                     )
                     self.process_gauge_position()
 
             # Step 12: Upslope Area (Delineate Watershed)
-            self.log_message("\n--- Step 12/18: Delineate Watershed (Upslope Area) ---")
+            self.log_message("\n--- Step 12/14: Delineate Watershed (Upslope Area) ---")
             if not self.snapped_points_path or not os.path.exists(
                 self.snapped_points_path
             ):
@@ -191,22 +187,8 @@ class ExecuteAllMixin(
             else:
                 self.delineate_watershed()
 
-            # Step 13: Crop All Layers
-            self.log_message("\n--- Step 13/18: Crop All Layers ---")
-            if not self.crop_all_layers(show_error_dialog=show_error_dialog):
-                return fail("Crop All Layers failed. Aborting Execute All.")
-
-            # Step 14: Mask All Layers
-            self.log_message("\n--- Step 14/18: Mask All Layers ---")
-            if not self.mask_all_layers(show_error_dialog=show_error_dialog):
-                return fail("Mask All Layers failed. Aborting Execute All.")
-
-            # Step 15: Process Lat/Lon Headers
-            self.log_message("\n--- Step 15/18: Process Lat/Lon Headers ---")
-            self.process_lat_lon()
-
-            # Step 16: Verify Geology Class Definition
-            self.log_message("\n--- Step 16/18: Verify Geology Class Definition ---")
+            # Step 13: Verify Geology Class Definition
+            self.log_message("\n--- Step 13/14: Verify Geology Class Definition ---")
             if not all(
                 os.path.exists(path)
                 for path in (
@@ -220,25 +202,18 @@ class ExecuteAllMixin(
                     "Aborting Execute All."
                 )
 
-            # Step 17: Verify Soil Outputs
-            self.log_message("\n--- Step 17/18: Verify Soil Outputs ---")
+            # Step 14: Verify Soil Outputs
+            self.log_message("\n--- Step 14/14: Verify Soil Outputs ---")
             if not os.path.exists(soil_raster) or not os.path.exists(
                     soil_definition):
                 return fail(
                     "Required soil outputs are missing. Aborting Execute All.")
 
-            # Step 18: Write All Layers (Convert to ASCII)
-            self.log_message(
-                "\n--- Step 18/18: Write All Layers (Convert to ASCII) ---"
-            )
-            if not self.write_all_layers(show_error_dialog=show_error_dialog):
-                return fail("Write All Layers failed. Aborting Execute All.")
-
-            self.log_message("\n=== Execute All Processing Completed Successfully ===")
+            self.log_message("\n=== Morphology Preparation Completed Successfully ===")
             self.mark_workflow_status(
                 "execute_all",
                 "completed",
-                "Execute All Processing completed successfully.",
+                "Morphology preparation completed successfully.",
             )
             return True
 
@@ -266,7 +241,7 @@ class ExecuteAllMixin(
             self,
             show_error_dialog=True,
             workflow_key="morph_setup") -> bool:
-        """Run Crop All, Mask All, and Write All as one workflow."""
+        """Run crop, mask, lat/lon, and ASCII export as one workflow."""
         self.log_message("\n=== Starting Morphology Setup ===")
 
         if not self.check_prerequisites():
@@ -283,16 +258,22 @@ class ExecuteAllMixin(
                 self.mark_workflow_status(workflow_key, "failed", message)
                 return False
 
-            self.log_message("\n--- Morphology Setup Step 1/3: Crop All Layers ---")
+            self.log_message("\n--- Morphology Setup Step 1/4: Crop All Layers ---")
             if not self.crop_all_layers(show_error_dialog=show_error_dialog):
                 return fail("Crop All Layers failed. Aborting Morphology Setup.")
 
-            self.log_message("\n--- Morphology Setup Step 2/3: Mask All Layers ---")
+            self.log_message("\n--- Morphology Setup Step 2/4: Mask All Layers ---")
             if not self.mask_all_layers(show_error_dialog=show_error_dialog):
                 return fail("Mask All Layers failed. Aborting Morphology Setup.")
 
             self.log_message(
-                "\n--- Morphology Setup Step 3/3: Write All Layers ---"
+                "\n--- Morphology Setup Step 3/4: Create latlon.nc ---"
+            )
+            if not self.process_lat_lon():
+                return fail("Lat/lon processing failed. Aborting Morphology Setup.")
+
+            self.log_message(
+                "\n--- Morphology Setup Step 4/4: Write All Layers ---"
             )
             if not self.write_all_layers(show_error_dialog=show_error_dialog):
                 return fail("Write All Layers failed. Aborting Morphology Setup.")

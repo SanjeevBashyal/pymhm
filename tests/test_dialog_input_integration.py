@@ -18,7 +18,7 @@ from qgis.core import QgsCoordinateReferenceSystem  # noqa: E402
 from qgis.PyQt.QtWidgets import QApplication  # noqa: E402
 
 from pymhm.input_selection import InputComboAdapter  # noqa: E402
-from pymhm.project_layout import workspace_folder  # noqa: E402
+from pymhm.project_layout import data_folder, workspace_folder  # noqa: E402
 from pymhm.pymhm_dialog import pymhmDialog  # noqa: E402
 # isort: on
 
@@ -151,6 +151,9 @@ def test_meteo_folder_source_and_multiplier_state_round_trip(tmp_path):
 
 def test_combined_workflow_green_state_restores_from_workspace(tmp_path):
     _app()
+    latlon = Path(data_folder(tmp_path)) / "latlon.nc"
+    latlon.parent.mkdir(parents=True)
+    latlon.touch()
     dialog = pymhmDialog()
     dialog.project_folder = str(tmp_path)
     dialog.morphology_processor.load_processing_state()
@@ -166,6 +169,32 @@ def test_combined_workflow_green_state_restores_from_workspace(tmp_path):
     restored.refresh_morphology_workflow_button_states()
 
     assert "#2e7d32" in restored.pushButton_executeMeteoMorphSetup.styleSheet()
+    restored.close()
+
+
+def test_combined_workflow_green_state_requires_latlon(tmp_path):
+    _app()
+    dialog = pymhmDialog()
+    dialog.project_folder = str(tmp_path)
+    dialog.morphology_processor.load_processing_state()
+    dialog.morphology_processor.mark_workflow_status(
+        "meteo_morph_setup",
+        "completed",
+    )
+    dialog.close()
+
+    restored = pymhmDialog()
+    restored.project_folder = str(tmp_path)
+    restored.morphology_processor.load_processing_state()
+    restored.refresh_morphology_workflow_button_states()
+
+    assert "#2e7d32" not in (
+        restored.pushButton_executeMeteoMorphSetup.styleSheet()
+    )
+    restored.morphology_processor.load_processing_state()
+    assert not restored.morphology_processor.workflow_status(
+        "meteo_morph_setup"
+    )
     restored.close()
 
 

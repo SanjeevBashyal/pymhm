@@ -257,7 +257,8 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if self.spinBox_L2ResolutionMultiplier.value() < 1:
             self.spinBox_L2ResolutionMultiplier.setValue(1)
         self.pushButton_executeMeteoMorphSetup.setToolTip(
-            "Prepare meteorology, then crop, mask, and write morphology"
+            "Prepare meteorology, crop and mask morphology, create latlon.nc, "
+            "then write morphology ASCII files"
         )
         self._capture_workflow_button_default_styles()
 
@@ -1583,7 +1584,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 "action_name": "Execute All Processing",
                 "method": "execute_all_processing",
                 "thread_name": "PymHMExecuteAllThread",
-                "completed_message": "Execute All Processing completed successfully.",
+                "completed_message": (
+                    "Morphology preparation completed successfully."
+                ),
                 "failed_message": (
                     "Execute All Processing failed. Check the log for details."
                 ),
@@ -1929,6 +1932,17 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         workflow = self.morphology_processor.workflow_status(workflow_key)
         if workflow.get("status") == "completed":
+            if (
+                    workflow_key == "meteo_morph_setup"
+                    and self.project_folder
+                    and not os.path.isfile(
+                        os.path.join(
+                            data_folder(self.project_folder),
+                            "latlon.nc",
+                        )
+                    )):
+                self.invalidate_meteo_morph_setup()
+                return
             self.set_morphology_workflow_button_state(workflow_key, "completed")
         elif workflow.get("status") == "failed":
             self.set_morphology_workflow_button_state(workflow_key, "failed")
