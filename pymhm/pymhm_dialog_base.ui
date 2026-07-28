@@ -188,7 +188,7 @@
       </sizepolicy>
      </property>
      <property name="currentIndex">
-      <number>1</number>
+      <number>0</number>
      </property>
      <widget class="QWidget" name="tab_geometry">
       <attribute name="title">
@@ -273,7 +273,7 @@
             </property>
             <item>
              <property name="text">
-              <string>mHM_ready</string>
+              <string>mHM ready</string>
              </property>
             </item>
             <item>
@@ -303,7 +303,7 @@
             </property>
             <item>
              <property name="text">
-              <string>mHM_ready</string>
+              <string>mHM ready</string>
              </property>
             </item>
             <item>
@@ -411,7 +411,7 @@
             </property>
             <item>
              <property name="text">
-              <string>mHM_ready</string>
+              <string>mHM ready</string>
              </property>
             </item>
             <item>
@@ -615,14 +615,14 @@
              </widget>
             </item>
             <item>
-             <widget class="QComboBox" name="comboBox_precipitationFolder">
+             <widget class="QComboBox" name="comboBox_precipitationFile">
               <property name="toolTip">
                <string>Select the precipitation data folder</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="pushButton_browsePrecipitationFolder">
+             <widget class="QPushButton" name="pushButton_browsePrecipitationFile">
               <property name="maximumSize">
                <size>
                 <width>40</width>
@@ -647,6 +647,11 @@
               </property>
               <item>
                <property name="text">
+                <string>mHM ready</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
                 <string>ERA5Land</string>
                </property>
               </item>
@@ -664,14 +669,14 @@
              </widget>
             </item>
             <item>
-             <widget class="QComboBox" name="comboBox_temperatureFolder">
+             <widget class="QComboBox" name="comboBox_temperatureFile">
               <property name="toolTip">
                <string>Select the temperature data folder</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="pushButton_browseTemperatureFolder">
+             <widget class="QPushButton" name="pushButton_browseTemperatureFile">
               <property name="maximumSize">
                <size>
                 <width>40</width>
@@ -693,6 +698,11 @@
               </property>
               <item>
                <property name="text">
+                <string>mHM ready</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
                 <string>ERA5Land</string>
                </property>
               </item>
@@ -710,14 +720,14 @@
              </widget>
             </item>
             <item>
-             <widget class="QComboBox" name="comboBox_pet">
+             <widget class="QComboBox" name="comboBox_petFile">
               <property name="toolTip">
                <string>Select the pet data folder</string>
               </property>
              </widget>
             </item>
             <item>
-             <widget class="QPushButton" name="pushButton_browsePetFolder">
+             <widget class="QPushButton" name="pushButton_browsePetFile">
               <property name="maximumSize">
                <size>
                 <width>40</width>
@@ -733,7 +743,21 @@
              </widget>
             </item>
             <item>
-             <widget class="QComboBox" name="comboBox_petDataSource"/>
+             <widget class="QComboBox" name="comboBox_petDataSource">
+              <property name="currentIndex">
+               <number>-1</number>
+              </property>
+              <item>
+               <property name="text">
+                <string>mHM ready</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>ERA5Land</string>
+               </property>
+              </item>
+             </widget>
             </item>
            </layout>
           </item>
@@ -817,111 +841,6 @@
               </property>
               <property name="alignment">
                <set>Qt::AlignCenter</set>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item>
-           <layout class="QHBoxLayout" name="horizontalLayout_L2" stretch="0,1,1,0,0,5,0">
-            <item>
-             <widget class="QLabel" name="label_L2">
-              <property name="minimumSize">
-               <size>
-                <width>30</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>16777215</width>
-                <height>16777215</height>
-               </size>
-              </property>
-              <property name="text">
-               <string>Raw L2 Resolution:</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="label_L2Resolution">
-              <property name="minimumSize">
-               <size>
-                <width>25</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="text">
-               <string/>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="label_L2ResolutionUnit">
-              <property name="minimumSize">
-               <size>
-                <width>25</width>
-                <height>0</height>
-               </size>
-              </property>
-              <property name="text">
-               <string/>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="Line" name="line_9">
-              <property name="orientation">
-               <enum>Qt::Vertical</enum>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="label">
-              <property name="text">
-               <string>TextLabel</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <spacer name="horizontalSpacer_L2">
-              <property name="orientation">
-               <enum>Qt::Horizontal</enum>
-              </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>40</width>
-                <height>20</height>
-               </size>
-              </property>
-             </spacer>
-            </item>
-            <item>
-             <widget class="QPushButton" name="pushButton_executeMeteoMorphSetup">
-              <property name="minimumSize">
-               <size>
-                <width>25</width>
-                <height>25</height>
-               </size>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>25</width>
-                <height>25</height>
-               </size>
-              </property>
-              <property name="toolTip">
-               <string>Crop, Mask and Write all morphological inputs</string>
-              </property>
-              <property name="text">
-               <string/>
-              </property>
-              <property name="icon">
-               <iconset resource="resources.qrc">
-                <normaloff>:/plugins/pymhm/Resources/run.png</normaloff>:/plugins/pymhm/Resources/run.png</iconset>
               </property>
              </widget>
             </item>
@@ -1756,7 +1675,7 @@
    <item>
     <widget class="QStackedWidget" name="stackedWidget">
      <property name="currentIndex">
-      <number>1</number>
+      <number>0</number>
      </property>
      <widget class="QWidget" name="page_geometry">
       <layout class="QVBoxLayout" name="verticalLayout_page_geom">
@@ -2315,65 +2234,242 @@
      <widget class="QWidget" name="page_meteo">
       <layout class="QVBoxLayout" name="verticalLayout_page_meteo">
        <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_L2" stretch="4,1,1,1,1,1,1,3,1,1,1,1">
+         <item>
+          <widget class="QLabel" name="label_precipitationResolution">
+           <property name="minimumSize">
+            <size>
+             <width>30</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>16777215</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Precp. Data Resolution:</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_precipitationResolutionValue">
+           <property name="minimumSize">
+            <size>
+             <width>25</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_precipitationResolutionUnit">
+           <property name="minimumSize">
+            <size>
+             <width>25</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_ie">
+           <property name="text">
+            <string>i.e.</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_precipitationResolutionMultiplier">
+           <property name="minimumSize">
+            <size>
+             <width>25</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_L0Reference_1">
+           <property name="text">
+            <string>× L0</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="Line" name="line_meteoResolution">
+           <property name="frameShadow">
+            <enum>QFrame::Sunken</enum>
+           </property>
+           <property name="lineWidth">
+            <number>1</number>
+           </property>
+           <property name="midLineWidth">
+            <number>0</number>
+           </property>
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_L2Resolution">
+           <property name="text">
+            <string>L2 Resolution:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="spinBox_L2ResolutionMultiplier"/>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_L0Reference_2">
+           <property name="text">
+            <string>× L0</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_L2">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton_executeMeteoMorphSetup">
+           <property name="minimumSize">
+            <size>
+             <width>25</width>
+             <height>25</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>25</width>
+             <height>25</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>Crop, Mask and Write all morphological inputs</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="resources.qrc">
+             <normaloff>:/plugins/pymhm/Resources/run.png</normaloff>:/plugins/pymhm/Resources/run.png</iconset>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
         <layout class="QVBoxLayout" name="verticalLayout_meteo">
          <property name="bottomMargin">
           <number>10</number>
          </property>
          <item>
-          <layout class="QVBoxLayout" name="verticalLayout_meteoDisplay">
-           <property name="bottomMargin">
-            <number>0</number>
+          <widget class="QGroupBox" name="groupBox_meteoDisplay">
+           <property name="title">
+            <string>Display</string>
            </property>
-           <item>
-            <widget class="QGroupBox" name="groupBox_meteoDisplay">
-             <property name="title">
-              <string>Display</string>
-             </property>
-             <layout class="QGridLayout" name="gridLayout_7">
-              <item row="0" column="0">
-               <layout class="QVBoxLayout" name="verticalLayout_6">
-                <item>
-                 <layout class="QHBoxLayout" name="horizontalLayout_8" stretch="1,3,2,1">
-                  <item>
-                   <widget class="QComboBox" name="comboBox_meteoDataTypeDisplay">
-                    <property name="maximumSize">
-                     <size>
-                      <width>16777215</width>
-                      <height>16777215</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QDateEdit" name="dateEdit_meteoDisplay"/>
-                  </item>
-                  <item>
-                   <widget class="QTimeEdit" name="timeEdit_meteoDisplay"/>
-                  </item>
-                  <item>
-                   <widget class="QPushButton" name="pushButton_browse_meteoDisplay">
-                    <property name="maximumSize">
-                     <size>
-                      <width>40</width>
-                      <height>16777215</height>
-                     </size>
-                    </property>
-                    <property name="toolTip">
-                     <string>Browse for meteorology data folder</string>
-                    </property>
-                    <property name="text">
-                     <string>➤</string>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
-                </item>
-               </layout>
+           <layout class="QGridLayout" name="gridLayout_7">
+            <item row="2" column="0">
+             <layout class="QHBoxLayout" name="horizontalLayout_9" stretch="0,0,0">
+              <item>
+               <widget class="QLabel" name="label_startTime">
+                <property name="minimumSize">
+                 <size>
+                  <width>25</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string/>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QSlider" name="horizontalSlider">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="label_endTime">
+                <property name="minimumSize">
+                 <size>
+                  <width>25</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string/>
+                </property>
+               </widget>
               </item>
              </layout>
-            </widget>
-           </item>
-          </layout>
+            </item>
+            <item row="1" column="0">
+             <layout class="QHBoxLayout" name="horizontalLayout_8" stretch="1,3,1">
+              <item>
+               <widget class="QComboBox" name="comboBox_meteoDataTypeDisplay">
+                <property name="maximumSize">
+                 <size>
+                  <width>16777215</width>
+                  <height>16777215</height>
+                 </size>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QDateTimeEdit" name="dateTimeEdit"/>
+              </item>
+              <item>
+               <widget class="QPushButton" name="pushButton_browse_meteoDisplay">
+                <property name="maximumSize">
+                 <size>
+                  <width>40</width>
+                  <height>16777215</height>
+                 </size>
+                </property>
+                <property name="toolTip">
+                 <string>Browse for meteorology data folder</string>
+                </property>
+                <property name="text">
+                 <string>➤</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
          </item>
          <item>
           <spacer name="verticalSpacer_2">
