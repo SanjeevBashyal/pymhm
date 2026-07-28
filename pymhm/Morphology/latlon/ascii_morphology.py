@@ -11,7 +11,6 @@ from ...grid_resolution import (
     ceil_cellsize,
     cellsize_precision_for_unit,
 )
-from .._bundled import ensure_bundled_mhm_tools
 
 
 Header = dict[str, Any]
@@ -166,7 +165,6 @@ def align_dataset_to_header(
     """Return a dataset sampled on the exact grid described by ``header``."""
     import numpy as np
     import xarray as xr
-    ensure_bundled_mhm_tools()
     from mhm_tools.common.xarray_utils import get_coord_key, get_single_data_var
 
     header = _normalise_header(header)
@@ -211,7 +209,6 @@ def align_dataset_to_header(
 
 
 def _read_raster(path: Path, data_var: str | None):
-    ensure_bundled_mhm_tools()
     from mhm_tools.common.file_handler import get_xarray_ds_from_file
 
     return get_xarray_ds_from_file(
@@ -223,7 +220,6 @@ def _read_raster(path: Path, data_var: str | None):
 
 def _write_ascii(dataset, output_path: Path, header: Mapping[str, Any],
                  nodata_value: float | int) -> None:
-    ensure_bundled_mhm_tools()
     from mhm_tools.common.file_handler import write_xarray_to_ascii
     from mhm_tools.common.xarray_utils import get_single_data_var
 

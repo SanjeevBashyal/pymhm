@@ -9,7 +9,7 @@ from ..common import (
     morph_folder,
 )
 from ..layers.masking import MaskingMixin
-from ...mhm_tools_to_integrate.data_processing import (
+from .ascii_morphology import (
     MorphologyAsciiLayer,
     prepare_morphology_ascii_files,
 )

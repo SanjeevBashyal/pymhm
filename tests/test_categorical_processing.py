@@ -14,6 +14,7 @@ from qgis.core import (  # noqa: E402
 )
 
 from pymhm.Morphology.layers import categorical  # noqa: E402
+from pymhm.project_layout import geometry_folder, morph_folder  # noqa: E402
 # isort: on
 
 
@@ -89,15 +90,16 @@ def _lookup(path):
 
 
 def test_raster_land_cover_delegates_to_unified_adapter(tmp_path, monkeypatch):
+    project = tmp_path / "project"
     source = _touch(tmp_path / "input" / "land_cover.tif")
-    geometry = tmp_path / "project" / "Z Temp" / "Geometry"
+    geometry = Path(geometry_folder(project))
     dem = _touch(geometry / "1_dem_filled.tif")
     stale_crop = _touch(geometry / "3_land_use_crop.tif", b"old")
     stale_mask = _touch(geometry / "3_land_use_masked.tif", b"old")
     layer = QgsRasterLayer(str(source), "land cover")
     config = _lookup(tmp_path / "input" / "lookup.csv")
     processor = _Processor(
-        _Dialog(tmp_path / "project", "lc", layer, "Lookup Table", config), dem
+        _Dialog(project, "lc", layer, "Lookup Table", config), dem
     )
     calls = {}
 
@@ -123,12 +125,13 @@ def test_raster_land_cover_delegates_to_unified_adapter(tmp_path, monkeypatch):
 
 
 def test_vector_soil_passes_vector_mode_and_definition_target(tmp_path, monkeypatch):
+    project = tmp_path / "project"
     source = _touch(tmp_path / "input" / "soil.shp")
-    dem = _touch(tmp_path / "project" / "Z Temp" / "Geometry" / "1_dem_filled.tif")
+    dem = _touch(Path(geometry_folder(project)) / "1_dem_filled.tif")
     layer = QgsVectorLayer(str(source), "soil", "ogr")
     config = _lookup(tmp_path / "input" / "lookup.csv")
     processor = _Processor(
-        _Dialog(tmp_path / "project", "soil", layer, "Lookup Table", config), dem
+        _Dialog(project, "soil", layer, "Lookup Table", config), dem
     )
     calls = {}
 
@@ -153,10 +156,12 @@ def test_ready_soil_copies_raster_and_removes_stale_intermediates(
 ):
     project = tmp_path / "project"
     source = _touch(tmp_path / "input" / "soil.asc", b"ready")
-    dem = _touch(project / "Z Temp" / "Geometry" / "1_dem_filled.tif")
-    stale = _touch(project / "Z Temp" / "Geometry" / "3_soil.tif", b"stale")
+    geometry = Path(geometry_folder(project))
+    morph = Path(morph_folder(project))
+    dem = _touch(geometry / "1_dem_filled.tif")
+    stale = _touch(geometry / "3_soil.tif", b"stale")
     definition = _touch(
-        project / "data" / "static" / "morph" / "soil_classdefinition.txt",
+        morph / "soil_classdefinition.txt",
         b"definition",
     )
     layer = QgsRasterLayer(str(source), "soil")
@@ -170,7 +175,7 @@ def test_ready_soil_copies_raster_and_removes_stale_intermediates(
     )
 
     assert processor.process_soil()
-    target = project / "data" / "static" / "morph" / "soil_class.asc"
+    target = morph / "soil_class.asc"
     assert target.read_bytes() == b"ready"
     assert definition.is_file()
     assert not stale.exists()
@@ -179,11 +184,12 @@ def test_ready_soil_copies_raster_and_removes_stale_intermediates(
 
 
 def test_ready_mode_rejects_vector_input(tmp_path, monkeypatch):
+    project = tmp_path / "project"
     source = _touch(tmp_path / "input" / "soil.shp")
-    dem = _touch(tmp_path / "project" / "Z Temp" / "Geometry" / "dem.tif")
+    dem = _touch(Path(geometry_folder(project)) / "dem.tif")
     processor = _Processor(
         _Dialog(
-            tmp_path / "project",
+            project,
             "soil",
             QgsVectorLayer(str(source), "soil", "ogr"),
             "mHM_ready",
@@ -199,9 +205,10 @@ def test_ready_land_cover_is_available_to_elevation_bands(tmp_path):
     from pymhm.Morphology.elevation_bands.band_landcover_helpers import \
         BandLandCoverHelperMixin
 
-    ready = _touch(tmp_path / "project" / "data" / "static" / "morph" / "lc.asc")
+    project = tmp_path / "project"
+    ready = _touch(Path(morph_folder(project)) / "lc.asc")
     processor = _Processor.__new__(_Processor)
-    processor.dialog = type("Dialog", (), {"project_folder": str(tmp_path / "project")})()
+    processor.dialog = type("Dialog", (), {"project_folder": str(project)})()
     processor.land_use_layer = None
     processor.categorical_ready_outputs = {"lc": str(ready)}
 
@@ -218,7 +225,8 @@ def test_ready_land_cover_is_available_to_elevation_bands(tmp_path):
 def test_lookup_replaces_ready_state_and_files(tmp_path, monkeypatch):
     project = tmp_path / "project"
     source = _touch(tmp_path / "input" / "land_cover.tif")
-    dem = _touch(project / "Z Temp" / "Geometry" / "1_dem_filled.tif")
+    geometry = Path(geometry_folder(project))
+    dem = _touch(geometry / "1_dem_filled.tif")
     config = _lookup(tmp_path / "input" / "lookup.csv")
     processor = _Processor(
         _Dialog(
@@ -230,7 +238,7 @@ def test_lookup_replaces_ready_state_and_files(tmp_path, monkeypatch):
         ),
         dem,
     )
-    morph = project / "data" / "static" / "morph"
+    morph = Path(morph_folder(project))
     stale = [_touch(morph / f"lc{suffix}", b"stale") for suffix in (".asc", ".nc")]
     processor.categorical_ready_outputs["lc"] = str(stale[0])
 
@@ -242,15 +250,15 @@ def test_lookup_replaces_ready_state_and_files(tmp_path, monkeypatch):
     assert processor.process_land_use()
     assert all(not path.exists() for path in stale)
     assert "lc" not in processor.categorical_ready_outputs
-    assert (
-        project / "Z Temp" / "Geometry" / "3_land_use.tif"
-    ).read_bytes() == b"lookup"
+    assert (geometry / "3_land_use.tif").read_bytes() == b"lookup"
 
 
 def test_failed_geology_publish_restores_previous_outputs(tmp_path, monkeypatch):
     project = tmp_path / "project"
     source = _touch(tmp_path / "input" / "geology.tif")
-    dem = _touch(project / "Z Temp" / "Geometry" / "1_dem_filled.tif")
+    geometry = Path(geometry_folder(project))
+    morph = Path(morph_folder(project))
+    dem = _touch(geometry / "1_dem_filled.tif")
     config = _lookup(tmp_path / "input" / "lookup.csv")
     processor = _Processor(
         _Dialog(
@@ -263,14 +271,14 @@ def test_failed_geology_publish_restores_previous_outputs(tmp_path, monkeypatch)
         dem,
     )
     output = _touch(
-        project / "Z Temp" / "Geometry" / "3_geology_processed.tif", b"old raster"
+        geometry / "3_geology_processed.tif", b"old raster"
     )
     definition = _touch(
-        project / "data" / "static" / "morph" / "geology_classdefinition.txt",
+        morph / "geology_classdefinition.txt",
         b"old definition",
     )
     metadata = _touch(
-        project / "Z Temp" / "Geometry" / "geology_class_metadata.json",
+        geometry / "geology_class_metadata.json",
         b"old metadata",
     )
 
@@ -305,7 +313,8 @@ def test_failed_geology_publish_restores_previous_outputs(tmp_path, monkeypatch)
 def test_failed_backup_does_not_delete_existing_output(tmp_path, monkeypatch):
     project = tmp_path / "project"
     source = _touch(tmp_path / "input" / "land_cover.tif")
-    dem = _touch(project / "Z Temp" / "Geometry" / "1_dem_filled.tif")
+    geometry = Path(geometry_folder(project))
+    dem = _touch(geometry / "1_dem_filled.tif")
     config = _lookup(tmp_path / "input" / "lookup.csv")
     processor = _Processor(
         _Dialog(
@@ -318,7 +327,7 @@ def test_failed_backup_does_not_delete_existing_output(tmp_path, monkeypatch):
         dem,
     )
     output = _touch(
-        project / "Z Temp" / "Geometry" / "3_land_use.tif",
+        geometry / "3_land_use.tif",
         b"existing",
     )
 

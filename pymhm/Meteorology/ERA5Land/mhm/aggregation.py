@@ -10,6 +10,8 @@ def aggregate_daily(da, spec: ForcingSpec, np):
         daily = da.resample(time="1D").sum(skipna=True)
     elif spec.aggregation == "era5land_daily_total":
         daily = aggregate_era5land_daily_total(da, np)
+    elif spec.aggregation == "era5land_daily_total_negative":
+        daily = aggregate_era5land_daily_total(da, np, negative=True)
     elif spec.aggregation == "mean":
         daily = da.resample(time="1D").mean(skipna=True)
     elif spec.aggregation == "min":
@@ -22,9 +24,13 @@ def aggregate_daily(da, spec: ForcingSpec, np):
     return daily * spec.scale + spec.offset
 
 
-def aggregate_era5land_daily_total(da, np):
+def aggregate_era5land_daily_total(da, np, negative=False):
     """Derive daily precipitation totals from ERA5-Land accumulated tp."""
-    fallback = da.resample(time="1D").max(skipna=True)
+    resampled = da.resample(time="1D")
+    fallback = (
+        resampled.min(skipna=True) if negative
+        else resampled.max(skipna=True)
+    )
     try:
         zero_utc = da.where(da["time"].dt.hour == 0, drop=True)
     except Exception:

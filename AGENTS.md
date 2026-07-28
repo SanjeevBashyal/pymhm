@@ -13,9 +13,11 @@ plugin folder:
 - `pymhm/cli.py`: PyPI console entry point; `pymhm` opens the standalone GUI.
 - `pymhm/standalone_qgis.py`: Qt-backed fallback for opening the plugin dialog
   without QGIS installed.
-- `pymhm/mhm_tools_to_integrate/`: path-oriented adapters and reusable helpers;
-  the categorical adapter calls the installed `mhm_tools` Python API for land
-  cover, soil, and geology.
+- `pymhm/mhm_tools_adapter.py`: small QGIS-free wrappers around the installed
+  `mhm_tools` Python API for categorical inputs and `latlon.nc`.
+- `pymhm/Morphology/latlon/ascii_morphology.py`: reusable morphology ASCII
+  alignment and writing.
+- `pymhm/Meteorology/ERA5Land/mhm/`: local ERA5-Land forcing preparation.
 - `setup.py`, `pyproject.toml`, `MANIFEST.in`: PyPI package metadata.
 
 Read `pymhm/AGENTS.md` before making plugin-internal changes. It contains the
@@ -57,9 +59,8 @@ Reusable computation should move toward QGIS-free file/path/data APIs.
 
 - `mhm-tools>=0.2.2` is an external runtime dependency. There is no bundled
   `pymhm/mhm_tools` source tree in the current project.
-- The plugin calls exports from `mhm_tools.pre` through adapters under
-  `pymhm/mhm_tools_to_integrate/setup_creation`; it does not shell out to the
-  `mhm-tools` CLI.
+- The plugin calls exports from `mhm_tools.pre` through
+  `pymhm/mhm_tools_adapter.py`; it does not shell out to the `mhm-tools` CLI.
 - `rasterize_map_data` burns vector attributes directly or maps them through a
   lookup table, always using the filled DEM's exact grid.
 - `format_soil_data`, `format_geology_data`, and `format_lc_data` accept
@@ -77,8 +78,7 @@ Reusable computation should move toward QGIS-free file/path/data APIs.
 ## Packaging Rules
 
 - Keep package discovery recursive. The project contains nested packages under
-  `pymhm/Morphology`, `pymhm/Meteorology`, `pymhm/Configuration`, and
-  `pymhm/mhm_tools_to_integrate`.
+  `pymhm/Morphology`, `pymhm/Meteorology`, and `pymhm/Configuration`.
 - Keep the `mhm-tools` dependency floor synchronized between `pyproject.toml`
   and `requirements.txt` when an adapter starts using a newer public API.
 - Include plugin assets, schemas, templates, and project-template files in the

@@ -47,8 +47,7 @@ def _boolean(value, field, row):
 
 def write_geology_metadata(lookup_table, class_field, output_file):
     """Write metadata consumed by pymhm's geology parameter configuration."""
-    from ...mhm_tools_to_integrate.setup_creation.categorical import \
-        read_categorical_lookup_table
+    from ...mhm_tools_adapter import read_categorical_lookup_table
 
     table = read_categorical_lookup_table(lookup_table)
     class_column = _field(table.columns, class_field)

@@ -7,7 +7,7 @@ from types import ModuleType
 
 import pytest
 
-from pymhm.mhm_tools_to_integrate.setup_creation import categorical
+from pymhm import mhm_tools_adapter as categorical
 
 
 def _touch(path: Path) -> Path:
@@ -24,7 +24,6 @@ def _install_fake_mhm_tools(monkeypatch, **functions):
     package.pre = pre
     monkeypatch.setitem(sys.modules, "mhm_tools", package)
     monkeypatch.setitem(sys.modules, "mhm_tools.pre", pre)
-    monkeypatch.setattr(categorical, "ensure_bundled_mhm_tools", lambda: package)
 
 
 def _capture_counter(monkeypatch):

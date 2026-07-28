@@ -16,6 +16,7 @@ from nml_tools.gui.model import (
     render_profile,
 )
 
+from pymhm.project_layout import geometry_folder
 from pymhm.vSpecific import build_dimensions, build_initial_values
 
 
@@ -248,7 +249,7 @@ def test_domain_dimensions_and_paths_follow_plugin_domains(tmp_path: Path) -> No
 
 
 def test_geoparameter_orientation_is_version_specific(tmp_path: Path) -> None:
-    metadata = tmp_path / "Z Temp" / "Geometry" / "geology_class_metadata.json"
+    metadata = Path(geometry_folder(tmp_path)) / "geology_class_metadata.json"
     metadata.parent.mkdir(parents=True)
     metadata.write_text(
         json.dumps(

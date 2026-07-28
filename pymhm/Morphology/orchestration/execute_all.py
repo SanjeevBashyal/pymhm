@@ -262,22 +262,25 @@ class ExecuteAllMixin(
                 "Execute All finished. Prepared outputs were recorded in the project processing state."
             )
 
-    def execute_morph_setup_processing(self, show_error_dialog=True) -> bool:
+    def execute_morph_setup_processing(
+            self,
+            show_error_dialog=True,
+            workflow_key="morph_setup") -> bool:
         """Run Crop All, Mask All, and Write All as one workflow."""
         self.log_message("\n=== Starting Morphology Setup ===")
 
         if not self.check_prerequisites():
             message = "Prerequisites check failed. Aborting Morphology Setup."
             self.log_message(f"ERROR: {message}")
-            self.mark_workflow_status("morph_setup", "failed", message)
+            self.mark_workflow_status(workflow_key, "failed", message)
             return False
 
         self.skip_loading = True
-        self.mark_workflow_status("morph_setup", "running")
+        self.mark_workflow_status(workflow_key, "running")
         try:
             def fail(message):
                 self.log_message(f"ERROR: {message}")
-                self.mark_workflow_status("morph_setup", "failed", message)
+                self.mark_workflow_status(workflow_key, "failed", message)
                 return False
 
             self.log_message("\n--- Morphology Setup Step 1/3: Crop All Layers ---")
@@ -296,7 +299,7 @@ class ExecuteAllMixin(
 
             self.log_message("\n=== Morphology Setup Completed Successfully ===")
             self.mark_workflow_status(
-                "morph_setup",
+                workflow_key,
                 "completed",
                 "Morphology Setup completed successfully.",
             )
@@ -308,7 +311,7 @@ class ExecuteAllMixin(
             import traceback
 
             self.log_message(f"Traceback: {traceback.format_exc()}")
-            self.mark_workflow_status("morph_setup", "failed", message)
+            self.mark_workflow_status(workflow_key, "failed", message)
             if show_error_dialog:
                 QMessageBox.critical(
                     self.dialog, "Error", f"Morphology Setup failed:\n{str(e)}"

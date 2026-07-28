@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
-"""Path-oriented adapter for categorical :mod:`mhm_tools` formatters."""
+"""Small path-based adapters for the installed :mod:`mhm_tools` package."""
 from __future__ import annotations
 
+import contextlib
+import io
+import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from .._bundled import ensure_bundled_mhm_tools
-from ..logging import capture_messages
+
+LogCallback = Callable[[str], None]
 
 _OUTPUTS = {
     "soil": ("format_soil_data", "soil_class.tif", "soil_classdefinition.txt"),
@@ -21,11 +24,89 @@ _OUTPUTS = {
 }
 
 
+class _StreamToCallback(io.TextIOBase):
+    """Forward completed stream lines to a callback."""
+
+    def __init__(self, callback: LogCallback, prefix: str = "") -> None:
+        self._callback = callback
+        self._prefix = prefix
+        self._buffer = ""
+
+    def writable(self) -> bool:
+        return True
+
+    def write(self, text: str) -> int:
+        if not text:
+            return 0
+        self._buffer += str(text)
+        while "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
+            self._emit(line)
+        return len(text)
+
+    def flush(self) -> None:
+        if self._buffer:
+            self._emit(self._buffer)
+            self._buffer = ""
+
+    def _emit(self, line: str) -> None:
+        line = line.rstrip("\r")
+        if line:
+            self._callback(f"{self._prefix}{line}")
+
+
+class _CallbackLoggingHandler(logging.Handler):
+    """Forward logging records to a callback."""
+
+    def __init__(self, callback: LogCallback) -> None:
+        super().__init__()
+        self._callback = callback
+        self.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self._callback(self.format(record))
+        except Exception:
+            self.handleError(record)
+
+
+@contextlib.contextmanager
+def capture_messages(
+    callback: LogCallback | None,
+    logger_names: tuple[str, ...] = ("mhm_tools",),
+) -> Generator[None, None, None]:
+    """Capture tool stdout, stderr, and logging into ``callback``."""
+    if callback is None:
+        yield
+        return
+
+    stdout = _StreamToCallback(callback)
+    stderr = _StreamToCallback(callback, prefix="ERROR: ")
+    handlers: list[tuple[logging.Logger, logging.Handler, int, bool]] = []
+    try:
+        for logger_name in logger_names:
+            logger = logging.getLogger(logger_name)
+            handler = _CallbackLoggingHandler(callback)
+            handlers.append((logger, handler, logger.level, logger.propagate))
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
+            logger.propagate = False
+
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            yield
+    finally:
+        stdout.flush()
+        stderr.flush()
+        for logger, handler, old_level, old_propagate in handlers:
+            logger.removeHandler(handler)
+            logger.setLevel(old_level)
+            logger.propagate = old_propagate
+
+
 def read_categorical_lookup_table(lookup_table):
     """Read CSV lookups with mHM-tools and delimited TXT lookups with pandas."""
     lookup_path = Path(lookup_table)
     if lookup_path.suffix.lower() != ".txt":
-        ensure_bundled_mhm_tools()
         from mhm_tools.common.format_data import read_lookup_table
 
         return read_lookup_table(lookup_path)
@@ -61,7 +142,7 @@ def prepare_categorical_file(
     classdefinition_file: str | Path | None = None,
     input_crs=None,
     dem_crs=None,
-    log: Callable[[str], None] | None = None,
+    log: LogCallback | None = None,
 ) -> Path:
     """Prepare an aligned soil, geology, or land-cover GeoTIFF."""
     if kind not in _OUTPUTS:
@@ -82,7 +163,6 @@ def prepare_categorical_file(
     if definition_path is not None:
         definition_path.parent.mkdir(parents=True, exist_ok=True)
 
-    ensure_bundled_mhm_tools()
     from mhm_tools import pre
 
     formatter = getattr(pre, formatter_name)
@@ -160,4 +240,49 @@ def prepare_categorical_file(
     return output_path
 
 
-__all__ = ["prepare_categorical_file", "read_categorical_lookup_table"]
+def create_latlon_file(
+    out_file: str | Path,
+    level0: dict | str | Path,
+    level1,
+    level11=None,
+    level2=None,
+    write_header_l0: str | Path | None = None,
+    write_header_l1: str | Path | None = None,
+    write_header_l11: str | Path | None = None,
+    write_header_l2: str | Path | None = None,
+    crs: str | None = None,
+    dtype: str = "f4",
+    compression: int = 9,
+    add_bounds: bool = False,
+    log: LogCallback | None = None,
+) -> Path:
+    """Create ``latlon.nc`` through mHM-tools and return its path."""
+    from mhm_tools.pre.latlon import create_latlon
+
+    output = Path(out_file)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with capture_messages(log):
+        create_latlon(
+            out_file=output,
+            level0=level0,
+            level1=level1,
+            level11=level11,
+            level2=level2,
+            write_header_l0=write_header_l0,
+            write_header_l1=write_header_l1,
+            write_header_l11=write_header_l11,
+            write_header_l2=write_header_l2,
+            crs=crs,
+            dtype=dtype,
+            compression=compression,
+            add_bounds=add_bounds,
+        )
+    return output
+
+
+__all__ = [
+    "capture_messages",
+    "create_latlon_file",
+    "prepare_categorical_file",
+    "read_categorical_lookup_table",
+]

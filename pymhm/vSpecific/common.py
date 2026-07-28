@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..grid_resolution import ceil_cellsize, is_geographic_unit
+from ..project_layout import geometry_folder, morph_folder
 
 
 def repeat(value: Any, count: int) -> list[Any]:
@@ -39,7 +40,7 @@ def geology_rows(dialog: Any) -> list[dict[str, Any]]:
     project = getattr(dialog, "project_folder", None)
     if not project:
         return []
-    path = Path(project) / "Z Temp" / "Geometry" / "geology_class_metadata.json"
+    path = Path(geometry_folder(project)) / "geology_class_metadata.json"
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
@@ -63,7 +64,7 @@ def geology_count(dialog: Any) -> int:
         return max(len(rows), max(row["index"] for row in rows))
     project = getattr(dialog, "project_folder", None)
     path = (
-        Path(project) / "data" / "static" / "morph" / "geology_classdefinition.txt"
+        Path(morph_folder(project)) / "geology_classdefinition.txt"
         if project
         else None
     )

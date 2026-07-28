@@ -6,7 +6,6 @@
 
 **New Features:**
 - Created ERA5_Land module under pyhydrology package
-- Implemented ERA5-Land data downloader with ZIP extraction support
 - Implemented ERA5-Land to SWAT format processor with incremental processing
 - Added flexible variable name detection for different NetCDF formats
 - Added automatic coordinate normalization (precision and dtype)
@@ -15,7 +14,6 @@
 
 **Module Structure:**
 - `__init__.py`: Module initialization and API
-- `downloader.py`: Download ERA5-Land data from Copernicus CDS
 - `processor.py`: Process NetCDF files to SWAT format
 - `config.py`: Configuration settings and constants
 - `example_usage.py`: Usage examples
@@ -61,11 +59,9 @@
 - pandas
 - numpy
 - geopandas
-- cdsapi
 - pyhydrology (NetCDFProcessor, DEMSampler)
 
 **Known Limitations:**
-- Requires CDS API key and account
 - Processing speed depends on available data files
 - Coordinate precision fixed at 0.1 degrees
 
@@ -75,5 +71,3 @@
 - Add support for more output formats (beyond SWAT)
 - Add visualization tools
 - Add unit tests
-
-

@@ -6,7 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from .dependency_bootstrap import configure_qtpy_api
-from .project_layout import ensure_project_structure, plugin_root, version_key
+from .project_layout import (
+    ensure_project_structure,
+    plugin_root,
+    version_key,
+    workspace_folder,
+)
 
 
 class ConfigurationProcessor:
@@ -40,6 +45,7 @@ class ConfigurationProcessor:
 
             version = self.selected_version()
             project_folder = self.dialog.project_folder
+            workspace = workspace_folder(project_folder)
             schemas_dir = Path(plugin_root()) / "nml-schemas" / version_key(version)
             ensure_project_structure(project_folder, version)
             configure_qtpy_api()
@@ -49,7 +55,7 @@ class ConfigurationProcessor:
             self.log_message(f"Opening namelist editor for mHM {version}...")
             launch_gui(
                 schemas_dir=schemas_dir,
-                output_dir=project_folder,
+                output_dir=workspace,
                 initial_values=build_initial_values(version, self.dialog),
                 initial_dimensions=build_dimensions(version, self.dialog),
             )
@@ -65,11 +71,12 @@ class ConfigurationProcessor:
 
         project_folder = self.dialog.project_folder
         ensure_project_structure(project_folder, self.selected_version())
+        workspace = workspace_folder(project_folder)
         terminal = self.dialog.open_project_terminal()
         if terminal is None:
             return False
-        self.log_message(f"Running mHM in project directory: {project_folder}")
-        return terminal.run_command("mhm", cwd=project_folder, show=True)
+        self.log_message(f"Running mHM in project directory: {workspace}")
+        return terminal.run_command("mhm", cwd=workspace, show=True)
 
     def ensure_project_folder(self) -> bool:
         """Require a selected project folder."""

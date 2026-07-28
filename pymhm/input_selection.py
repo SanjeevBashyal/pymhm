@@ -19,8 +19,9 @@ except ImportError:
                            QgsVectorLayer)
     from qgis.PyQt import QtCore, QtWidgets
 
+from .project_layout import WORKSPACE_FOLDER_NAME
 
-EXCLUDED_PROJECT_FOLDERS = {"Z Temp", "data", "data_raw", "output", "restart"}
+EXCLUDED_PROJECT_FOLDERS = {WORKSPACE_FOLDER_NAME}
 INPUT_EXTENSIONS = {
     "dem": {".asc", ".nc", ".tif"},
     "pour_points": {".shp"},
@@ -88,6 +89,35 @@ def scan_project_inputs(project_folder, kind: str) -> list[InputItem]:
                     {
                         "origin": "file",
                         "kind": kind,
+                        "path": str(path.resolve()),
+                    },
+                )
+            )
+    return sorted(items, key=lambda item: item.label.casefold())
+
+
+def scan_project_folders(project_folder) -> list[InputItem]:
+    """List project subfolders while pruning the plugin-owned workspace."""
+    project_root = Path(project_folder).expanduser().resolve()
+    if not project_root.is_dir():
+        return []
+
+    items = []
+    for current_root, directories, _ in os.walk(project_root):
+        current_path = Path(current_root)
+        if current_path == project_root:
+            excluded = {name.casefold() for name in EXCLUDED_PROJECT_FOLDERS}
+            directories[:] = [
+                name for name in directories
+                if name.casefold() not in excluded
+            ]
+        for dirname in directories:
+            path = current_path / dirname
+            items.append(
+                InputItem(
+                    path.relative_to(project_root).as_posix(),
+                    {
+                        "origin": "folder",
                         "path": str(path.resolve()),
                     },
                 )
@@ -351,8 +381,7 @@ class InputComboAdapter(QtCore.QObject):
 
 def read_lookup_fields(lookup_table) -> list[str]:
     """Return fields using the same table reader as mHM-tools formatting."""
-    from .mhm_tools_to_integrate.setup_creation.categorical import \
-        read_categorical_lookup_table
+    from .mhm_tools_adapter import read_categorical_lookup_table
 
     table = read_categorical_lookup_table(lookup_table)
     return [str(column) for column in table.columns if str(column) != "geometry"]

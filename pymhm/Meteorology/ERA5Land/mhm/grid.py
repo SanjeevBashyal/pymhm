@@ -90,6 +90,50 @@ def resample_to_target_grid(da, target_lat, target_lon, np):
     return resampled.transpose("time", "lat", "lon")
 
 
+def resample_to_target_points(
+        da,
+        sample_lat,
+        sample_lon,
+        target_lat,
+        target_lon,
+        np):
+    """Nearest-neighbour sample at exact 2-D WGS84 cell centres."""
+    import xarray as xr
+    from scipy.spatial import cKDTree
+
+    source = da.sortby("lat").sortby("lon").transpose("time", "lat", "lon")
+    source_lon, source_lat = np.meshgrid(
+        np.asarray(source["lon"].values, dtype="float64"),
+        np.asarray(source["lat"].values, dtype="float64"),
+    )
+    source_points = np.column_stack(
+        [source_lon.reshape(-1), source_lat.reshape(-1)]
+    )
+    target_points = np.column_stack([
+        np.asarray(sample_lon, dtype="float64").reshape(-1),
+        np.asarray(sample_lat, dtype="float64").reshape(-1),
+    ])
+    _, indices = cKDTree(source_points).query(target_points)
+    values = np.asarray(source.values)
+    sampled = values.reshape(values.shape[0], -1)[:, indices]
+    sampled = sampled.reshape(
+        values.shape[0],
+        len(target_lat),
+        len(target_lon),
+    )
+    return xr.DataArray(
+        sampled,
+        dims=("time", "lat", "lon"),
+        coords={
+            "time": source["time"],
+            "lat": np.asarray(target_lat, dtype="float64"),
+            "lon": np.asarray(target_lon, dtype="float64"),
+        },
+        name=da.name,
+        attrs=dict(da.attrs),
+    )
+
+
 def _coord_floor(values, target: float) -> float:
     candidates = values[values <= target]
     if len(candidates):

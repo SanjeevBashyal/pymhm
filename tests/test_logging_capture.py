@@ -8,7 +8,7 @@ from pymhm import standalone_qgis
 
 standalone_qgis.install(force=True)
 
-from pymhm.mhm_tools_to_integrate.logging import capture_messages  # noqa: E402
+from pymhm.mhm_tools_adapter import capture_messages  # noqa: E402
 from pymhm.utils import DialogUtils  # noqa: E402
 
 

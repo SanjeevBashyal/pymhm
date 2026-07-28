@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import traceback
+from pathlib import Path
 
 # QGIS and PyQt imports
 try:
@@ -39,13 +40,17 @@ from .grid_resolution import (build_meteo_l2_grid, ceil_cellsize,
                               read_header_file)
 from .input_selection import (INPUT_EXTENSIONS, InputComboAdapter,
                               LookupConfigDialog, loaded_qgis_items,
-                              scan_project_inputs)
+                              scan_project_folders, scan_project_inputs)
 from .Meteorology import MeteorologyProcessor
+from .Meteorology.forcing import (MeteoFolderSpec, TargetGrid,
+                                  inspect_meteo_folder,
+                                  inspect_meteo_inputs, resolution_in_crs)
+from .Meteorology.processor import MeteorologyRun
 from .Morphology import MorphologyProcessor
 from .project_layout import (data_folder, data_raw_folder,
                              ensure_project_structure, geometry_folder,
-                             output_folder, raw_meteo_folder, restart_folder,
-                             z_temp_folder)
+                             output_folder, restart_folder,
+                             workspace_folder, z_temp_folder)
 from .qgis_compat import map_layer_filters
 from .terminal_dialog import ProjectTerminalDialog
 from .ui_pymhm_dialog_base import Ui_pymhmDialog
@@ -156,6 +161,48 @@ class MorphologyWorkflowWorker(QtCore.QObject):
             return None
 
 
+class MeteorologyWorkflowWorker(QtCore.QObject):
+    """Run only the QGIS-free meteorology phase in a worker thread."""
+
+    log_message = QtCore.pyqtSignal(str)
+    finished = QtCore.pyqtSignal(str, bool, str)
+
+    def __init__(
+            self,
+            workflow_key,
+            workflow_label,
+            meteorology_processor,
+            meteorology_run):
+        super().__init__()
+        self.workflow_key = workflow_key
+        self.workflow_label = workflow_label
+        self.meteorology_processor = meteorology_processor
+        self.meteorology_run = meteorology_run
+        self._original_meteo_log_message = None
+
+    @QtCore.pyqtSlot()
+    def run(self):
+        """Execute meteorology and hand morphology back to the GUI thread."""
+        self._original_meteo_log_message = self.meteorology_processor.log_message
+        self.meteorology_processor.log_message = self.log_message.emit
+        try:
+            ok = self.meteorology_processor.process_meteo_forcing(
+                self.meteorology_run,
+                show_dialog=False,
+            )
+            self.finished.emit(self.workflow_key, ok, "")
+        except Exception as exc:
+            self.log_message.emit(
+                f"\nERROR: {self.workflow_label} worker failed: {exc}"
+            )
+            self.log_message.emit(f"Traceback: {traceback.format_exc()}")
+            self.finished.emit(self.workflow_key, False, str(exc))
+        finally:
+            self.meteorology_processor.log_message = (
+                self._original_meteo_log_message
+            )
+
+
 class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
     def __init__(self, parent=None):
         """Constructor."""
@@ -199,10 +246,19 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self._grid_l2_header = None
         self._preferred_l1_resolution = None
         self._preferred_l11_resolution = None
+        self._meteo_inspections = {}
+        self._pending_meteo_run = None
         self._terminal_dialog = None
         self._morphology_workflow_threads = {}
         self._morphology_workflow_workers = {}
         self._workflow_button_default_styles = {}
+        self.spinBox_L2ResolutionMultiplier.setMinimum(1)
+        self.spinBox_L2ResolutionMultiplier.setMaximum(1_000_000)
+        if self.spinBox_L2ResolutionMultiplier.value() < 1:
+            self.spinBox_L2ResolutionMultiplier.setValue(1)
+        self.pushButton_executeMeteoMorphSetup.setToolTip(
+            "Prepare meteorology, then crop, mask, and write morphology"
+        )
         self._capture_workflow_button_default_styles()
 
         # --- Initialize processors ---
@@ -214,6 +270,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.configure_page_aliases()
         self.connect_signals()
         self.refresh_input_sources()
+        self.refresh_meteo_folder_sources()
         self.refresh_grid_resolution_controls()
 
     def configure_widget_aliases(self):
@@ -257,6 +314,15 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             and not hasattr(self, "pushButton_RUN")
         ):
             self.pushButton_RUN = self.pushButton_execute_mHM
+
+        for current_name, folder_name in (
+            ("pushButton_browsePrecipitationFile", "pushButton_browsePrecipitationFolder"),
+            ("pushButton_browseTemperatureFile", "pushButton_browseTemperatureFolder"),
+            ("pushButton_browsePetFile", "pushButton_browsePetFolder"),
+        ):
+            current = getattr(self, current_name, None)
+            if current is not None and not hasattr(self, folder_name):
+                setattr(self, folder_name, current)
 
     def configure_page_aliases(self):
         """Keep renamed stacked pages compatible with older plugin code."""
@@ -329,6 +395,227 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             combo.blockSignals(False)
             if isinstance(previous, dict) and index < 0:
                 adapter.layerChanged.emit(adapter.currentLayer())
+
+    def meteo_input_widgets(self):
+        """Return folder/source widgets for the three meteorology inputs."""
+        return (
+            (
+                "precipitation",
+                self.comboBox_precipitationFile,
+                self.comboBox_precipitationDataSource,
+            ),
+            (
+                "temperature",
+                self.comboBox_temperatureFile,
+                self.comboBox_temperatureDataSource,
+            ),
+            ("pet", self.comboBox_petFile, self.comboBox_petDataSource),
+        )
+
+    def refresh_meteo_folder_sources(self):
+        """Populate meteo folder boxes from the outer project directory."""
+        available = (
+            scan_project_folders(self.project_folder)
+            if self.project_folder else ()
+        )
+        for _, combo, _ in self.meteo_input_widgets():
+            previous = self.selected_folder_path(combo)
+            combo.blockSignals(True)
+            combo.clear()
+            for item in available:
+                combo.addItem(item.label, item.data)
+            index = self._folder_combo_index(combo, previous)
+            if index < 0 and previous and os.path.isdir(previous):
+                self._add_folder_combo_item(combo, previous)
+                index = combo.count() - 1
+            combo.setCurrentIndex(index)
+            combo.blockSignals(False)
+
+    def selected_meteo_folder(self, kind):
+        """Return the selected absolute folder path for one meteo input."""
+        for input_kind, combo, _ in self.meteo_input_widgets():
+            if input_kind == kind:
+                return self.selected_folder_path(combo)
+        return ""
+
+    def selected_meteo_source(self, kind):
+        """Return a stable internal source token for one meteo input."""
+        for input_kind, _, combo in self.meteo_input_widgets():
+            if input_kind != kind:
+                continue
+            text = combo.currentText().strip().lower()
+            if text.replace("_", " ") == "mhm ready":
+                return "mhm_ready"
+            if text.replace("-", "").replace("_", "") == "era5land":
+                return "era5land"
+        return ""
+
+    @staticmethod
+    def selected_folder_path(combo):
+        data = combo.currentData()
+        if isinstance(data, dict):
+            path = data.get("path", "")
+        else:
+            path = data if isinstance(data, str) else ""
+        return os.path.abspath(path) if path else ""
+
+    @staticmethod
+    def _folder_combo_index(combo, path):
+        if not path:
+            return -1
+        normalized = os.path.normcase(os.path.abspath(path))
+        for index in range(combo.count()):
+            data = combo.itemData(index)
+            candidate = data.get("path", "") if isinstance(data, dict) else data
+            if candidate and os.path.normcase(os.path.abspath(candidate)) == normalized:
+                return index
+        return -1
+
+    def _add_folder_combo_item(self, combo, folder):
+        folder = os.path.abspath(folder)
+        label = folder
+        if self.project_folder:
+            try:
+                relative = os.path.relpath(folder, self.project_folder)
+                if relative != ".." and not relative.startswith(f"..{os.sep}"):
+                    label = relative.replace("\\", "/")
+            except ValueError:
+                pass
+        combo.addItem(label, {"origin": "folder", "path": folder, "manual": True})
+
+    def browse_meteo_input_folder(self, kind):
+        """Browse for, add, and select one meteorology input folder."""
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            f"Select {kind.title()} Data Folder",
+            self.selected_meteo_folder(kind) or self.project_folder or "",
+        )
+        if not folder:
+            return
+        for input_kind, combo, _ in self.meteo_input_widgets():
+            if input_kind != kind:
+                continue
+            index = self._folder_combo_index(combo, folder)
+            if index < 0:
+                self._add_folder_combo_item(combo, folder)
+                index = combo.count() - 1
+            combo.setCurrentIndex(index)
+            self.log_message(
+                f"{kind.title()} data folder selected: {os.path.abspath(folder)}"
+            )
+            return
+
+    def handle_meteo_input_changed(self, kind):
+        """Persist and inspect a changed meteorology folder/source pair."""
+        if self._loading_input_state:
+            return
+        self.save_input_state()
+        self.invalidate_meteo_morph_setup()
+        self.inspect_meteo_selection(kind, show_errors=True)
+
+    def selected_meteo_crs(self):
+        """Return the selected CRS in a form accepted by pyproj."""
+        crs = self.get_crs()
+        if crs is None or not crs.isValid():
+            return ""
+        authid = crs.authid()
+        if authid:
+            return authid
+        to_wkt = getattr(crs, "toWkt", None)
+        return to_wkt() if callable(to_wkt) else ""
+
+    def meteo_folder_spec(self, kind, required=True):
+        """Return one validated folder/source selection."""
+        folder = self.selected_meteo_folder(kind)
+        source = self.selected_meteo_source(kind)
+        if not folder and not source and not required:
+            return None
+        if not folder:
+            raise ValueError(f"Select the {kind} data folder.")
+        if not source:
+            raise ValueError(f"Select the {kind} data source.")
+        if not os.path.isdir(folder):
+            raise ValueError(f"The {kind} data folder does not exist:\n{folder}")
+        return MeteoFolderSpec(
+            kind=kind,
+            folder=Path(folder),
+            source=source,
+            crs=(
+                self.selected_meteo_crs()
+                if source == "mhm_ready" else None
+            ),
+        )
+
+    def selected_meteo_specs(self):
+        """Return required precipitation/temperature and optional PET inputs."""
+        precipitation = self.meteo_folder_spec("precipitation")
+        temperature = self.meteo_folder_spec("temperature")
+        pet = self.meteo_folder_spec("pet", required=False)
+        return precipitation, temperature, pet
+
+    def clear_precipitation_resolution_labels(self):
+        """Clear the raw precipitation resolution display."""
+        for name in (
+                "label_precipitationResolutionValue",
+                "label_precipitationResolutionUnit",
+                "label_precipitationResolutionMultiplier"):
+            label = getattr(self, name, None)
+            if label is not None:
+                label.setText("")
+
+    def inspect_meteo_selection(self, kind, show_errors=False):
+        """Validate one selected meteo folder and refresh its metadata."""
+        folder = self.selected_meteo_folder(kind)
+        source = self.selected_meteo_source(kind)
+        if not folder or not source:
+            self._meteo_inspections.pop(kind, None)
+            if kind == "precipitation":
+                self.clear_precipitation_resolution_labels()
+            return None
+
+        try:
+            metadata = inspect_meteo_folder(
+                folder,
+                kind,
+                source,
+                crs_fallback=(
+                    self.selected_meteo_crs()
+                    if source == "mhm_ready" else None
+                ),
+            )
+            self._meteo_inspections[kind] = metadata
+            if kind == "precipitation":
+                converted = resolution_in_crs(
+                    metadata,
+                    self.selected_meteo_crs() or None,
+                )
+                self.label_precipitationResolutionValue.setText(
+                    format_resolution(converted.resolution, converted.unit)
+                )
+                self.label_precipitationResolutionUnit.setText(converted.unit)
+                l0_resolution = self.current_l0_resolution()
+                multiplier = (
+                    f"{converted.resolution / l0_resolution:.1f}"
+                    if l0_resolution else ""
+                )
+                self.label_precipitationResolutionMultiplier.setText(multiplier)
+            self.log_message(
+                f"{kind.title()} metadata: {len(metadata.files)} NetCDF file(s), "
+                f"{metadata.shape[1]} x {metadata.shape[0]} cells."
+            )
+            return metadata
+        except Exception as error:
+            self._meteo_inspections.pop(kind, None)
+            if kind == "precipitation":
+                self.clear_precipitation_resolution_labels()
+            self.log_message(f"ERROR: Invalid {kind} meteorology input: {error}")
+            if show_errors:
+                QMessageBox.warning(
+                    self,
+                    f"Invalid {kind.title()} Data",
+                    str(error),
+                )
+            return None
 
     @staticmethod
     def _matching_input_index(combo, previous):
@@ -557,26 +844,6 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 self.morphology_processor.process_lai,
             )
 
-        # Crop and mask all layers
-        if hasattr(self, "pushButton_cropAll"):
-            self.connect_processor_button(
-                self.pushButton_cropAll,
-                "Crop All Layers",
-                self.morphology_processor.crop_all_layers,
-            )
-        self.connect_processor_button(
-            self.pushButton_maskAll,
-            "Mask All Layers",
-            self.morphology_processor.mask_all_layers,
-        )
-
-        # Write all layers (convert to ASCII)
-        self.connect_processor_button(
-            self.pushButton_writeAll,
-            "Write All Layers",
-            self.morphology_processor.write_all_layers,
-        )
-
         # Reset geometry
         self.pushButton_resetGeometry.clicked.connect(self.reset_geometry_processing)
 
@@ -584,10 +851,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         execute_all_button = self.morphology_workflow_button("execute_all")
         if execute_all_button is not None:
             execute_all_button.clicked.connect(self.start_execute_all_processing)
-        if hasattr(self, "pushButton_executeMorphSetup"):
-            self.pushButton_executeMorphSetup.clicked.connect(
-                self.start_morph_setup_processing
-            )
+        self.pushButton_executeMeteoMorphSetup.clicked.connect(
+            self.start_meteo_morph_setup_processing
+        )
 
         # LAI file browser
         if hasattr(self, "pushButton_browse_lai"):
@@ -595,13 +861,23 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         self.connect_grid_resolution_signals()
 
-        # Meteorology folder browser
-        self.pushButton_browse_meteo_folder.clicked.connect(self.browse_meteo_folder)
-        if hasattr(self, "pushButton_meteo_runSave"):
-            self.connect_processor_button(
-                self.pushButton_meteo_runSave,
-                "Prepare Meteorology Forcing",
-                self.meteorology_processor.process_meteo_forcing,
+        for kind, button in (
+            ("precipitation", self.pushButton_browsePrecipitationFolder),
+            ("temperature", self.pushButton_browseTemperatureFolder),
+            ("pet", self.pushButton_browsePetFolder),
+        ):
+            button.clicked.connect(
+                lambda checked=False, meteo_kind=kind:
+                self.browse_meteo_input_folder(meteo_kind)
+            )
+        for kind, folder_combo, source_combo in self.meteo_input_widgets():
+            folder_combo.currentIndexChanged.connect(
+                lambda index=None, meteo_kind=kind:
+                self.handle_meteo_input_changed(meteo_kind)
+            )
+            source_combo.currentIndexChanged.connect(
+                lambda index=None, meteo_kind=kind:
+                self.handle_meteo_input_changed(meteo_kind)
             )
 
         # Configuration/execution processing - delegate to processor
@@ -656,6 +932,21 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.mMapLayerComboBox_dem.layerChanged.connect(
                 lambda layer=None: self.update_l0_resolution_from_dem(layer)
             )
+            self.mMapLayerComboBox_dem.layerChanged.connect(
+                lambda layer=None:
+                self.inspect_meteo_selection("precipitation", show_errors=False)
+            )
+        except Exception:
+            pass
+
+        self.spinBox_L2ResolutionMultiplier.valueChanged.connect(
+            self.handle_l2_multiplier_changed
+        )
+        try:
+            self.mProjectionSelectionWidget_crs.crsChanged.connect(
+                lambda crs=None:
+                self.inspect_meteo_selection("precipitation", show_errors=False)
+            )
         except Exception:
             pass
 
@@ -674,6 +965,20 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 )
             except Exception:
                 pass
+
+    def handle_l2_multiplier_changed(self, value=None):
+        """Invalidate prepared setup state when the requested L2 grid changes."""
+        if self._loading_input_state:
+            return
+        self.save_input_state()
+        self.invalidate_meteo_morph_setup()
+
+    def handle_model_input_changed(self, value=None):
+        """Persist model inputs and invalidate a previously completed setup."""
+        if self._loading_input_state:
+            return
+        self.save_input_state()
+        self.invalidate_meteo_morph_setup()
 
     def refresh_grid_resolution_controls(self):
         """Refresh L0, L2, L1, and L11 controls from current project state."""
@@ -773,20 +1078,11 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self._grid_l2_metadata = metadata
         self._grid_l2_header = header
         if not metadata:
-            self._set_resolution_labels("L2", "", "")
             self.update_extent_labels()
             self.refresh_l1_l11_resolution_options()
             self.update_latlon_button_state()
             return
 
-        self._set_resolution_labels(
-            "L2",
-            format_resolution(
-                metadata.get("l2_resolution", ""),
-                metadata.get("l2_unit", ""),
-            ),
-            metadata.get("l2_unit", ""),
-        )
         self.update_extent_labels(metadata)
         self.refresh_l1_l11_resolution_options()
         self.update_latlon_button_state()
@@ -796,18 +1092,34 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.update_l2_resolution_from_metadata(metadata)
         self.save_input_state()
 
-    def prepare_meteo_l2_grid(self, nc_folder):
-        """Build the adjusted L2 grid used by meteorology processing."""
+    def prepare_meteo_l2_grid(self, precipitation_metadata=None):
+        """Build the requested L2 grid used by meteorology processing."""
         self.update_l0_resolution_from_dem()
-        grid = build_meteo_l2_grid(self, nc_folder)
+        raw = None
+        if precipitation_metadata is not None:
+            converted = resolution_in_crs(
+                precipitation_metadata,
+                self.selected_meteo_crs() or None,
+            )
+            raw = {
+                "resolution": converted.resolution,
+                "x_resolution": converted.x_resolution,
+                "y_resolution": converted.y_resolution,
+                "unit": converted.unit,
+                "source_file": str(precipitation_metadata.files[0]),
+            }
+        grid = build_meteo_l2_grid(
+            self,
+            self.spinBox_L2ResolutionMultiplier.value(),
+            raw_metadata=raw,
+        )
         metadata = grid.get("metadata", {})
         self.log_message(
-            "Meteo L2 resolution adjusted from "
-            f"{format_resolution(metadata.get('raw_meteo_resolution'), metadata.get('raw_meteo_unit', ''))} "
-            f"{metadata.get('raw_meteo_unit', '')} to "
+            "Meteo L2 grid: "
             f"{format_resolution(metadata.get('l2_resolution'), metadata.get('l2_unit', ''))} "
             f"{metadata.get('l2_unit', '')} "
-            f"({metadata.get('l2_ratio_to_l0')} x L0).")
+            f"({metadata.get('l2_ratio_to_l0')} x L0)."
+        )
         return grid
 
     def refresh_l1_l11_resolution_options(self):
@@ -1145,18 +1457,18 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         for _, combo_box in self.input_layer_widgets():
             try:
                 combo_box.layerChanged.connect(
-                    lambda layer=None: self.save_input_state()
+                    self.handle_model_input_changed
                 )
             except Exception:
                 pass
 
         for _, line_edit in self.input_text_widgets():
             try:
-                line_edit.editingFinished.connect(self.save_input_state)
+                line_edit.editingFinished.connect(self.handle_model_input_changed)
             except Exception:
                 try:
                     line_edit.textChanged.connect(
-                        lambda text=None: self.save_input_state()
+                        self.handle_model_input_changed
                     )
                 except Exception:
                     pass
@@ -1164,7 +1476,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if hasattr(self, "comboBox_laiInputType"):
             try:
                 self.comboBox_laiInputType.currentIndexChanged.connect(
-                    lambda index=None: self.save_input_state()
+                    self.handle_model_input_changed
                 )
             except Exception:
                 pass
@@ -1176,14 +1488,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 continue
             try:
                 combo_box.currentIndexChanged.connect(
-                    lambda index=None: self.save_input_state()
+                    self.handle_model_input_changed
                 )
             except Exception:
                 pass
 
         try:
             self.mProjectionSelectionWidget_crs.crsChanged.connect(
-                lambda crs=None: self.save_input_state()
+                self.handle_model_input_changed
             )
         except Exception:
             pass
@@ -1276,14 +1588,19 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                     "Execute All Processing failed. Check the log for details."
                 ),
             },
-            "morph_setup": {
-                "button": "pushButton_executeMorphSetup",
-                "label": "Morphology Setup",
-                "action_name": "Morphology Setup",
+            "meteo_morph_setup": {
+                "button": "pushButton_executeMeteoMorphSetup",
+                "label": "Meteorology and Morphology Setup",
+                "action_name": "Meteorology and Morphology Setup",
                 "method": "execute_morph_setup_processing",
-                "thread_name": "PymHMMorphSetupThread",
-                "completed_message": "Morphology Setup completed successfully.",
-                "failed_message": "Morphology Setup failed. Check the log for details.",
+                "thread_name": "PymHMMeteoMorphSetupThread",
+                "completed_message": (
+                    "Meteorology and morphology setup completed successfully."
+                ),
+                "failed_message": (
+                    "Meteorology and morphology setup failed. "
+                    "Check the log for details."
+                ),
             },
         }
 
@@ -1318,9 +1635,53 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         """Run execute-all processing in a background worker thread."""
         self.start_morphology_workflow("execute_all")
 
-    def start_morph_setup_processing(self):
-        """Run Crop All, Mask All, and Write All in a background worker thread."""
-        self.start_morphology_workflow("morph_setup")
+    def start_meteo_morph_setup_processing(self):
+        """Validate inputs and run meteo then morphology setup."""
+        if self.running_morphology_workflow_key() is not None:
+            self.start_morphology_workflow("meteo_morph_setup")
+            return
+        if not self.check_prerequisites():
+            return
+
+        try:
+            precipitation, temperature, pet = self.selected_meteo_specs()
+            inspections = inspect_meteo_inputs(
+                precipitation,
+                temperature,
+                pet,
+            )
+            self._meteo_inspections = inspections
+            grid = self.prepare_meteo_l2_grid(
+                inspections["precipitation"]
+            )
+            self.set_meteo_l2_grid_metadata(grid["metadata"])
+            target_grid = TargetGrid(
+                lon=tuple(grid["lon"]),
+                lat=tuple(grid["lat"]),
+                header=dict(grid["header"]),
+                crs=self.selected_meteo_crs() or None,
+                sample_lon=grid["sample_lon"],
+                sample_lat=grid["sample_lat"],
+            )
+            target_grid.validate()
+            self._pending_meteo_run = MeteorologyRun(
+                project_folder=Path(self.project_folder),
+                precipitation=precipitation,
+                temperature=temperature,
+                pet=pet,
+                target_grid=target_grid,
+                grid_metadata=dict(grid["metadata"]),
+            )
+        except Exception as error:
+            self.log_message(f"ERROR: Cannot start meteo setup: {error}")
+            QMessageBox.warning(
+                self,
+                "Meteorology Setup",
+                str(error),
+            )
+            return
+
+        self.start_morphology_workflow("meteo_morph_setup")
 
     def start_morphology_workflow(self, workflow_key):
         """Start a named morphology workflow in a background worker thread."""
@@ -1352,10 +1713,12 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             "running",
         )
         self.set_morphology_workflow_button_state(workflow_key, "running")
+        if workflow_key == "meteo_morph_setup":
+            self.set_meteo_setup_controls_enabled(False)
 
         thread = QtCore.QThread(self)
         thread.setObjectName(spec["thread_name"])
-        worker = MorphologyWorkflowWorker(
+        worker_arguments = (
             self.morphology_processor,
             workflow_key,
             spec["label"],
@@ -1364,10 +1727,22 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.mMapLayerComboBox_dem.currentLayer(),
             self.mMapLayerComboBox_pour_points.currentLayer(),
         )
+        if workflow_key == "meteo_morph_setup":
+            worker = MeteorologyWorkflowWorker(
+                workflow_key,
+                spec["label"],
+                meteorology_processor=self.meteorology_processor,
+                meteorology_run=self._pending_meteo_run,
+            )
+        else:
+            worker = MorphologyWorkflowWorker(*worker_arguments)
         worker.moveToThread(thread)
 
         worker.log_message.connect(self.log_message)
-        worker.finished.connect(self.finish_morphology_workflow)
+        if workflow_key == "meteo_morph_setup":
+            worker.finished.connect(self.finish_meteo_workflow_stage)
+        else:
+            worker.finished.connect(self.finish_morphology_workflow)
         worker.finished.connect(
             lambda key, ok, message, workflow_thread=thread: workflow_thread.quit()
         )
@@ -1382,11 +1757,37 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self._morphology_workflow_workers[workflow_key] = worker
         thread.start()
 
+    def finish_meteo_workflow_stage(self, workflow_key, ok, message):
+        """Run QGIS-dependent morphology on the GUI thread after meteorology."""
+        if not ok:
+            self.finish_morphology_workflow(workflow_key, False, message)
+            return
+
+        self.morphology_processor.load_processing_state()
+        try:
+            ok = bool(self.morphology_processor.execute_morph_setup_processing(
+                show_error_dialog=False,
+                workflow_key=workflow_key,
+            ))
+            self.finish_morphology_workflow(workflow_key, ok, "")
+        except Exception as error:
+            self.log_message(
+                f"ERROR: Morphology setup failed with exception: {error}\n"
+                f"{traceback.format_exc()}"
+            )
+            self.finish_morphology_workflow(
+                workflow_key,
+                False,
+                str(error),
+            )
+
     def finish_morphology_workflow(self, workflow_key, ok, message):
         """Update UI and persisted workflow status after a workflow finishes."""
         spec = self.morphology_workflow_specs().get(workflow_key)
         if spec is None:
             return
+        if workflow_key == "meteo_morph_setup":
+            self.set_meteo_setup_controls_enabled(True)
 
         if ok:
             self.morphology_processor.mark_workflow_status(
@@ -1423,6 +1824,31 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         """Drop worker references after a morphology workflow thread stops."""
         self._morphology_workflow_threads.pop(workflow_key, None)
         self._morphology_workflow_workers.pop(workflow_key, None)
+        if workflow_key == "meteo_morph_setup":
+            self._pending_meteo_run = None
+
+    def invalidate_meteo_morph_setup(self):
+        """Clear saved completion when any meteo setup input changes."""
+        workflow_key = "meteo_morph_setup"
+        if (
+                self._loading_input_state
+                or not self.project_folder
+                or self.running_morphology_workflow_key() == workflow_key):
+            return
+        self.morphology_processor.load_processing_state()
+        workflows = self.morphology_processor.processing_state.setdefault(
+            "workflows", {}
+        )
+        if workflow_key in workflows:
+            workflows.pop(workflow_key)
+            self.morphology_processor.save_processing_state()
+        self.set_morphology_workflow_button_state(workflow_key, "")
+
+    def set_meteo_setup_controls_enabled(self, enabled):
+        """Freeze all run-affecting dialog controls during the combined run."""
+        self.pushButton_BrowseProjectFolder.setEnabled(enabled)
+        self.tabWidget.setEnabled(enabled)
+        self.stackedWidget.setEnabled(enabled)
 
     def closeEvent(self, event):
         """Prevent closing the dialog while a morphology workflow is running."""
@@ -1516,7 +1942,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         return self._terminal_dialog
 
     def open_project_terminal(self):
-        """Open the persistent terminal in the selected project folder."""
+        """Open the persistent terminal in the plugin-owned workspace."""
         if not self.project_folder:
             QMessageBox.warning(
                 self,
@@ -1525,7 +1951,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             )
             return None
         terminal = self.project_terminal_dialog()
-        terminal.show_for_directory(self.project_folder)
+        terminal.show_for_directory(workspace_folder(self.project_folder))
         return terminal
 
     def categorical_type_combo(self, kind):
@@ -1556,6 +1982,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if text.lower() != "lookup table":
             self._categorical_modes[kind] = text
             self.save_input_state()
+            self.invalidate_meteo_morph_setup()
             return
         if not self.project_folder:
             QMessageBox.warning(
@@ -1584,6 +2011,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         }
         self._categorical_modes[kind] = text
         self.save_input_state()
+        self.invalidate_meteo_morph_setup()
 
     def _restore_categorical_mode(self, kind, text):
         combo = self.categorical_type_combo(kind)
@@ -1622,7 +2050,6 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         for key, widget_name in (
             ("lai_file", "lineEdit_lai_file"),
-            ("meteo_folder", "lineEdit_meteo_folder"),
         ):
             widget = getattr(self, widget_name, None)
             if widget is not None:
@@ -1633,7 +2060,10 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         """Return the project-local input state file path."""
         if not self.project_folder:
             return None
-        return os.path.join(self.project_folder, self.input_state_filename)
+        return os.path.join(
+            workspace_folder(self.project_folder),
+            self.input_state_filename,
+        )
 
     def save_input_state(self):
         """Save selected inputs to a JSON file in the project folder."""
@@ -1696,7 +2126,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         crs = self.get_crs()
         state = {
-            "version": 2,
+            "version": 3,
             "mhm_version": (
                 self.comboBox_mHMversion.currentText().strip()
                 if hasattr(self, "comboBox_mHMversion") else ""
@@ -1715,6 +2145,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 for kind in ("lc", "soil", "geology")
             },
             "categorical_lookups": self._serialized_categorical_lookups(),
+            "meteo_inputs": self.serialized_meteo_inputs(),
             "crs_authid": crs.authid() if crs and crs.isValid() else "",
             "project_layout": {
                 "data_folder": data_folder(self.project_folder),
@@ -1727,6 +2158,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         }
 
         try:
+            os.makedirs(os.path.dirname(state_path), exist_ok=True)
             with open(state_path, "w", encoding="utf-8") as state_file:
                 json.dump(state, state_file, indent=2, sort_keys=True)
         except Exception as e:
@@ -1746,6 +2178,26 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                     pass
             configs[kind] = saved
         return configs
+
+    def serialized_meteo_inputs(self):
+        """Return project-portable meteorology folder and source selections."""
+        state = {
+            "l2_multiplier": int(self.spinBox_L2ResolutionMultiplier.value()),
+        }
+        for kind, combo, source_combo in self.meteo_input_widgets():
+            path = self.selected_folder_path(combo)
+            if path and self.project_folder:
+                try:
+                    relative = os.path.relpath(path, self.project_folder)
+                    if relative != ".." and not relative.startswith(f"..{os.sep}"):
+                        path = relative.replace("\\", "/")
+                except ValueError:
+                    pass
+            state[kind] = {
+                "folder": path,
+                "source": source_combo.currentText().strip(),
+            }
+        return state
 
     def read_existing_input_state(self, state_path):
         """Return existing input state for preservation during teardown."""
@@ -1768,6 +2220,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self._clear_input_state_selections()
             if not state_path or not os.path.exists(state_path):
                 self.refresh_input_sources()
+                self.refresh_meteo_folder_sources()
                 self.log_message("No saved input state found for this project.")
                 return
             try:
@@ -1786,11 +2239,15 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.restore_input_crs(state.get("crs_authid", ""))
             self.restore_categorical_inputs(state)
             self.refresh_input_sources()
+            self.refresh_meteo_folder_sources()
             self.restore_input_layers(state.get("layers", {}))
+            self.restore_meteo_inputs(state.get("meteo_inputs", {}))
             self.refresh_grid_resolution_controls()
         finally:
             self._loading_input_state = False
 
+        for kind, _, _ in self.meteo_input_widgets():
+            self.inspect_meteo_selection(kind, show_errors=False)
         self.log_message(f"Input state loaded: {state_path}")
 
     def _clear_input_state_selections(self):
@@ -1804,6 +2261,18 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             combo.blockSignals(False)
         for _, widget in self.input_text_widgets():
             widget.clear()
+        for _, folder_combo, source_combo in self.meteo_input_widgets():
+            folder_combo.blockSignals(True)
+            folder_combo.setCurrentIndex(-1)
+            folder_combo.blockSignals(False)
+            source_combo.blockSignals(True)
+            source_combo.setCurrentIndex(-1)
+            source_combo.blockSignals(False)
+        self.spinBox_L2ResolutionMultiplier.blockSignals(True)
+        self.spinBox_L2ResolutionMultiplier.setValue(1)
+        self.spinBox_L2ResolutionMultiplier.blockSignals(False)
+        self._meteo_inspections = {}
+        self.clear_precipitation_resolution_labels()
         self.checkBox_enableFolderSearch.blockSignals(True)
         self.checkBox_enableFolderSearch.setChecked(False)
         self.checkBox_enableFolderSearch.blockSignals(False)
@@ -1811,6 +2280,39 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self._categorical_modes = {}
         self._preferred_l1_resolution = None
         self._preferred_l11_resolution = None
+
+    def restore_meteo_inputs(self, state):
+        """Restore the three meteo folders, source modes, and L2 multiplier."""
+        if not isinstance(state, dict):
+            return
+        try:
+            multiplier = max(1, int(state.get("l2_multiplier", 1)))
+        except (TypeError, ValueError):
+            multiplier = 1
+        self.spinBox_L2ResolutionMultiplier.setValue(multiplier)
+
+        for kind, folder_combo, source_combo in self.meteo_input_widgets():
+            saved = state.get(kind, {})
+            if not isinstance(saved, dict):
+                continue
+            folder = str(saved.get("folder", "") or "")
+            if folder and not os.path.isabs(folder):
+                folder = os.path.abspath(os.path.join(self.project_folder, folder))
+            index = self._folder_combo_index(folder_combo, folder)
+            if index < 0 and folder and os.path.isdir(folder):
+                self._add_folder_combo_item(folder_combo, folder)
+                index = folder_combo.count() - 1
+            folder_combo.setCurrentIndex(index)
+
+            source = str(saved.get("source", "") or "")
+            source_index = source_combo.findText(source)
+            if source_index < 0:
+                normalized = source.lower().replace("_", " ")
+                for candidate in range(source_combo.count()):
+                    if source_combo.itemText(candidate).lower().replace("_", " ") == normalized:
+                        source_index = candidate
+                        break
+            source_combo.setCurrentIndex(source_index)
 
     def restore_categorical_inputs(self, state):
         """Restore folder search, categorical modes, and lookup selections."""
@@ -1836,6 +2338,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 continue
             combo = self.categorical_type_combo(kind)
             index = combo.findText(str(text))
+            if index < 0:
+                normalized = str(text).lower().replace("_", " ")
+                for candidate in range(combo.count()):
+                    if (
+                            combo.itemText(candidate).lower().replace("_", " ")
+                            == normalized):
+                        index = candidate
+                        break
             combo.setCurrentIndex(index)
             self._categorical_modes[kind] = str(text) if index >= 0 else ""
 
@@ -2031,9 +2541,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.log_message(
                 f"LAI file: {self.lineEdit_lai_file.text() or '<not selected>'}"
             )
-        if hasattr(self, "lineEdit_meteo_folder"):
+        for kind, _, _ in self.meteo_input_widgets():
             self.log_message(
-                f"Meteorology folder: {self.lineEdit_meteo_folder.text() or '<not selected>'}"
+                f"{kind.title()} folder: "
+                f"{self.selected_meteo_folder(kind) or '<not selected>'}"
+            )
+            self.log_message(
+                f"{kind.title()} data source: "
+                f"{self.selected_meteo_source(kind) or '<not selected>'}"
             )
 
     # --- Project Management Methods ---
@@ -2056,13 +2571,8 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 )
 
             self.refresh_input_sources()
+            self.refresh_meteo_folder_sources()
             self.load_input_state()
-            if not self.lineEdit_meteo_folder.text().strip():
-                default_meteo_folder = raw_meteo_folder(self.project_folder)
-                self.lineEdit_meteo_folder.setText(default_meteo_folder)
-                self.log_message(
-                    f"Meteorology data folder set to: {default_meteo_folder}"
-                )
             self.morphology_processor.update_gauged_outlet_count()
 
             # Load project state in morphology processor
@@ -2124,16 +2634,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.lineEdit_lai_file.setText(file_path)
             self.log_message(f"LAI file selected: {file_path}")
             self.save_input_state()
-
-    def browse_meteo_folder(self):
-        """Browse for Meteorology data folder"""
-        folder = QFileDialog.getExistingDirectory(
-            self, "Select Meteorology Data Folder"
-        )
-        if folder:
-            self.lineEdit_meteo_folder.setText(folder)
-            self.log_message(f"Meteorology data folder selected: {folder}")
-            self.save_input_state()
+            self.invalidate_meteo_morph_setup()
 
     def get_lai_time_range(self):
         """Get the selected LAI time/date for extraction"""

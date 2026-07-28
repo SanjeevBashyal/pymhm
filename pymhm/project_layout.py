@@ -6,9 +6,17 @@ from __future__ import annotations
 import os
 
 
+WORKSPACE_FOLDER_NAME = "mhm-plugin"
+
+
 def plugin_root() -> str:
     """Return the plugin package root."""
     return os.path.dirname(os.path.abspath(__file__))
+
+
+def workspace_folder(project_folder) -> str:
+    """Return the plugin-owned workspace inside the selected project folder."""
+    return os.path.join(str(project_folder), WORKSPACE_FOLDER_NAME)
 
 
 def version_key(version_text: str | None) -> str:
@@ -34,7 +42,7 @@ def project_template_dir(version_text: str | None) -> str | None:
 
 def z_temp_folder(project_folder) -> str:
     """Return the helper-file folder for temporary project artifacts."""
-    return os.path.join(str(project_folder), "Z Temp")
+    return os.path.join(workspace_folder(project_folder), "Z Temp")
 
 
 def geometry_folder(project_folder) -> str:
@@ -44,12 +52,12 @@ def geometry_folder(project_folder) -> str:
 
 def data_folder(project_folder) -> str:
     """Return the mHM data folder."""
-    return os.path.join(str(project_folder), "data")
+    return os.path.join(workspace_folder(project_folder), "data")
 
 
 def data_raw_folder(project_folder) -> str:
     """Return the raw input data folder."""
-    return os.path.join(str(project_folder), "data_raw")
+    return os.path.join(workspace_folder(project_folder), "data_raw")
 
 
 def static_folder(project_folder) -> str:
@@ -84,28 +92,32 @@ def streamflow_observation_folder(project_folder) -> str:
 
 def output_folder(project_folder) -> str:
     """Return the mHM output folder."""
-    return os.path.join(str(project_folder), "output")
+    return os.path.join(workspace_folder(project_folder), "output")
 
 
 def restart_folder(project_folder) -> str:
     """Return the mHM restart folder."""
-    return os.path.join(str(project_folder), "restart")
+    return os.path.join(workspace_folder(project_folder), "restart")
 
 
 def relative_project_path(project_folder, path) -> str:
-    """Return a forward-slash path relative to the project root."""
+    """Return a forward-slash path relative to the selected project root."""
     return os.path.relpath(str(path), str(project_folder)).replace("\\", "/")
 
 
 def ensure_project_structure(project_folder, version_text=None) -> list[str]:
     """
-    Create the project directory structure from project-template.
+    Create the plugin workspace structure from project-template.
 
     Only directories are created. Placeholder files are intentionally skipped so
     processing code does not mistake empty template files for prepared outputs.
     """
     created = []
     os.makedirs(str(project_folder), exist_ok=True)
+    workspace = workspace_folder(project_folder)
+    if not os.path.isdir(workspace):
+        os.makedirs(workspace, exist_ok=True)
+        created.append(workspace)
     os.makedirs(z_temp_folder(project_folder), exist_ok=True)
     os.makedirs(geometry_folder(project_folder), exist_ok=True)
 
@@ -115,7 +127,7 @@ def ensure_project_structure(project_folder, version_text=None) -> list[str]:
             for dirname in dirs:
                 src = os.path.join(root, dirname)
                 rel = os.path.relpath(src, template)
-                dst = os.path.join(str(project_folder), rel)
+                dst = os.path.join(workspace, rel)
                 if not os.path.isdir(dst):
                     os.makedirs(dst, exist_ok=True)
                     created.append(dst)

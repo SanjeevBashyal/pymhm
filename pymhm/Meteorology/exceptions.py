@@ -11,7 +11,3 @@ class MeteorologyInputError(ValueError):
         self.title = title
         self.message = message
         self.severity = severity
-
-
-class MeteorologyToolImportError(RuntimeError):
-    """Raised when the ERA5-Land processing backend cannot be imported."""

@@ -5,6 +5,7 @@ from ..common import (
     json,
     processing,
 )
+from ...project_layout import workspace_folder
 from ...time_utils import utc_timestamp
 
 
@@ -16,7 +17,7 @@ class ProcessingStateMixin:
         if not self.dialog.project_folder:
             return None
         return os.path.join(
-            self.dialog.project_folder,
+            workspace_folder(self.dialog.project_folder),
             self.processing_state_filename
         )
 
@@ -47,6 +48,7 @@ class ProcessingStateMixin:
             return
 
         try:
+            os.makedirs(os.path.dirname(state_path), exist_ok=True)
             with open(state_path, "w", encoding="utf-8") as state_file:
                 json.dump(
                     self.processing_state,
@@ -63,7 +65,10 @@ class ProcessingStateMixin:
             return ""
         try:
             if self.dialog.project_folder:
-                return os.path.relpath(path, self.dialog.project_folder).replace("\\", "/")
+                return os.path.relpath(
+                    path,
+                    workspace_folder(self.dialog.project_folder),
+                ).replace("\\", "/")
         except ValueError:
             pass
         return os.path.abspath(path).replace("\\", "/")

@@ -328,6 +328,41 @@ def header_for_bounds(bounds, cellsize: float, unit: str | None = None) -> dict:
     }
 
 
+def header_for_aligned_bounds(
+        bounds,
+        cellsize: float,
+        anchor_x: float,
+        anchor_y: float,
+        unit: str | None = None) -> dict:
+    """Create the smallest outward-snapped header aligned to an anchor grid."""
+    cellsize = ceil_cellsize(cellsize, unit)
+    xmin, xmax, ymin, ymax = bounds
+    xll = anchor_x + math.floor(
+        (min(xmin, xmax) - anchor_x) / cellsize
+    ) * cellsize
+    yll = anchor_y + math.floor(
+        (min(ymin, ymax) - anchor_y) / cellsize
+    ) * cellsize
+    xur = anchor_x + math.ceil(
+        (max(xmin, xmax) - anchor_x) / cellsize
+    ) * cellsize
+    yur = anchor_y + math.ceil(
+        (max(ymin, ymax) - anchor_y) / cellsize
+    ) * cellsize
+    ncols = max(1, int(round((xur - xll) / cellsize)))
+    nrows = max(1, int(round((yur - yll) / cellsize)))
+    return {
+        "ncols": ncols,
+        "nrows": nrows,
+        "xllcorner": float(xll),
+        "yllcorner": float(yll),
+        "cellsize": float(cellsize),
+        "nodata_value": NODATA_VALUE,
+        "unit": unit or "",
+        "cellsize_precision": cellsize_precision_for_unit(unit),
+    }
+
+
 def header_for_existing_bounds(
         reference_header: dict,
         cellsize: float,
@@ -379,9 +414,9 @@ def project_crs_from_dialog(dialog):
     return crs
 
 
-def watershed_extent_in_crs(dialog, target_crs):
-    """Return the merged watershed extent in target CRS, falling back to DEM extent."""
-    from qgis.core import QgsCoordinateTransform, QgsProject, QgsRasterLayer, QgsVectorLayer
+def merged_watershed_extent_in_crs(dialog, target_crs):
+    """Return the merged watershed extent in the requested CRS."""
+    from qgis.core import QgsVectorLayer
 
     candidates = []
     if getattr(dialog, "project_folder", None):
@@ -398,6 +433,17 @@ def watershed_extent_in_crs(dialog, target_crs):
         if layer.isValid():
             extent = _transform_extent(layer.extent(), layer.crs(), target_crs)
             return extent, str(path)
+
+    return None, ""
+
+
+def watershed_extent_in_crs(dialog, target_crs):
+    """Return a watershed extent, retaining the historic DEM fallbacks."""
+    from qgis.core import QgsRasterLayer
+
+    extent, source = merged_watershed_extent_in_crs(dialog, target_crs)
+    if extent is not None:
+        return extent, source
 
     layer = selected_dem_layer(dialog)
     if layer is not None and layer.isValid():
@@ -566,62 +612,139 @@ def target_lon_lat_from_header(header: dict, source_crs) -> tuple[list[float], l
     return lon_values, lat_values
 
 
-def build_meteo_l2_grid(dialog, nc_folder) -> dict:
-    """Build adjusted L2 grid metadata and target lat/lon axes for meteo forcing."""
+def target_lon_lat_mesh_from_header(header: dict, source_crs):
+    """Return exact WGS84 coordinates for every target grid cell centre."""
+    import numpy as np
+
+    x_values, y_values = header_center_coordinates(header)
+    x_mesh, y_mesh = np.meshgrid(
+        np.asarray(x_values, dtype="float64"),
+        np.asarray(y_values, dtype="float64"),
+    )
+    if source_crs is None or not source_crs.isValid() or source_crs.isGeographic():
+        return x_mesh, y_mesh
+
+    try:
+        from pyproj import Transformer
+
+        source = qgis_crs_to_authid(source_crs)
+        if not source:
+            to_wkt = getattr(source_crs, "toWkt", None)
+            source = to_wkt() if callable(to_wkt) else ""
+        transform = Transformer.from_crs(source, "EPSG:4326", always_xy=True)
+        return transform.transform(x_mesh, y_mesh)
+    except Exception:
+        from qgis.core import (QgsCoordinateReferenceSystem,
+                               QgsCoordinateTransform, QgsPointXY, QgsProject)
+
+        transform = QgsCoordinateTransform(
+            source_crs,
+            QgsCoordinateReferenceSystem("EPSG:4326"),
+            QgsProject.instance(),
+        )
+        transform.setBallparkTransformsAreAppropriate(True)
+        lon = np.empty_like(x_mesh)
+        lat = np.empty_like(y_mesh)
+        for row in range(x_mesh.shape[0]):
+            for column in range(x_mesh.shape[1]):
+                point = transform.transform(QgsPointXY(
+                    float(x_mesh[row, column]),
+                    float(y_mesh[row, column]),
+                ))
+                lon[row, column] = point.x()
+                lat[row, column] = point.y()
+        return lon, lat
+
+
+def build_meteo_l2_grid(
+        dialog,
+        multiplier: int,
+        raw_metadata: dict | None = None) -> dict:
+    """Build the requested integer-multiple L2 grid on the L0 anchor."""
     l0_info = getattr(dialog, "_grid_l0_info", None)
     if not l0_info and hasattr(dialog, "filled_dem_resolution_info"):
         l0_info = dialog.filled_dem_resolution_info()
     if not l0_info:
         raise ValueError("Filled DEM is required before preparing meteorology data.")
+    x_resolution = float(l0_info.get("x_resolution", l0_info["resolution"]))
+    y_resolution = float(l0_info.get("y_resolution", l0_info["resolution"]))
+    if abs(x_resolution - y_resolution) > max(
+            abs(x_resolution), abs(y_resolution), 1.0) * 1e-6:
+        raise ValueError(
+            "The filled DEM must have square L0 cells before preparing "
+            f"meteorology data (x={x_resolution}, y={y_resolution})."
+        )
 
     target_crs = project_crs_from_dialog(dialog)
     if target_crs is None or not target_crs.isValid():
         raise ValueError("Please set a valid processing CRS before preparing meteorology data.")
 
-    extent, extent_source = watershed_extent_in_crs(dialog, target_crs)
+    extent, extent_source = merged_watershed_extent_in_crs(dialog, target_crs)
     if extent is None:
-        raise ValueError("Could not determine watershed or DEM extent for meteo clipping.")
+        raise ValueError(
+            "The merged watershed is required before preparing meteorology data."
+        )
 
-    center_lonlat = extent_center_wgs84(extent, target_crs)
-    raw = raw_meteo_resolution(nc_folder, target_crs, center_lonlat)
     target_unit = qgis_crs_unit_label(target_crs)
     l0_resolution = ceil_cellsize(l0_info["resolution"], target_unit)
-    adjusted_resolution, ratio = nearest_integer_multiple(
-        raw["resolution"],
-        l0_resolution,
+    try:
+        ratio = int(multiplier)
+    except (TypeError, ValueError):
+        raise ValueError("The L2 resolution multiplier must be an integer.")
+    if ratio < 1:
+        raise ValueError("The L2 resolution multiplier must be at least 1.")
+    adjusted_resolution = ceil_cellsize(
+        ratio * l0_resolution,
         target_unit,
     )
-    l2_header = header_for_bounds(extent_to_bounds(extent), adjusted_resolution, target_unit)
-    lon_values, lat_values = target_lon_lat_from_header(l2_header, target_crs)
+    l0_header = l0_info.get("header") or {}
+    if "xllcorner" not in l0_header or "yllcorner" not in l0_header:
+        raise ValueError("Could not determine the L0 grid anchor from the filled DEM.")
+    l2_header = header_for_aligned_bounds(
+        extent_to_bounds(extent),
+        adjusted_resolution,
+        float(l0_header["xllcorner"]),
+        float(l0_header["yllcorner"]),
+        target_unit,
+    )
+    lon_mesh, lat_mesh = target_lon_lat_mesh_from_header(l2_header, target_crs)
+    middle_row = lon_mesh.shape[0] // 2
+    middle_column = lon_mesh.shape[1] // 2
+    lon_values = lon_mesh[middle_row, :].tolist()
+    lat_values = lat_mesh[:, middle_column].tolist()
     wgs84_bounds = (
-        float(min(lon_values)),
-        float(max(lon_values)),
-        float(min(lat_values)),
-        float(max(lat_values)),
+        float(lon_mesh.min()),
+        float(lon_mesh.max()),
+        float(lat_mesh.min()),
+        float(lat_mesh.max()),
     )
     metadata = {
-        "version": 1,
+        "version": 2,
         "l0_resolution": l0_resolution,
         "l0_unit": target_unit,
         "l2_resolution": adjusted_resolution,
         "l2_unit": target_unit,
         "l2_ratio_to_l0": ratio,
-        "raw_meteo_resolution": raw["resolution"],
-        "raw_meteo_unit": raw["unit"],
-        "raw_meteo_x_resolution": raw.get("x_resolution"),
-        "raw_meteo_y_resolution": raw.get("y_resolution"),
-        "raw_meteo_degree_resolution": raw.get("degree_resolution", raw["resolution"]),
-        "source_file": raw.get("source_file", ""),
         "extent_source": os.path.basename(str(extent_source).split("|")[0]),
         "wgs84_bounds": wgs84_bounds,
         "l2_bounds": header_bounds(l2_header),
         "crs_authid": qgis_crs_to_authid(target_crs),
         "l2_header": l2_header,
     }
+    if raw_metadata:
+        metadata.update({
+            "raw_meteo_resolution": raw_metadata.get("resolution"),
+            "raw_meteo_unit": raw_metadata.get("unit", ""),
+            "raw_meteo_x_resolution": raw_metadata.get("x_resolution"),
+            "raw_meteo_y_resolution": raw_metadata.get("y_resolution"),
+            "source_file": raw_metadata.get("source_file", ""),
+        })
     return {
         "metadata": metadata,
         "header": l2_header,
         "lon": lon_values,
         "lat": lat_values,
+        "sample_lon": lon_mesh,
+        "sample_lat": lat_mesh,
         "bounds": wgs84_bounds,
     }

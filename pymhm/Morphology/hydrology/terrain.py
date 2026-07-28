@@ -8,7 +8,36 @@ from ..common import (
     QMessageBox,
 )
 from ..core.dem_inputs import DemInputMixin
-from ...mhm_tools_to_integrate.setup_creation.terrain import aspect_params, slope_params
+
+
+def aspect_params(dem_path, output_path):
+    """Return GDAL aspect parameters."""
+    return {
+        "INPUT": str(dem_path),
+        "BAND": 1,
+        "TRIG_ANGLE": False,
+        "ZERO_FLAT": False,
+        "COMPUTE_EDGES": False,
+        "ZEVENBERGEN": False,
+        "OPTIONS": None,
+        "EXTRA": "",
+        "OUTPUT": str(output_path),
+    }
+
+
+def slope_params(dem_path, output_path, scale=1.0):
+    """Return GDAL slope parameters."""
+    return {
+        "INPUT": str(dem_path),
+        "BAND": 1,
+        "SCALE": scale,
+        "AS_PERCENT": True,
+        "COMPUTE_EDGES": False,
+        "ZEVENBERGEN": False,
+        "OPTIONS": None,
+        "EXTRA": "",
+        "OUTPUT": str(output_path),
+    }
 
 
 class TerrainAnalysisMixin(DemInputMixin):

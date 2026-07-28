@@ -7,8 +7,7 @@ import shutil
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ...mhm_tools_to_integrate.setup_creation.categorical import \
-    prepare_categorical_file
+from ...mhm_tools_adapter import prepare_categorical_file
 from ..common import (QgsRasterLayer, QgsVectorLayer, QMessageBox,
                       morph_folder, project_geometry_folder)
 from ..core.layer_preparation import LayerPreparationMixin
@@ -89,7 +88,7 @@ class CategoricalProcessingMixin(
                 return self._copy_ready_categorical(kind, source, is_vector)
             except Exception as error:
                 return self._categorical_error(spec, error)
-        if mode != "lookup table":
+        if mode != "lookup_table":
             QMessageBox.warning(
                 self.dialog,
                 "Input Error",
@@ -383,7 +382,13 @@ class CategoricalProcessingMixin(
     def _categorical_mode(self, kind):
         method = getattr(self.dialog, "categorical_input_mode", None)
         if method is not None:
-            return str(method(kind) or "").strip().lower()
+            return (
+                str(method(kind) or "")
+                .strip()
+                .lower()
+                .replace("-", "_")
+                .replace(" ", "_")
+            )
         return ""
 
     def _categorical_lookup(self, kind):

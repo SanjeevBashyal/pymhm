@@ -8,7 +8,7 @@ from typing import Union
 from ..project_layout import meteo_folder
 
 
-METEO_VARIABLES = ("pre", "tavg", "tmin", "tmax")
+METEO_VARIABLES = ("pre", "tavg", "tmin", "tmax", "pet")
 PathInput = Union[str, Path]
 
 

@@ -21,9 +21,11 @@ Important packages:
 - `Morphology/`: DEM, watershed, soil, geology, LAI, crop/mask/write-all, latlon, observations.
 - `Meteorology/`: ERA5-Land to mHM forcing preparation.
 - `Configuration/`: namelist schemas/templates/state/rendering/version compatibility.
-- `mhm_tools_to_integrate/`: path-oriented adapters and UI-free helpers. The
-  categorical adapter under `setup_creation/` delegates land-cover, soil, and
-  geology computation to the externally installed `mhm_tools` package.
+- `mhm_tools_adapter.py`: small QGIS-free wrappers around the externally
+  installed `mhm_tools` package for categorical data and `latlon.nc`.
+- `Morphology/latlon/ascii_morphology.py`: UI-free morphology ASCII alignment
+  and writing.
+- `Meteorology/ERA5Land/mhm/`: ERA5-Land forcing preparation.
 - `nml-schemas/` and `nml-templates/`: versioned by mHM tool version, currently `v5.13` and `v6`.
 - `project-template/`: versioned project folder skeleton.
 
@@ -37,10 +39,8 @@ Important packages:
   out to the `mhm-tools` CLI, unless explicitly requested. The dependency floor
   is currently `mhm-tools>=0.2.2` in both `pyproject.toml` and
   `requirements.txt`.
-- Despite its legacy name,
-  `mhm_tools_to_integrate._bundled.ensure_bundled_mhm_tools()` currently falls
-  through to the installed package because this tree no longer contains
-  `pymhm/mhm_tools`.
+- Import the installed `mhm_tools` package directly. This repository does not
+  bundle a second `pymhm/mhm_tools` source tree.
 - UI-facing logs should go through `self.log_message(...)`.
 - Success popups are not wanted for routine generated classdefinition files; log silently unless an error needs user action.
 
@@ -138,9 +138,9 @@ Important packages:
 ## Style
 
 - Keep UI code focused on UI state, validation, and logging.
-- Keep QGIS adapters in `mhm_tools_to_integrate`; put generally reusable raster
-  computation in the external `mhm-tools` project and expose it through a
-  public Python function plus its CLI command where required.
+- Keep the `mhm_tools_adapter.py` boundary QGIS-free; put generally reusable
+  raster computation in the external `mhm-tools` project and expose it through
+  a public Python function plus its CLI command where required.
 - Do not copy external `mhm_tools` source back into this repository.
 - Prefer clear errors over silent fallbacks when the user is expected to provide fields/layers.
 - Keep changes narrow and aligned with existing mixin/module boundaries.

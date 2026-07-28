@@ -1,9 +1,7 @@
 """
 Example usage of the ERA5-Land module
 
-This script demonstrates how to use the ERA5-Land module to:
-1. Download ERA5-Land data from CDS
-2. Process NetCDF files to SWAT format
+This script demonstrates how to process local ERA5-Land NetCDF files.
 """
 
 from pathlib import Path
@@ -78,12 +76,6 @@ def example_process_all_data():
     print("\nProcessing complete!")
 
 
-# Example 2: Download ERA5-Land data
-# -----------------------------------
-# Note: You need to edit downloader.py to set your CDS API key and preferences.
-# Then run: python -m pymhm.Meteorology.ERA5Land.downloader <project-folder>
-
-
 if __name__ == "__main__":
     # Run the example
     print("=" * 60)
@@ -98,4 +90,3 @@ if __name__ == "__main__":
     
     # Example 2: Process all available data
     # example_process_all_data()
-

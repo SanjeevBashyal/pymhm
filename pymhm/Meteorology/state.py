@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Union
 
+from ..project_layout import workspace_folder
 from ..time_utils import utc_timestamp
 
 
@@ -23,7 +24,7 @@ class MeteorologyOutputState:
     def state_path(self) -> Path | None:
         if not self.dialog.project_folder:
             return None
-        return Path(self.dialog.project_folder) / STATE_FILENAME
+        return Path(workspace_folder(self.dialog.project_folder)) / STATE_FILENAME
 
     def load(self) -> dict[str, object]:
         path = self.state_path()
@@ -49,6 +50,7 @@ class MeteorologyOutputState:
             return
 
         try:
+            path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("w", encoding="utf-8") as state_file:
                 json.dump(state, state_file, indent=2, sort_keys=True)
         except Exception as e:
@@ -58,7 +60,9 @@ class MeteorologyOutputState:
     def output_key(self, path: Path) -> str:
         try:
             return os.path.relpath(
-                str(path), self.dialog.project_folder).replace("\\", "/")
+                str(path),
+                workspace_folder(self.dialog.project_folder),
+            ).replace("\\", "/")
         except ValueError:
             return str(path.resolve()).replace("\\", "/")
 

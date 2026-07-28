@@ -13,6 +13,7 @@ from .grid import (
     force_target_grid,
     normalize_spatial_axes,
     resample_to_target_grid,
+    resample_to_target_points,
     snap_bounds_to_grid,
     subset_dataset,
 )
@@ -27,13 +28,26 @@ def build_daily_dataset(
     bounds: tuple[float, float, float, float] | None,
     target_lat=None,
     target_lon=None,
+    target_sample_lat=None,
+    target_sample_lon=None,
     log: Callable[[str], None] | None = None,
 ):
     """Build one complete daily forcing dataset from monthly ERA5-Land files."""
     np, pd, xr = import_dependencies()
     explicit_target_lat = None if target_lat is None else np.asarray(target_lat, dtype="float64")
     explicit_target_lon = None if target_lon is None else np.asarray(target_lon, dtype="float64")
+    explicit_sample_lat = (
+        None if target_sample_lat is None
+        else np.asarray(target_sample_lat, dtype="float64")
+    )
+    explicit_sample_lon = (
+        None if target_sample_lon is None
+        else np.asarray(target_sample_lon, dtype="float64")
+    )
     has_explicit_target = explicit_target_lat is not None and explicit_target_lon is not None
+    has_sample_grid = (
+        explicit_sample_lat is not None and explicit_sample_lon is not None
+    )
     daily_arrays = []
     target_lat = None
     target_lon = None
@@ -71,7 +85,18 @@ def build_daily_dataset(
             daily = ensure_latitude_descending(daily)
             daily = daily.transpose("time", "lat", "lon")
 
-            if has_explicit_target:
+            if has_explicit_target and has_sample_grid:
+                daily = resample_to_target_points(
+                    daily,
+                    explicit_sample_lat,
+                    explicit_sample_lon,
+                    explicit_target_lat,
+                    explicit_target_lon,
+                    np,
+                )
+                target_lat = daily["lat"].values
+                target_lon = daily["lon"].values
+            elif has_explicit_target:
                 daily = resample_to_target_grid(
                     daily,
                     explicit_target_lat,

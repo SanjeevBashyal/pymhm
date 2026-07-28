@@ -14,6 +14,7 @@ from pymhm.dependency_bootstrap import (
     configure_qtpy_api,
     dependency_from_requirement_line,
 )
+from pymhm.project_layout import workspace_folder
 
 
 class ComboBox:
@@ -77,7 +78,7 @@ def test_edit_namelists_forwards_project_values_and_dimensions(
     assert prepared == [(str(tmp_path), "5.13")]
     assert calls == [{
         "schemas_dir": Path(controller_module.plugin_root()) / "nml-schemas" / "v5.13",
-        "output_dir": str(tmp_path),
+        "output_dir": workspace_folder(tmp_path),
         "initial_values": {
             "main": {"config_project": {"project_details": "5.13"}}
         },
@@ -96,7 +97,7 @@ def test_run_mhm_uses_project_terminal(tmp_path: Path, monkeypatch) -> None:
     assert ConfigurationProcessor(dialog).run_mhm() is True
     assert dialog.terminal.calls == [(
         "mhm",
-        {"cwd": str(tmp_path), "show": True},
+        {"cwd": workspace_folder(tmp_path), "show": True},
     )]
 
 
