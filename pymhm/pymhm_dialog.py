@@ -423,13 +423,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             previous = self.selected_folder_path(combo)
             combo.blockSignals(True)
             combo.clear()
+            combo.addItem("", None)
             for item in available:
                 combo.addItem(item.label, item.data)
             index = self._folder_combo_index(combo, previous)
             if index < 0 and previous and os.path.isdir(previous):
                 self._add_folder_combo_item(combo, previous)
                 index = combo.count() - 1
-            combo.setCurrentIndex(index)
+            combo.setCurrentIndex(index if index >= 0 else 0)
             combo.blockSignals(False)
 
     def selected_meteo_folder(self, kind):
@@ -529,7 +530,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         """Return one validated folder/source selection."""
         folder = self.selected_meteo_folder(kind)
         source = self.selected_meteo_source(kind)
-        if not folder and not source and not required:
+        if not folder and not required:
             return None
         if not folder:
             raise ValueError(f"Select the {kind} data folder.")
@@ -2316,7 +2317,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             if index < 0 and folder and os.path.isdir(folder):
                 self._add_folder_combo_item(folder_combo, folder)
                 index = folder_combo.count() - 1
-            folder_combo.setCurrentIndex(index)
+            folder_combo.setCurrentIndex(index if index >= 0 else 0)
 
             source = str(saved.get("source", "") or "")
             source_index = source_combo.findText(source)

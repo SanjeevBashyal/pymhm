@@ -93,9 +93,11 @@ def test_mhm_ready_temperature_requires_exact_files(tmp_path):
     folder = tmp_path / "temperature"
     _write_nc(folder / "tavg.nc", "tavg")
     _write_nc(folder / "tmin.nc", "tmin")
+    _write_nc(folder / "unexpected.nc", "temperature")
 
-    with pytest.raises(ValueError, match="tmax.nc"):
+    with pytest.raises(ValueError, match="folder must contain exactly") as error:
         inspect_meteo_folder(folder, "temperature", MHM_READY)
+    assert "unexpected.nc" not in str(error.value)
 
 
 def test_era5land_rejects_incompatible_grids(tmp_path):

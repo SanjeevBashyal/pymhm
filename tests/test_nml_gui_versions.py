@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 from nml_tools import json_to_namelist
+from nml_tools.gui.arrays import axis_labels
 from nml_tools.gui.model import (
     empty_document,
     load_project,
@@ -66,6 +67,27 @@ V5_PARAMETER_GROUPS = [
     "neutrons1",
     "neutrons2",
     "geoparameter",
+]
+MONTH_LABELS = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+]
+PARAMETER_COMPONENT_LABELS = [
+    "Lower bound",
+    "Upper bound",
+    "Value",
+    "Flag",
+    "Scaling",
 ]
 
 
@@ -202,7 +224,42 @@ def test_v513_schemas_match_reference_groups_and_fields(tmp_path: Path) -> None:
     for name in ("LCoverYearStart", "LCoverYearEnd", "LCoverfName"):
         field = schemas["LCover"]["properties"][name]
         assert field["x-fortran-shape"] == "max_lcover_scenes"
-        assert field["x-fortran-flex-tail-dims"] == 1
+        assert "x-fortran-flex-tail-dims" not in field
+
+
+def test_v513_array_axis_labels_match_version_contract(tmp_path: Path) -> None:
+    project = load_project(SCHEMAS / "v5.13", tmp_path)
+    schemas = {page.name: page.schema for page in project.namelists}
+
+    pan_evaporation = schemas["panEvapo"]["properties"]["evap_coeff"]
+    assert axis_labels(pan_evaporation, 1, 12) == MONTH_LABELS
+
+    night_ratios = schemas["nightDayRatio"]["properties"]
+    for name in (
+        "fnight_prec",
+        "fnight_pet",
+        "fnight_temp",
+        "fnight_ssrd",
+        "fnight_strd",
+    ):
+        assert axis_labels(night_ratios[name], 1, 12) == MONTH_LABELS
+
+    parameter_fields = [
+        field
+        for page in project.namelists
+        for field in page.schema.get("properties", {}).values()
+        if field.get("x-fortran-shape") == 5
+    ]
+    assert len(parameter_fields) == 140
+    for field in parameter_fields:
+        assert axis_labels(field, 1, 5) == PARAMETER_COMPONENT_LABELS
+
+    geo_parameter = schemas["geoparameter"]["properties"]["GeoParam"]
+    assert axis_labels(geo_parameter, 2, 5) == PARAMETER_COMPONENT_LABELS
+    assert geo_parameter["x-nml-tools-ui"]["table"] == {
+        "row-axis": 1,
+        "column-axis": 2,
+    }
 
 
 def test_initial_values_render_version_specific_main_groups(tmp_path: Path) -> None:

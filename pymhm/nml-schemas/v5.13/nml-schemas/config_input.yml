@@ -42,7 +42,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Latlon specification file path
   morph_latlon:
     type: array
@@ -57,7 +56,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Precipitation input
   pet_path:
     type: array
@@ -65,7 +63,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Potential evapotranspiration input
   temp_path:
     type: array
@@ -73,7 +70,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Air temperature input
   tann_path:
     type: array
@@ -81,7 +77,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Air temperature annual mean input
   tmin_path:
     type: array
@@ -89,7 +84,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Air temperature daily minimum input
   tmax_path:
     type: array
@@ -97,7 +91,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Air temperature daily maximum input
   ssrd_path:
     type: array
@@ -105,7 +98,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Surface shortwave radiation downwards input
   strd_path:
     type: array
@@ -113,7 +105,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Surface thermal radiation downwards input
   netrad_path:
     type: array
@@ -121,7 +112,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Net radiation input
   eabs_path:
     type: array
@@ -129,7 +119,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Vapor pressure input
   wind_path:
     type: array
@@ -137,7 +126,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Wind speed input
   meteo_mask_path:
     type: array
@@ -145,7 +133,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Meteorological mask file path
   runoff_path:
     type: array
@@ -153,7 +140,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Runoff input
   runoff_sealed_path:
     type: array
@@ -161,7 +147,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Sealed runoff input
   interflow_fast_path:
     type: array
@@ -169,7 +154,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Fast interflow input
   interflow_slow_path:
     type: array
@@ -177,7 +161,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Slow interflow input
   baseflow_path:
     type: array
@@ -185,7 +168,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Baseflow input
   hydro_mask_path:
     type: array
@@ -193,7 +175,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Hydrological mask file path
   dem_path:
     type: array
@@ -201,7 +182,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: DEM input
   slope_path:
     type: array
@@ -209,7 +189,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Slope input
   aspect_path:
     type: array
@@ -217,7 +196,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Aspect input
   fdir_path:
     type: array
@@ -225,7 +203,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Flow direction input
   facc_path:
     type: array
@@ -233,7 +210,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Flow accumulation input
   geo_class_path:
     type: array
@@ -241,7 +217,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Geology class input
   soil_class_path:
     type: array
@@ -249,7 +224,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Soil class input
   soil_horizon_class_path:
     type: array
@@ -257,7 +231,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Soil horizon class input
   lai_class_path:
     type: array
@@ -265,7 +238,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: LAI class input
   river_width_path:
     type: array
@@ -273,7 +245,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: River width input
   morph_mask_path:
     type: array
@@ -281,7 +252,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Morphology mask file path
   pre_var:
     type: array

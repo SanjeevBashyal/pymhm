@@ -10,5 +10,4 @@ properties:
     items:
       type: number
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     examples: [[0.5]]

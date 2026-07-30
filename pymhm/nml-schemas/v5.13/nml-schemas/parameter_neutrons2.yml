@@ -13,6 +13,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[300.0, 2000.0, 1500.0, 0, 1]]
   COSMIC_N1:
     title: Cosmic N1 parameter
@@ -21,6 +26,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[0.01, 10.0, 1.0, 0, 1]]
   COSMIC_N2:
     title: Cosmic N2 parameter
@@ -29,6 +39,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[0.01, 10.0, 1.0, 0, 1]]
   COSMIC_alpha0:
     title: Cosmic alpha0 parameter
@@ -37,6 +52,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[0.01, 10.0, 1.0, 0, 1]]
   COSMIC_alpha1:
     title: Cosmic alpha1 parameter
@@ -45,6 +65,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[0.01, 10.0, 1.0, 0, 1]]
   COSMIC_L30:
     title: Cosmic L30 parameter
@@ -53,6 +78,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[26.56, 424.78, 106.1942, 0, 1]]
   COSMIC_L31:
     title: Cosmic L31 parameter
@@ -61,6 +91,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[-118.3, 200.28, 40.9879, 0, 1]]
   COSMIC_LW0:
     title: Cosmic LW0 parameter
@@ -69,6 +104,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[0.0, 0.2, 0.1783, 0, 1]]
   COSMIC_LW1:
     title: Cosmic LW1 parameter
@@ -77,6 +117,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[0.0, 0.05, 0.0, 0, 1]]
 required:
   - COSMIC_N0

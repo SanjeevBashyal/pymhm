@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>825</width>
-    <height>907</height>
+    <height>935</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -564,6 +564,13 @@
              </widget>
             </item>
            </layout>
+          </item>
+          <item row="2" column="2">
+           <widget class="QComboBox" name="comboBox_pourPointOutletID">
+            <property name="toolTip">
+             <string>Select the outlet unique ID column from the attribute table</string>
+            </property>
+           </widget>
           </item>
          </layout>
         </widget>
@@ -1559,7 +1566,7 @@
      <widget class="QWidget" name="page_geometry">
       <layout class="QVBoxLayout" name="verticalLayout_page_geom">
        <item>
-        <widget class="Line" name="line_2">
+        <widget class="Line" name="line_morphPageSeparator_1">
          <property name="orientation">
           <enum>Qt::Horizontal</enum>
          </property>
@@ -1662,7 +1669,41 @@
         </layout>
        </item>
        <item>
-        <widget class="Line" name="line_8">
+        <layout class="QHBoxLayout" name="horizontalLayout">
+         <property name="topMargin">
+          <number>6</number>
+         </property>
+         <item>
+          <widget class="QPushButton" name="pushButton_domainDelineator">
+           <property name="text">
+            <string>Domain Delineator</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_2">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="checkBox_DEMdomain">
+           <property name="text">
+            <string>DEM Domain</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="Line" name="line_morphPageSeparator_2">
          <property name="orientation">
           <enum>Qt::Horizontal</enum>
          </property>
@@ -1671,7 +1712,7 @@
        <item>
         <widget class="QGroupBox" name="groupBox_Processing">
          <property name="title">
-          <string>Raster Map Inputs Processing</string>
+          <string>Display Raster Map Inputs</string>
          </property>
          <property name="flat">
           <bool>false</bool>
@@ -1680,6 +1721,12 @@
           <bool>false</bool>
          </property>
          <layout class="QGridLayout" name="gridLayout_2">
+          <property name="topMargin">
+           <number>3</number>
+          </property>
+          <property name="bottomMargin">
+           <number>3</number>
+          </property>
           <property name="verticalSpacing">
            <number>3</number>
           </property>

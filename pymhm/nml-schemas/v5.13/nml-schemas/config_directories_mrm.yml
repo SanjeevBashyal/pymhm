@@ -9,7 +9,6 @@ properties:
       x-fortran-len: buf
       format: directory-path
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     examples: [[data/observation/streamflow/]]
   dir_Total_Runoff:
     <<: *domain_directory

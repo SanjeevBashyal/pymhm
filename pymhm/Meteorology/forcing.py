@@ -415,9 +415,8 @@ def _files_for_spec(spec: MeteoFolderSpec) -> list[Path]:
     actual = {path.name for path in files}
     if actual != expected:
         raise ValueError(
-            f"mHM-ready {spec.kind} requires exactly "
-            f"{', '.join(sorted(expected))}; found "
-            f"{', '.join(sorted(actual)) or 'no .nc files'}.")
+            f"mHM-ready {spec.kind} folder must contain exactly "
+            f"{', '.join(_READY_FILES[spec.kind])}.")
     return [folder / name for name in _READY_FILES[spec.kind]]
 
 

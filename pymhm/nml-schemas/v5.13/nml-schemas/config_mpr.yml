@@ -26,7 +26,6 @@ properties:
       x-fortran-kind: i4
       default: 2
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Number of soil horizons
     description: Number of soil horizons to be modeled (nSoilHorizons_mHM).
   tillageDepth:
@@ -36,7 +35,6 @@ properties:
       x-fortran-kind: i4
       default: 200
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Tillage depth
     description: Soil depth down to which organic matter is possible [mm].
   soil_depth:
@@ -45,7 +43,6 @@ properties:
       type: integer
       x-fortran-kind: i4
     x-fortran-shape: [max_layers, max_domains]
-    x-fortran-flex-tail-dims: 2
     title: Soil horizon depth
     description: |-
       Bottom depth of soil horizons with respect to the ground surface [mm], positive downwards.
@@ -58,7 +55,6 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Sealed fraction of city area
     description: Fraction of area within city assumed to be fully sealed [0.0-1.0].
   land_cover_path:
@@ -67,7 +63,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Land cover path
     description: NetCDF land-cover dataset path.
   land_cover_var:
@@ -86,7 +81,6 @@ properties:
       x-fortran-kind: i4
       enum: [-3, -2, -1, 0, 1]
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: LAI time step
     description: |-
       Time step for LAI input data [days]:
@@ -101,7 +95,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: LAI path
     description: Gridded LAI dataset path (if `lai_time_step` < 0 or = 1).
   lai_var:
@@ -119,7 +112,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Soil LUT path
     description: Soil look-up table path.
   geo_lut_path:
@@ -128,7 +120,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Geology LUT path
     description: Geology look-up table path.
   lai_lut_path:
@@ -137,7 +128,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: LAI LUT path
     description: LAI look-up table path.
   read_restart:
@@ -153,7 +143,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Restart input path
     examples: [["mpr_restart_in.nc"]]
   write_restart:
@@ -169,6 +158,5 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Restart output path
     examples: [["mpr_restart_out.nc"]]

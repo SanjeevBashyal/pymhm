@@ -16,7 +16,6 @@ properties:
       type: number
       exclusiveMinimum: 0
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     examples: [[1.0]]
   L0Domain:
     type: array
@@ -24,7 +23,6 @@ properties:
       type: integer
       minimum: 1
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     examples: [[1]]
   write_restart:
     type: boolean
@@ -36,5 +34,4 @@ properties:
       minimum: 0
       maximum: 6
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     examples: [[0]]

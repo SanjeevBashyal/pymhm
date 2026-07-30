@@ -14,7 +14,6 @@ properties:
       x-fortran-kind: i4
       minimum: 1
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Meteo grid size in x-direction
   meteo_grid_ny:
     type: array
@@ -23,7 +22,6 @@ properties:
       x-fortran-kind: i4
       minimum: 1
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Meteo grid size in y-direction
   meteo_grid_xll:
     type: array
@@ -31,7 +29,6 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Meteo grid x origin
   meteo_grid_yll:
     type: array
@@ -39,7 +36,6 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Meteo grid y origin
   meteo_grid_cellsize:
     type: array
@@ -48,7 +44,6 @@ properties:
       x-fortran-kind: dp
       exclusiveMinimum: 0.0
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Meteo grid cell size
   meteo_grid_ydir:
     type: array
@@ -83,7 +78,6 @@ properties:
       x-fortran-kind: i4
       minimum: 1
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Hydro grid size in x-direction
   hydro_grid_ny:
     type: array
@@ -92,7 +86,6 @@ properties:
       x-fortran-kind: i4
       minimum: 1
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Hydro grid size in y-direction
   hydro_grid_xll:
     type: array
@@ -100,7 +93,6 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Hydro grid x origin
   hydro_grid_yll:
     type: array
@@ -108,7 +100,6 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Hydro grid y origin
   hydro_grid_cellsize:
     type: array
@@ -117,7 +108,6 @@ properties:
       x-fortran-kind: dp
       exclusiveMinimum: 0.0
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Hydro grid cell size
   hydro_grid_ydir:
     type: array
@@ -152,7 +142,6 @@ properties:
       x-fortran-kind: i4
       minimum: 1
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Morph grid size in x-direction
   morph_grid_ny:
     type: array
@@ -161,7 +150,6 @@ properties:
       x-fortran-kind: i4
       minimum: 1
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Morph grid size in y-direction
   morph_grid_xll:
     type: array
@@ -169,7 +157,6 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Morph grid x origin
   morph_grid_yll:
     type: array
@@ -177,7 +164,6 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Morph grid y origin
   morph_grid_cellsize:
     type: array
@@ -186,7 +172,6 @@ properties:
       x-fortran-kind: dp
       exclusiveMinimum: 0.0
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Morph grid cell size
   morph_grid_ydir:
     type: array

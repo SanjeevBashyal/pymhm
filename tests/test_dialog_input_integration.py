@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 import numpy as np
+import pytest
 import xarray as xr
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -103,9 +104,17 @@ def test_meteo_folder_source_and_multiplier_state_round_trip(tmp_path):
     temperature.mkdir()
 
     dialog = pymhmDialog()
-    assert dialog.comboBox_precipitationFile.count() == 0
+    assert dialog.comboBox_precipitationFile.count() == 1
+    assert dialog.comboBox_precipitationFile.itemText(0) == ""
     dialog.project_folder = str(tmp_path)
     dialog.refresh_meteo_folder_sources()
+    for combo in (
+        dialog.comboBox_precipitationFile,
+        dialog.comboBox_temperatureFile,
+        dialog.comboBox_petFile,
+    ):
+        assert combo.itemText(0) == ""
+        assert combo.itemData(0) is None
     dialog._loading_input_state = True
     try:
         dialog.comboBox_precipitationFile.setCurrentIndex(
@@ -145,8 +154,58 @@ def test_meteo_folder_source_and_multiplier_state_round_trip(tmp_path):
     )
     assert restored.selected_meteo_source("precipitation") == "mhm_ready"
     assert restored.selected_meteo_source("temperature") == "era5land"
+    assert restored.comboBox_petFile.currentIndex() == 0
+    assert restored.selected_meteo_folder("pet") == ""
     assert restored.spinBox_L2ResolutionMultiplier.value() == 4
     restored.close()
+
+
+def test_meteo_required_folders_and_optional_blank_pet(tmp_path):
+    _app()
+    precipitation = tmp_path / "pre"
+    temperature = tmp_path / "temp"
+    precipitation.mkdir()
+    temperature.mkdir()
+
+    dialog = pymhmDialog()
+    dialog.project_folder = str(tmp_path)
+    dialog.refresh_meteo_folder_sources()
+
+    with pytest.raises(ValueError, match="precipitation data folder"):
+        dialog.selected_meteo_specs()
+
+    dialog._loading_input_state = True
+    try:
+        dialog.comboBox_precipitationFile.setCurrentIndex(
+            dialog._folder_combo_index(
+                dialog.comboBox_precipitationFile,
+                str(precipitation),
+            )
+        )
+        dialog.comboBox_precipitationDataSource.setCurrentIndex(0)
+    finally:
+        dialog._loading_input_state = False
+
+    with pytest.raises(ValueError, match="temperature data folder"):
+        dialog.selected_meteo_specs()
+
+    dialog._loading_input_state = True
+    try:
+        dialog.comboBox_temperatureFile.setCurrentIndex(
+            dialog._folder_combo_index(
+                dialog.comboBox_temperatureFile,
+                str(temperature),
+            )
+        )
+        dialog.comboBox_temperatureDataSource.setCurrentIndex(0)
+        dialog.comboBox_petFile.setCurrentIndex(0)
+        dialog.comboBox_petDataSource.setCurrentIndex(1)
+    finally:
+        dialog._loading_input_state = False
+
+    _, _, pet = dialog.selected_meteo_specs()
+    assert pet is None
+    dialog.close()
 
 
 def test_combined_workflow_green_state_restores_from_workspace(tmp_path):

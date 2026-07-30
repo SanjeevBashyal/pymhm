@@ -10,6 +10,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[0.3000, 1.3000, 0.3000, 1, 1]]
   PET_a_impervious:
     title: Potential evapotranspiration impervious
@@ -18,6 +23,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[0.3000, 1.3000, 0.8000, 1, 1]]
   PET_a_pervious:
     title: Potential evapotranspiration pervious
@@ -26,6 +36,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[0.3000, 1.3000, 1.3000, 1, 1]]
   PET_b:
     title: Potential evapotranspiration b
@@ -34,6 +49,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[0.0000, 1.5000, 1.5000, 1, 1]]
   PET_c:
     title: Potential evapotranspiration c
@@ -42,6 +62,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[-2.000, 0.0000, -0.700, 1, 1]]
 required:
   - PET_a_forest

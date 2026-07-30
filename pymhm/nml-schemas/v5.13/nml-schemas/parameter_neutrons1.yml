@@ -13,6 +13,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[300.0, 2000.0, 1500.0, 0, 1]]
   Desilets_LW0:
     title: Desilets LW0 parameter
@@ -21,6 +26,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[0.0, 0.2, 0.1783, 0, 1]]
   Desilets_LW1:
     title: Desilets LW1 parameter
@@ -29,6 +39,11 @@ properties:
       type: number
       x-fortran-kind: dp
     x-fortran-shape: 5
+    x-nml-tools-ui:
+      axes:
+        "1":
+          title: Parameter component
+          labels: [Lower bound, Upper bound, Value, Flag, Scaling]
     examples: [[0.0, 0.05, 0.0, 0, 1]]
 required:
   - Desilets_N0

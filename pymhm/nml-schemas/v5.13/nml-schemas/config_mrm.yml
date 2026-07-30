@@ -35,7 +35,6 @@ properties:
       x-fortran-kind: dp
       exclusiveMinimum: 0.0
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: mRM routing resolution (L11)
     description: Resolution of the mRM routing grid, level 11.
     examples: [[0.1]]
@@ -103,7 +102,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Path for SCC gauges NetCDF file.
     examples: [["scc_gauges.nc"]]
   output_path:
@@ -112,7 +110,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Path for output file.
     examples: [["mrm_output.nc"]]
   output_node_path:
@@ -121,7 +118,6 @@ properties:
       type: string
       x-fortran-len: buf
     x-fortran-shape: max_domains
-    x-fortran-flex-tail-dims: 1
     title: Path for node based output file.
     examples: [["mrm_node_output.nc"]]
   
