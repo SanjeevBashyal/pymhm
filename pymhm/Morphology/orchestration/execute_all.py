@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..common import QMessageBox, morph_folder, os, project_geometry_folder
 from ..hydrology.aggregate import HydrologyMixin
+from ..hydrology.outlets import configured_gauged_outlet_ids
 from ..latlon import LatLonMixin
 from ..layers import LayerProcessingMixin
 from ..watershed import WatershedMixin
@@ -31,7 +32,7 @@ class ExecuteAllMixin(
         9. idgauges (will be processed after snap points due to dependency)
         10. channel network
         11. snap
-        12. upslope area
+        12. reuse an existing manually delineated domain mask
         13. verify geology class definition
         14. verify soil outputs
         """
@@ -171,21 +172,39 @@ class ExecuteAllMixin(
                 if self.snapped_points_path and os.path.exists(
                     self.snapped_points_path
                 ):
-                    self.log_message(
-                        "\n--- Processing Step 9/14: ID Gauges (now that snap points are available) ---"
+                    configured_ids = configured_gauged_outlet_ids(
+                        self.dialog.project_folder
                     )
-                    self.process_gauge_position()
+                    if configured_ids == []:
+                        self.log_message(
+                            "No outlets are marked as gauged. Skipping ID Gauges."
+                        )
+                    else:
+                        self.log_message(
+                            "\n--- Processing Step 9/14: ID Gauges (now that snap points are available) ---"
+                        )
+                        self.process_gauge_position()
 
-            # Step 12: Upslope Area (Delineate Watershed)
-            self.log_message("\n--- Step 12/14: Delineate Watershed (Upslope Area) ---")
-            if not self.snapped_points_path or not os.path.exists(
-                self.snapped_points_path
-            ):
+            # Step 12: domain masks are deliberately created in the interactive
+            # Domain Delineator, never by Execute All.
+            self.log_message("\n--- Step 12/14: Check Domain Watershed Mask ---")
+            merged_watershed = self._restore_existing_path(
+                "merged_watershed_path",
+                os.path.join(
+                    "Watersheds",
+                    "4_watershed_merged_vector.shp",
+                ),
+                "4_watershed_merged_vector.shp",
+            )
+            if merged_watershed:
                 self.log_message(
-                    "WARNING: Snapped points not available. Skipping Upslope Area step."
+                    "Reusing the saved merged domain watershed mask."
                 )
             else:
-                self.delineate_watershed()
+                self.log_message(
+                    "Domain delineation is handled separately. Use Domain "
+                    "Delineator before Meteo & Morph Setup."
+                )
 
             # Step 13: Verify Geology Class Definition
             self.log_message("\n--- Step 13/14: Verify Geology Class Definition ---")

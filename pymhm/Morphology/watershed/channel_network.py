@@ -24,40 +24,57 @@ class ChannelNetworkMixin(FlowAnalysisMixin, VectorIOMixin):
 
     def process_channel_network(self) -> None:
         """Create a stream network vector from pyflwdir flow accumulation."""
+        geometry_folder = project_geometry_folder(self.dialog.project_folder)
+        output_path = os.path.join(geometry_folder, "2_channel_network.shp")
+        self.channel_network_vector_path = self.create_channel_network(
+            threshold_cells=None,
+            output_path=output_path,
+            force=False,
+            load=True,
+        )
+
+    def create_channel_network(
+            self,
+            threshold_cells: int | None,
+            output_path: str,
+            force: bool = False,
+            load: bool = True) -> str | None:
+        """Create a channel network for an explicit cell threshold."""
         if not self._ensure_filled_dem(self.fill_dem):
-            return
+            return None
 
         # Keep the UI workflow consistent with the notebook: filled DEM,
         # flow accumulation, then stream extraction.
         if not self._ensure_flow_accumulation(
                 self.process_flow_accumulation,
                 self.fill_dem):
-            return
-
-        geometry_folder = project_geometry_folder(self.dialog.project_folder)
-        self.channel_network_vector_path = os.path.join(
-            geometry_folder, "2_channel_network.shp")
+            return None
+        if not output_path:
+            self.log_message("ERROR: Channel network output path is required.")
+            return None
+        output_path = os.path.abspath(output_path)
 
         # Check if Channel Network already exists, otherwise process it
-        if self.channel_network_vector_path and os.path.exists(self.channel_network_vector_path):
+        if os.path.exists(output_path) and not force:
             if self._vector_crs_matches_raster(
-                    self.channel_network_vector_path, self.filled_dem_path):
+                    output_path, self.filled_dem_path):
                 self.log_message(
                     "Channel Network already exists. Loading existing file...")
-                self.load_layer(self.channel_network_vector_path,
-                                "2_Channel_Network", is_raster=False)
-                return
+                if load:
+                    self.load_layer(
+                        output_path, "2_Channel_Network", is_raster=False)
+                return output_path
             self.log_message(
                 "Existing Channel Network CRS does not match the filled DEM. Recreating it.")
-            self._remove_stale_vector_output(self.channel_network_vector_path)
+        if os.path.exists(output_path):
+            self._remove_stale_vector_output(output_path)
 
         self.log_message("Processing Channel Network with pyflwdir...")
 
         context = self._build_flwdir_from_filled_dem()
         if not context:
             self.log_message("Channel Network processing failed.")
-            self.channel_network_vector_path = None
-            return
+            return None
 
         deps = context["deps"]
         np = deps["np"]
@@ -68,25 +85,39 @@ class ChannelNetworkMixin(FlowAnalysisMixin, VectorIOMixin):
         flow_accumulation = flwdir.upstream_area(unit="cell")
         flow_accumulation[invalid_mask] = 0
 
-        cell_area_m2 = self._reference_cell_area_m2(reference, deps)
-        channel_area_threshold_m2 = 10000000.0
-        threshold_cells = max(
-            1, int(round(channel_area_threshold_m2 / cell_area_m2)))
-
         valid_accumulation = flow_accumulation[flow_accumulation > 0]
         if valid_accumulation.size == 0:
             self.log_message("ERROR: No valid flow accumulation cells found.")
-            self.channel_network_vector_path = None
-            return
+            return None
 
         max_accumulation = int(np.nanmax(valid_accumulation))
-        if threshold_cells > max_accumulation:
-            threshold_cells = max(1, int(np.nanpercentile(valid_accumulation, 95)))
-            self.log_message(
-                "Channel threshold exceeded the basin accumulation. "
-                f"Using 95th percentile threshold: {threshold_cells} cells.")
+        if threshold_cells is None:
+            cell_area_m2 = self._reference_cell_area_m2(reference, deps)
+            threshold = max(1, int(round(10000000.0 / cell_area_m2)))
+            if threshold > max_accumulation:
+                threshold = max(
+                    1, int(np.nanpercentile(valid_accumulation, 95)))
+                self.log_message(
+                    "Channel threshold exceeded the basin accumulation. "
+                    f"Using 95th percentile threshold: {threshold} cells.")
+        else:
+            try:
+                threshold = int(threshold_cells)
+            except (TypeError, ValueError):
+                self.log_message(
+                    "ERROR: Channel threshold must be a positive integer.")
+                return None
+            if threshold < 1:
+                self.log_message(
+                    "ERROR: Channel threshold must be a positive integer.")
+                return None
+            if threshold > max_accumulation:
+                self.log_message(
+                    "ERROR: Channel threshold exceeds the maximum flow "
+                    f"accumulation ({max_accumulation} cells).")
+                return None
 
-        stream_mask = flow_accumulation >= threshold_cells
+        stream_mask = flow_accumulation >= threshold
         stream_order = flwdir.stream_order("strahler", mask=stream_mask)
         features = flwdir.streams(
             mask=stream_mask,
@@ -96,8 +127,7 @@ class ChannelNetworkMixin(FlowAnalysisMixin, VectorIOMixin):
 
         if not features:
             self.log_message("ERROR: pyflwdir did not produce any stream features.")
-            self.channel_network_vector_path = None
-            return
+            return None
 
         fields = QgsFields()
         fields.append(qgs_field("Order", "Int"))
@@ -109,17 +139,17 @@ class ChannelNetworkMixin(FlowAnalysisMixin, VectorIOMixin):
         filled_dem_layer = QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
         output_crs = filled_dem_layer.crs() if filled_dem_layer.isValid() else self.dialog.get_crs()
 
-        self._remove_vector_dataset(self.channel_network_vector_path)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        self._remove_vector_dataset(output_path)
         writer = create_vector_file_writer(
-            self.channel_network_vector_path,
+            output_path,
             fields,
             QgsWkbTypes.LineString,
             output_crs,
         )
         if writer.hasError():
             self.log_message(f"ERROR creating channel network: {writer.errorMessage()}")
-            self.channel_network_vector_path = None
-            return
+            return None
 
         written = 0
         for pyflwdir_feature in features:
@@ -142,17 +172,19 @@ class ChannelNetworkMixin(FlowAnalysisMixin, VectorIOMixin):
 
         del writer
 
-        if written > 0 and os.path.exists(self.channel_network_vector_path):
+        if written > 0 and os.path.exists(output_path):
             self.mark_output_prepared(
-                self.channel_network_vector_path,
+                output_path,
                 name="2_Channel_Network",
                 loaded=False
             )
-            self.load_layer(self.channel_network_vector_path,
-                            "2_Channel_Network", is_raster=False)
+            if load:
+                self.load_layer(
+                    output_path, "2_Channel_Network", is_raster=False)
             self.log_message(
                 f"Channel Network processing completed with {written} stream segments "
-                f"(threshold: {threshold_cells} cells).")
-        else:
-            self.log_message("Channel Network processing failed.")
-            self.channel_network_vector_path = None
+                f"(threshold: {threshold} cells).")
+            return output_path
+
+        self.log_message("Channel Network processing failed.")
+        return None

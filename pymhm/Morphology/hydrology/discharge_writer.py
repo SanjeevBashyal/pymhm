@@ -2,6 +2,7 @@
 """Convert discharge tables to mHM streamflow observation text files."""
 from __future__ import annotations
 
+import csv
 import math
 import re
 from dataclasses import dataclass
@@ -57,6 +58,9 @@ def records_from_layer(layer) -> list[DischargeRecord]:
         records = records_from_grdc_file(source_path)
         if records:
             return records
+        records = records_from_delimited_file(source_path)
+        if records:
+            return records
 
     return records_from_qgis_table(layer)
 
@@ -96,6 +100,63 @@ def records_from_grdc_file(path: Path) -> list[DischargeRecord]:
             value=parse_discharge_value(parts[2].strip()),
         ))
 
+    return sort_and_deduplicate(records)
+
+
+def records_from_delimited_file(path: Path) -> list[DischargeRecord]:
+    """Parse common date/value columns from a CSV or delimited TXT file."""
+    if path.suffix.lower() not in {".csv", ".txt"}:
+        return []
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError:
+        text = path.read_text(encoding="latin-1", errors="ignore")
+    except OSError:
+        return []
+
+    try:
+        dialect = csv.Sniffer().sniff(text[:8192], delimiters=",;\t|")
+        reader = csv.DictReader(text.splitlines(), dialect=dialect)
+    except (csv.Error, TypeError):
+        return []
+
+    field_names = [str(name) for name in (reader.fieldnames or []) if name]
+    date_field = find_field(
+        field_names,
+        ("date", "datetime", "time", "timestamp", "valid_time", "datum", "yyyymmdd"),
+    )
+    value_field = find_field(
+        field_names,
+        ("q", "qobs", "q_day", "discharge", "streamflow", "flow", "value", "runoff"),
+    )
+    year_field = find_field(field_names, ("year", "yyyy", "yr"))
+    month_field = find_field(field_names, ("month", "mm", "mon"))
+    day_field = find_field(field_names, ("day", "dd"))
+    if value_field is None or (
+            date_field is None
+            and not (year_field and month_field and day_field)):
+        return []
+
+    hour_field = find_field(field_names, ("hour", "hh"))
+    minute_field = find_field(field_names, ("minute", "min"))
+    records = []
+    for row in reader:
+        timestamp = (
+            parse_datetime_value(row.get(date_field))
+            if date_field
+            else parse_ymd_fields(
+                row.get(year_field),
+                row.get(month_field),
+                row.get(day_field),
+                row.get(hour_field) if hour_field else 0,
+                row.get(minute_field) if minute_field else 0,
+            )
+        )
+        if timestamp is not None:
+            records.append(DischargeRecord(
+                timestamp=timestamp,
+                value=parse_discharge_value(row.get(value_field)),
+            ))
     return sort_and_deduplicate(records)
 
 

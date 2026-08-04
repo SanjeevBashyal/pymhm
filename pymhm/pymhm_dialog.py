@@ -47,6 +47,10 @@ from .Meteorology.forcing import (MeteoFolderSpec, TargetGrid,
                                   inspect_meteo_inputs, resolution_in_crs)
 from .Meteorology.processor import MeteorologyRun
 from .Morphology import MorphologyProcessor
+from .Morphology.hydrology.outlets import (
+    StationIdError,
+    outlet_ids_from_layer,
+)
 from .project_layout import (data_folder, data_raw_folder,
                              ensure_project_structure, geometry_folder,
                              output_folder, restart_folder,
@@ -249,6 +253,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self._meteo_inspections = {}
         self._pending_meteo_run = None
         self._terminal_dialog = None
+        self._domain_delineator_dialog = None
         self._morphology_workflow_threads = {}
         self._morphology_workflow_workers = {}
         self._workflow_button_default_styles = {}
@@ -396,6 +401,68 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             combo.blockSignals(False)
             if isinstance(previous, dict) and index < 0:
                 adapter.layerChanged.emit(adapter.currentLayer())
+
+    def populate_pour_point_outlet_fields(self, layer=None, preferred=None):
+        """Populate the outlet ID field selector from the pour-point layer."""
+        combo = self.comboBox_pourPointOutletID
+        previous = str(preferred or combo.currentText() or "").strip()
+        if layer is None:
+            layer = self.mMapLayerComboBox_pour_points.currentLayer()
+
+        names = []
+        try:
+            if layer and layer.isValid():
+                names = list(layer.fields().names())
+        except Exception:
+            names = []
+
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("")
+        combo.addItems(names)
+        index = combo.findText(previous) if previous else -1
+        if index < 0:
+            for candidate in range(1, combo.count()):
+                if combo.itemText(candidate).casefold() == previous.casefold():
+                    index = candidate
+                    break
+        if index < 0:
+            for candidate in range(1, combo.count()):
+                if combo.itemText(candidate).casefold() == "station_id":
+                    index = candidate
+                    break
+        combo.setCurrentIndex(index if index >= 0 else 0)
+        combo.blockSignals(False)
+
+    def selected_outlet_id_field(self):
+        """Return the selected pour-point unique ID field."""
+        return self.comboBox_pourPointOutletID.currentText().strip()
+
+    def selected_outlet_ids(self):
+        """Return validated unique outlet IDs from the selected field."""
+        layer = self.mMapLayerComboBox_pour_points.currentLayer()
+        field_name = self.selected_outlet_id_field()
+        if not field_name:
+            raise StationIdError("Select the pour-point outlet ID field.")
+        return outlet_ids_from_layer(layer, field_name)
+
+    def selected_input_file_paths(self):
+        """Return local files already selected elsewhere in the plugin."""
+        paths = set()
+        for _, widget in self.input_layer_widgets():
+            source = getattr(widget, "source_path", lambda: "")()
+            source = str(source or "").split("|", 1)[0]
+            if os.path.isfile(source):
+                paths.add(os.path.normcase(os.path.abspath(source)))
+        for config in self._categorical_lookup_configs.values():
+            path = str(config.get("lookup_table", "") or "")
+            if os.path.isfile(path):
+                paths.add(os.path.normcase(os.path.abspath(path)))
+        for _, widget in self.input_text_widgets():
+            path = widget.text().strip()
+            if os.path.isfile(path):
+                paths.add(os.path.normcase(os.path.abspath(path)))
+        return paths
 
     def meteo_input_widgets(self):
         """Return folder/source widgets for the three meteorology inputs."""
@@ -769,11 +836,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             "Snap Pour Points",
             self.morphology_processor.snap_points,
         )
-        self.connect_processor_button(
-            self.pushButton_delineate,
-            "Delineate Watershed",
-            self.morphology_processor.delineate_watershed,
-        )
+        self.pushButton_delineate.clicked.connect(self.open_domain_delineator)
         if hasattr(self, "pushButton_elevation_bands"):
             self.connect_processor_button(
                 self.pushButton_elevation_bands,
@@ -817,6 +880,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             )
         try:
             self.mMapLayerComboBox_pour_points.layerChanged.connect(
+                self.populate_pour_point_outlet_fields
+            )
+            self.mMapLayerComboBox_pour_points.layerChanged.connect(
                 lambda layer=None: self.morphology_processor.update_gauged_outlet_count(
                     layer
                 )
@@ -824,6 +890,16 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         except Exception:
             pass
         self.morphology_processor.update_gauged_outlet_count()
+
+        self.comboBox_pourPointOutletID.currentIndexChanged.connect(
+            self.handle_model_input_changed
+        )
+        self.checkBox_DEMdomain.toggled.connect(
+            self.handle_model_input_changed
+        )
+        self.pushButton_domainDelineator.clicked.connect(
+            self.open_domain_delineator
+        )
 
         # Layer processing - delegate to processor
         self.connect_processor_button(
@@ -1575,6 +1651,58 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.morphology_processor.resetGeometry()
         self.refresh_morphology_workflow_button_states()
 
+    def open_domain_delineator(self, checked=False):
+        """Open the per-outlet domain delineation dialog in QGIS."""
+        if getattr(sys.modules.get("qgis"), "_pymhm_standalone_qgis", False):
+            QMessageBox.information(
+                self,
+                "Domain Delineator",
+                "Interactive domain delineation requires the QGIS plugin runtime.",
+            )
+            return
+        if not self.project_folder:
+            QMessageBox.warning(
+                self,
+                "Domain Delineator",
+                "Select a project folder first.",
+            )
+            return
+        try:
+            outlet_ids = self.selected_outlet_ids()
+        except StationIdError as error:
+            QMessageBox.warning(self, "Domain Delineator", str(error))
+            return
+        if not outlet_ids:
+            QMessageBox.warning(
+                self,
+                "Domain Delineator",
+                "The pour-point layer does not contain any outlet features.",
+            )
+            return
+
+        try:
+            from .domain_delineator_dialog import DomainDelineatorDialog
+
+            self.morphology_processor.load_project_state()
+            dialog = DomainDelineatorDialog(
+                self,
+                self.morphology_processor,
+                self.mMapLayerComboBox_pour_points.currentLayer(),
+                self.selected_outlet_id_field(),
+                outlet_ids,
+            )
+            self._domain_delineator_dialog = dialog
+            execute = getattr(dialog, "exec", None) or dialog.exec_
+            execute()
+        except Exception as error:
+            self.log_message(f"ERROR: Domain delineator failed: {error}")
+            self.log_message(f"Traceback: {traceback.format_exc()}")
+            QMessageBox.critical(self, "Domain Delineator", str(error))
+        finally:
+            self._domain_delineator_dialog = None
+            self.save_input_state()
+            self.morphology_processor.update_gauged_outlet_count()
+
     def morphology_workflow_specs(self):
         """Return metadata for threaded morphology workflows."""
         return {
@@ -2161,6 +2289,8 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             },
             "categorical_lookups": self._serialized_categorical_lookups(),
             "meteo_inputs": self.serialized_meteo_inputs(),
+            "pour_point_outlet_id_field": self.selected_outlet_id_field(),
+            "dem_domain": self.checkBox_DEMdomain.isChecked(),
             "crs_authid": crs.authid() if crs and crs.isValid() else "",
             "project_layout": {
                 "data_folder": data_folder(self.project_folder),
@@ -2256,6 +2386,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.refresh_input_sources()
             self.refresh_meteo_folder_sources()
             self.restore_input_layers(state.get("layers", {}))
+            self.restore_domain_inputs(state)
             self.restore_meteo_inputs(state.get("meteo_inputs", {}))
             self.refresh_grid_resolution_controls()
         finally:
@@ -2276,6 +2407,13 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             combo.blockSignals(False)
         for _, widget in self.input_text_widgets():
             widget.clear()
+        self.comboBox_pourPointOutletID.blockSignals(True)
+        self.comboBox_pourPointOutletID.clear()
+        self.comboBox_pourPointOutletID.addItem("")
+        self.comboBox_pourPointOutletID.blockSignals(False)
+        self.checkBox_DEMdomain.blockSignals(True)
+        self.checkBox_DEMdomain.setChecked(False)
+        self.checkBox_DEMdomain.blockSignals(False)
         for _, folder_combo, source_combo in self.meteo_input_widgets():
             folder_combo.blockSignals(True)
             folder_combo.setCurrentIndex(-1)
@@ -2295,6 +2433,15 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self._categorical_modes = {}
         self._preferred_l1_resolution = None
         self._preferred_l11_resolution = None
+
+    def restore_domain_inputs(self, state):
+        """Restore the selected outlet ID field and DEM-domain flag."""
+        self.populate_pour_point_outlet_fields(
+            preferred=str(state.get("pour_point_outlet_id_field", "") or "")
+        )
+        self.checkBox_DEMdomain.blockSignals(True)
+        self.checkBox_DEMdomain.setChecked(bool(state.get("dem_domain", False)))
+        self.checkBox_DEMdomain.blockSignals(False)
 
     def restore_meteo_inputs(self, state):
         """Restore the three meteo folders, source modes, and L2 multiplier."""

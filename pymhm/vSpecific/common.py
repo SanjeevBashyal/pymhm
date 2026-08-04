@@ -16,7 +16,30 @@ def repeat(value: Any, count: int) -> list[Any]:
 
 
 def domain_count(dialog: Any) -> int:
-    """Count pour points marked as domains, with a one-domain fallback."""
+    """Count saved active domains, with the legacy layer-field fallback."""
+    project = getattr(dialog, "project_folder", None)
+    if project:
+        try:
+            # Keep this QGIS-optional module importable before the standalone
+            # shim is installed.
+            from ..Morphology.watershed.domain_state import (
+                domain_count as saved_domain_count,
+                load_state as load_domain_state,
+                state_path as domain_state_path,
+            )
+
+            state = load_domain_state(project)
+            configured = domain_state_path(project).is_file() and bool(
+                state.get("outlets")
+                or state.get("pour_points_source")
+                or state.get("outlet_id_field")
+                or state.get("dem_domain")
+            )
+            if configured:
+                return max(1, saved_domain_count(state))
+        except Exception:
+            pass
+
     widget = getattr(dialog, "mMapLayerComboBox_pour_points", None)
     try:
         layer = widget.currentLayer()

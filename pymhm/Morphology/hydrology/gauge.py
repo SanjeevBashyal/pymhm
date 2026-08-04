@@ -16,7 +16,9 @@ from ..watershed.pour_point_workflow import PourPointWorkflowMixin
 from .outlets import (
     OutletCountMixin,
     StationIdError,
-    find_station_id_field,
+    configured_gauged_outlet_ids,
+    find_outlet_id_field,
+    selected_outlet_id_field,
     station_id_int,
     station_id_text,
 )
@@ -57,10 +59,20 @@ class GaugePositionMixin(PourPointWorkflowMixin, OutletCountMixin, PredecessorMi
             return
 
         try:
-            station_field = find_station_id_field(snapped_layer)
-            gauge_features = self._gauge_features(snapped_layer, station_field)
+            station_field = find_outlet_id_field(
+                snapped_layer,
+                selected_outlet_id_field(self.dialog),
+            )
+            configured_ids = configured_gauged_outlet_ids(
+                self.dialog.project_folder
+            )
+            gauge_features = self._gauge_features(
+                snapped_layer,
+                station_field,
+                configured_ids,
+            )
         except StationIdError as e:
-            QMessageBox.critical(self.dialog, "Missing STATION_ID", str(e))
+            QMessageBox.critical(self.dialog, "Invalid Outlet IDs", str(e))
             self.log_message(f"ERROR: {e}")
             return
 
@@ -79,14 +91,14 @@ class GaugePositionMixin(PourPointWorkflowMixin, OutletCountMixin, PredecessorMi
                     [item["station_int"] for item in gauge_features],
                     deps)):
             self.log_message(
-                "Gauge Position already exists with matching STATION_ID values. Loading existing file...")
+                "Gauge Position already exists with matching outlet ID values. Loading existing file...")
             self.load_layer(self.gauge_position_path, "2_Gauge_Position")
             return
 
         self.log_message(
-            "Processing Gauge Position with STATION_ID burn values...")
+            "Processing Gauge Position with outlet ID burn values...")
         self.log_message(
-            f"Gauge STATION_ID values: {', '.join(item['station_text'] for item in gauge_features)}")
+            f"Gauge outlet ID values: {', '.join(item['station_text'] for item in gauge_features)}")
 
         context = self._build_flwdir_from_filled_dem()
         if not context:
@@ -139,7 +151,7 @@ class GaugePositionMixin(PourPointWorkflowMixin, OutletCountMixin, PredecessorMi
 
             gauge_array[snapped_row, snapped_col] = item["station_int"]
             self.log_message(
-                f"  STATION_ID {item['station_text']} burned at row={snapped_row}, "
+                f"  Outlet ID {item['station_text']} burned at row={snapped_row}, "
                 f"col={snapped_col}, stream snap distance={distance_cells:.2f} cell(s).")
 
         if self._write_raster_array(
@@ -154,23 +166,38 @@ class GaugePositionMixin(PourPointWorkflowMixin, OutletCountMixin, PredecessorMi
         else:
             self.log_message("Gauge Position processing failed.")
 
-    def _gauge_features(self, layer, station_field: str) -> list[dict]:
+    def _gauge_features(
+            self,
+            layer,
+            station_field: str,
+            configured_ids: list[str] | None = None) -> list[dict]:
         """Return valid snapped gauge features with station ids."""
         gauge_features = []
         seen_station_ids = set()
+        allowed_ids = (
+            {station_id_text(value) for value in configured_ids}
+            if configured_ids is not None
+            else None
+        )
 
         for feature in layer.getFeatures():
             station_text = station_id_text(feature.attribute(station_field))
-            station_value = station_id_int(feature.attribute(station_field))
+            if not station_text:
+                raise StationIdError(
+                    f"A snapped pour point has an empty {station_field} value.")
             if station_text in seen_station_ids:
                 raise StationIdError(
-                    f"Duplicate STATION_ID '{station_text}' found in snapped pour points.")
+                    f"Duplicate outlet ID '{station_text}' found in snapped pour points.")
             seen_station_ids.add(station_text)
 
+            if allowed_ids is not None and station_text not in allowed_ids:
+                continue
+
+            station_value = station_id_int(feature.attribute(station_field))
             geometry = feature.geometry()
             if geometry is None or geometry.isEmpty():
                 raise StationIdError(
-                    f"STATION_ID '{station_text}' has an empty geometry.")
+                    f"Outlet ID '{station_text}' has an empty geometry.")
 
             gauge_features.append({
                 "station_text": station_text,
@@ -178,9 +205,23 @@ class GaugePositionMixin(PourPointWorkflowMixin, OutletCountMixin, PredecessorMi
                 "geometry": geometry,
             })
 
-        if not gauge_features:
+        missing_ids = (
+            allowed_ids - seen_station_ids
+            if allowed_ids is not None
+            else set()
+        )
+        if missing_ids:
             raise StationIdError(
-                "The selected pour points layer does not contain any gauged outlets.")
+                "Configured gauged outlet IDs are missing from the snapped "
+                f"pour points: {', '.join(sorted(missing_ids))}.")
+
+        if not gauge_features:
+            message = (
+                "No outlets are marked as gauged in Domain Delineator."
+                if configured_ids is not None
+                else "The selected pour points layer does not contain any gauged outlets."
+            )
+            raise StationIdError(message)
 
         return gauge_features
 

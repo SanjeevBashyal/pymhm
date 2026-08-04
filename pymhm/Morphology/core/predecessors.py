@@ -282,6 +282,30 @@ class PredecessorMixin(BaseProcessingMixin, NamingAndRangeMixin):
                 "4_watershed_merged_vector.shp"):
             return True
 
+        # Once the new domain workflow is configured, only its explicitly saved
+        # merged mask is valid. Do not silently replace it with the legacy
+        # all-pour-point delineation.
+        from ..watershed.domain_state import load_state, state_path
+
+        project_folder = getattr(self.dialog, "project_folder", None)
+        state = load_state(project_folder) if project_folder else {}
+        configured = bool(
+            project_folder
+            and state_path(project_folder).is_file()
+            and (
+                state.get("outlets")
+                or state.get("pour_points_source")
+                or state.get("outlet_id_field")
+                or state.get("dem_domain")
+            )
+        )
+        if configured:
+            self.log_message(
+                "Merged domain watershed mask is missing. Save the required "
+                "domains in Domain Delineator first."
+            )
+            return False
+
         if not self._ensure_snapped_points(
                 snap_points,
                 process_channel_network,

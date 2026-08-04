@@ -430,7 +430,7 @@
              </sizepolicy>
             </property>
             <property name="toolTip">
-             <string>Required: STATION_ID in the Attribute Table</string>
+             <string>Select the unique outlet ID column from the attribute table</string>
             </property>
             <property name="text">
              <string>Pour Points Layer:</string>

@@ -39,7 +39,7 @@ class ResetGeometryMixin(BaseProcessingMixin):
         
         if not os.path.exists(geometry_folder):
             self.log_message("Geometry folder does not exist. Nothing to reset.")
-            return
+            os.makedirs(geometry_folder, exist_ok=True)
         
         # Get all layers and identify those from geometry folder
         layers_to_remove = []
@@ -92,6 +92,8 @@ class ResetGeometryMixin(BaseProcessingMixin):
             self.log_message(f"Deleted {deleted_count} file(s) from Geometry folder.")
         else:
             self.log_message("No files found to delete in Geometry folder.")
+
+        self._invalidate_domain_delineation_outputs()
         
         # Step 3: Reset all path attributes
         self.filled_dem_path = None
@@ -116,3 +118,40 @@ class ResetGeometryMixin(BaseProcessingMixin):
         
         self.log_message("All geometry processing attributes reset.")
         self.log_message("Geometry reset completed successfully.")
+
+    def _invalidate_domain_delineation_outputs(self) -> None:
+        """Clear generated domain references while preserving user choices."""
+        project_folder = getattr(self.dialog, "project_folder", None)
+        if not project_folder:
+            return
+
+        from ..watershed.domain_state import load_state, save_state, state_path
+
+        if not state_path(project_folder).is_file():
+            return
+
+        state = load_state(project_folder)
+        output_keys = (
+            "picked",
+            "picked_point",
+            "picked_x",
+            "picked_y",
+            "picked_crs",
+            "catchment_area",
+            "catchment_area_m2",
+            "mask_path",
+            "vector_path",
+        )
+        changed = False
+        for record in state.get("outlets", {}).values():
+            for key in output_keys:
+                if key in record:
+                    record.pop(key)
+                    changed = True
+
+        if changed:
+            save_state(project_folder, state)
+            self.log_message(
+                "Invalidated saved domain watershed outputs; gauge, discharge, "
+                "and domain selections were preserved."
+            )

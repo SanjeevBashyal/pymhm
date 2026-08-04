@@ -15,7 +15,8 @@ from pymhm import standalone_qgis
 standalone_qgis.install(force=True)
 
 # isort: off
-from qgis.core import QgsCoordinateReferenceSystem  # noqa: E402
+from qgis.core import (QgsCoordinateReferenceSystem,  # noqa: E402
+                       QgsVectorLayer)
 from qgis.PyQt.QtWidgets import QApplication  # noqa: E402
 
 from pymhm.input_selection import InputComboAdapter  # noqa: E402
@@ -79,6 +80,9 @@ def test_project_without_saved_state_clears_previous_project_inputs(tmp_path):
     )
     dialog.comboBox_soilInput.setCurrentIndex(0)
     dialog.comboBox_soil_inputType.setCurrentIndex(1)
+    dialog.comboBox_pourPointOutletID.addItem("old_id")
+    dialog.comboBox_pourPointOutletID.setCurrentText("old_id")
+    dialog.checkBox_DEMdomain.setChecked(True)
     dialog._categorical_lookup_configs["soil"] = {
         "lookup_table": str(first_project / "soil.csv"),
         "mapping_field": "source",
@@ -93,7 +97,50 @@ def test_project_without_saved_state_clears_previous_project_inputs(tmp_path):
     assert dialog.comboBox_soil_inputType.currentIndex() == -1
     assert dialog.categorical_lookup_config("soil") is None
     assert not dialog.checkBox_enableFolderSearch.isChecked()
+    assert dialog.selected_outlet_id_field() == ""
+    assert not dialog.checkBox_DEMdomain.isChecked()
     dialog.close()
+
+
+def test_pour_point_fields_and_domain_choice_round_trip(tmp_path):
+    _app()
+    pour_points = tmp_path / "pour_points.csv"
+    pour_points.write_text(
+        "station_id,outlet_name\n1,upper\n2,lower\n",
+        encoding="utf-8",
+    )
+    layer = QgsVectorLayer(str(pour_points), "pour points", "delimitedtext")
+
+    dialog = pymhmDialog()
+    dialog.project_folder = str(tmp_path)
+    dialog.mMapLayerComboBox_pour_points.setLayer(layer)
+
+    fields = [
+        dialog.comboBox_pourPointOutletID.itemText(index)
+        for index in range(dialog.comboBox_pourPointOutletID.count())
+    ]
+    assert fields == ["", "station_id", "outlet_name"]
+    assert dialog.selected_outlet_id_field() == "station_id"
+    assert dialog.selected_outlet_ids() == ["1", "2"]
+
+    dialog.comboBox_pourPointOutletID.setCurrentText("outlet_name")
+    dialog.checkBox_DEMdomain.setChecked(True)
+    dialog.save_input_state()
+    dialog.close()
+
+    state_path = Path(workspace_folder(tmp_path)) / "pymhm_input_state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["pour_point_outlet_id_field"] == "outlet_name"
+    assert state["dem_domain"] is True
+
+    restored = pymhmDialog()
+    restored.project_folder = str(tmp_path)
+    restored.load_input_state()
+
+    assert restored.selected_outlet_id_field() == "outlet_name"
+    assert restored.selected_outlet_ids() == ["upper", "lower"]
+    assert restored.checkBox_DEMdomain.isChecked()
+    restored.close()
 
 
 def test_meteo_folder_source_and_multiplier_state_round_trip(tmp_path):

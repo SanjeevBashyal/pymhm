@@ -24,6 +24,7 @@ class _WorkflowHarness:
         self.flow_direction_path = ""
         self.channel_network_vector_path = ""
         self.snapped_points_path = ""
+        self.merged_watershed_path = ""
         self.latlon_result = True
 
     def _touch(self, path):
@@ -112,6 +113,9 @@ class _WorkflowHarness:
     def process_gauge_position(self):
         self.calls.append("gauge")
 
+    def _restore_existing_path(self, _attribute, *_filenames):
+        return None
+
     def delineate_watershed(self):
         self.calls.append("watershed")
 
@@ -151,7 +155,6 @@ def test_execute_all_stops_before_finalization(tmp_path):
         "channel_network",
         "snap",
         "gauge",
-        "watershed",
     ]
     assert workflow.statuses[-1][:2] == ("execute_all", "completed")
 

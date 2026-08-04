@@ -7,7 +7,12 @@ from ..core.base import BaseProcessingMixin
 from .discharge_dialog import DischargeTableAssignmentDialog
 from .discharge_writer import write_streamflow_observation
 from .observation_paths import streamflow_observation_folder
-from .outlets import StationIdError, station_ids_from_layer
+from .outlets import (
+    StationIdError,
+    configured_gauged_outlet_ids,
+    selected_outlet_id_field,
+    station_ids_from_layer,
+)
 
 
 class DischargeAssignmentMixin(BaseProcessingMixin):
@@ -26,9 +31,29 @@ class DischargeAssignmentMixin(BaseProcessingMixin):
 
         pour_points_layer = self.dialog.mMapLayerComboBox_pour_points.currentLayer()
         try:
-            station_ids = station_ids_from_layer(pour_points_layer)
+            all_station_ids = station_ids_from_layer(
+                pour_points_layer,
+                field_name=selected_outlet_id_field(self.dialog),
+            )
+            configured_ids = configured_gauged_outlet_ids(
+                self.dialog.project_folder
+            )
+            if configured_ids is None:
+                station_ids = all_station_ids
+            else:
+                missing_ids = set(configured_ids) - set(all_station_ids)
+                if missing_ids:
+                    raise StationIdError(
+                        "Configured gauged outlet IDs are missing from the "
+                        f"pour points: {', '.join(sorted(missing_ids))}.")
+                configured_set = set(configured_ids)
+                station_ids = [
+                    station_id
+                    for station_id in all_station_ids
+                    if station_id in configured_set
+                ]
         except StationIdError as e:
-            QMessageBox.critical(self.dialog, "Missing STATION_ID", str(e))
+            QMessageBox.critical(self.dialog, "Invalid Outlet IDs", str(e))
             self.log_message(f"ERROR: {e}")
             return
 
@@ -36,7 +61,7 @@ class DischargeAssignmentMixin(BaseProcessingMixin):
             QMessageBox.warning(
                 self.dialog,
                 "No Gauged Outlets",
-                "The selected pour points layer does not contain any features.")
+                "No outlets are marked as gauged.")
             return
 
         dialog = DischargeTableAssignmentDialog(station_ids, self.dialog)
