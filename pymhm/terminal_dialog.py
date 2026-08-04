@@ -7,15 +7,16 @@ import shlex
 
 from qgis.PyQt import QtCore, QtGui, QtWidgets
 
+from .pyui.ui_project_terminal_dialog import Ui_ProjectTerminalDialog
 
-class ProjectTerminalDialog(QtWidgets.QDialog):
+
+class ProjectTerminalDialog(QtWidgets.QDialog, Ui_ProjectTerminalDialog):
     """A small persistent shell session shown in a reusable dialog."""
 
     def __init__(self, parent=None):
         super(ProjectTerminalDialog, self).__init__(parent)
+        self.setupUi(self)
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose, False)
-        self.setWindowTitle("Project Terminal")
-        self.resize(900, 520)
 
         self._cwd = None
         self._history = []
@@ -26,34 +27,14 @@ class ProjectTerminalDialog(QtWidgets.QDialog):
         self._process.finished.connect(self._process_finished)
         self._process.errorOccurred.connect(self._process_error)
 
-        layout = QtWidgets.QVBoxLayout(self)
-        self.output = QtWidgets.QPlainTextEdit(self)
-        self.output.setReadOnly(True)
-        self.output.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
         font = QtGui.QFont("Monospace")
         font.setStyleHint(QtGui.QFont.TypeWriter)
         self.output.setFont(font)
-        layout.addWidget(self.output)
-
-        command_row = QtWidgets.QHBoxLayout()
-        self.command_edit = QtWidgets.QLineEdit(self)
-        self.command_edit.setPlaceholderText("Command")
         self.command_edit.returnPressed.connect(self.send_current_command)
         self.command_edit.installEventFilter(self)
-        command_row.addWidget(self.command_edit)
-
-        self.send_button = QtWidgets.QPushButton("Run", self)
         self.send_button.clicked.connect(self.send_current_command)
-        command_row.addWidget(self.send_button)
-
-        self.clear_button = QtWidgets.QPushButton("Clear", self)
         self.clear_button.clicked.connect(self.output.clear)
-        command_row.addWidget(self.clear_button)
-
-        self.close_button = QtWidgets.QPushButton("Close", self)
         self.close_button.clicked.connect(self.hide)
-        command_row.addWidget(self.close_button)
-        layout.addLayout(command_row)
 
     def show_for_directory(self, cwd: str) -> bool:
         """Show the terminal and ensure its shell is in ``cwd``."""

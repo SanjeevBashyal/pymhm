@@ -57,7 +57,7 @@ from .project_layout import (data_folder, data_raw_folder,
                              workspace_folder, z_temp_folder)
 from .qgis_compat import map_layer_filters
 from .terminal_dialog import ProjectTerminalDialog
-from .ui_pymhm_dialog_base import Ui_pymhmDialog
+from .pyui.ui_pymhm_dialog_base import Ui_pymhmDialog
 # Import utility mixin and processors
 from .utils import DialogUtils
 

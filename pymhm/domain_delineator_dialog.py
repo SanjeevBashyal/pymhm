@@ -42,7 +42,7 @@ from .Morphology.watershed.domain_state import (
     save_state,
 )
 from .project_layout import geometry_folder
-from .ui_domain_delineator_dialog import Ui_DomainDelineatorDialog
+from .pyui.ui_domain_delineator_dialog import Ui_DomainDelineatorDialog
 
 
 class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):

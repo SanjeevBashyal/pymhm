@@ -20,6 +20,7 @@ except ImportError:
     from qgis.PyQt import QtCore, QtWidgets
 
 from .project_layout import WORKSPACE_FOLDER_NAME
+from .pyui.ui_lookup_config_dialog import Ui_LookupConfigDialog
 
 EXCLUDED_PROJECT_FOLDERS = {WORKSPACE_FOLDER_NAME}
 INPUT_EXTENSIONS = {
@@ -387,30 +388,13 @@ def read_lookup_fields(lookup_table) -> list[str]:
     return [str(column) for column in table.columns if str(column) != "geometry"]
 
 
-class LookupConfigDialog(QtWidgets.QDialog):
+class LookupConfigDialog(QtWidgets.QDialog, Ui_LookupConfigDialog):
     """Select a project lookup table, mapping field, and class field."""
 
     def __init__(self, project_folder, parent=None, initial=None):
         super().__init__(parent)
-        self.setWindowTitle("Lookup Table")
+        self.setupUi(self)
         self._initial = initial
-
-        self.lookup_table_combo = QtWidgets.QComboBox(self)
-        self.mapping_field_combo = QtWidgets.QComboBox(self)
-        self.class_field_combo = QtWidgets.QComboBox(self)
-        self.error_label = QtWidgets.QLabel(self)
-        self.error_label.setWordWrap(True)
-        self.buttons = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
-            self,
-        )
-
-        layout = QtWidgets.QFormLayout(self)
-        layout.addRow("Lookup table", self.lookup_table_combo)
-        layout.addRow("Mapping field", self.mapping_field_combo)
-        layout.addRow("Class field", self.class_field_combo)
-        layout.addRow(self.error_label)
-        layout.addRow(self.buttons)
 
         for item in scan_project_inputs(project_folder, "lookup"):
             self.lookup_table_combo.addItem(item.label, item.data["path"])
@@ -418,9 +402,6 @@ class LookupConfigDialog(QtWidgets.QDialog):
         self.lookup_table_combo.currentIndexChanged.connect(self._refresh_fields)
         self.mapping_field_combo.currentIndexChanged.connect(self._update_ok)
         self.class_field_combo.currentIndexChanged.connect(self._update_ok)
-        self.buttons.accepted.connect(self.accept)
-        self.buttons.rejected.connect(self.reject)
-
         initial_path = self._initial_value("lookup_table")
         if initial_path:
             for index in range(self.lookup_table_combo.count()):

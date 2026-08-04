@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ProjectTerminalDialog</class>
+ <widget class="QDialog" name="ProjectTerminalDialog">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>900</width><height>520</height></rect></property>
+  <property name="windowTitle"><string>Project Terminal</string></property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item><widget class="QPlainTextEdit" name="output"><property name="readOnly"><bool>true</bool></property><property name="lineWrapMode"><enum>QPlainTextEdit::NoWrap</enum></property></widget></item>
+   <item>
+    <layout class="QHBoxLayout" name="command_row">
+     <item><widget class="QLineEdit" name="command_edit"><property name="placeholderText"><string>Command</string></property></widget></item>
+     <item><widget class="QPushButton" name="send_button"><property name="text"><string>Run</string></property></widget></item>
+     <item><widget class="QPushButton" name="clear_button"><property name="text"><string>Clear</string></property></widget></item>
+     <item><widget class="QPushButton" name="close_button"><property name="text"><string>Close</string></property></widget></item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

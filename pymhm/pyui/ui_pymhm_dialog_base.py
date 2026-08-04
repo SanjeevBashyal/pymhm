@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'pymhm_dialog_base.ui'
+# Form implementation generated from reading ui file 'pymhm/ui/pymhm_dialog_base.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #
@@ -1292,13 +1292,3 @@ class Ui_pymhmDialog(object):
         self.pushButton_terminal.setText(_translate("pymhmDialog", "Terminal"))
 from qgis import gui
 import resources_rc
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    pymhmDialog = QtWidgets.QDialog()
-    ui = Ui_pymhmDialog()
-    ui.setupUi(pymhmDialog)
-    pymhmDialog.show()
-    sys.exit(app.exec_())

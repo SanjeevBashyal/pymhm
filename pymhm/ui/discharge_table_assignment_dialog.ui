@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DischargeTableAssignmentDialog</class>
+ <widget class="QDialog" name="DischargeTableAssignmentDialog">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>560</width><height>320</height></rect></property>
+  <property name="windowTitle"><string>Assign Discharge Tables</string></property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item><widget class="QLabel" name="intro_label"><property name="text"><string>Select one discharge table layer for each STATION_ID.</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item>
+    <widget class="QScrollArea" name="scroll_area">
+     <property name="widgetResizable"><bool>true</bool></property>
+     <widget class="QWidget" name="rows_widget">
+      <property name="geometry"><rect><x>0</x><y>0</y><width>534</width><height>234</height></rect></property>
+      <layout class="QGridLayout" name="rows_layout" columnstretch="0,1"/>
+     </widget>
+    </widget>
+   </item>
+   <item><widget class="QDialogButtonBox" name="buttons"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="standardButtons"><set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set></property></widget></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections>
+  <connection><sender>buttons</sender><signal>accepted()</signal><receiver>DischargeTableAssignmentDialog</receiver><slot>accept()</slot></connection>
+  <connection><sender>buttons</sender><signal>rejected()</signal><receiver>DischargeTableAssignmentDialog</receiver><slot>reject()</slot></connection>
+ </connections>
+</ui>
