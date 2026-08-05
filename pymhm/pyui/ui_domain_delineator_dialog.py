@@ -140,3 +140,13 @@ class Ui_DomainDelineatorDialog(object):
         self.label_catchmentAreaValue.setText(_translate("DomainDelineatorDialog", "-"))
         self.pushButton_save.setText(_translate("DomainDelineatorDialog", "Save"))
         self.pushButton_close.setText(_translate("DomainDelineatorDialog", "Close"))
+
+
+if __name__ == "__main__":
+    import sys
+    app = QtWidgets.QApplication(sys.argv)
+    DomainDelineatorDialog = QtWidgets.QDialog()
+    ui = Ui_DomainDelineatorDialog()
+    ui.setupUi(DomainDelineatorDialog)
+    DomainDelineatorDialog.show()
+    sys.exit(app.exec_())

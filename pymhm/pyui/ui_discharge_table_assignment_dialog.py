@@ -47,3 +47,13 @@ class Ui_DischargeTableAssignmentDialog(object):
         _translate = QtCore.QCoreApplication.translate
         DischargeTableAssignmentDialog.setWindowTitle(_translate("DischargeTableAssignmentDialog", "Assign Discharge Tables"))
         self.intro_label.setText(_translate("DischargeTableAssignmentDialog", "Select one discharge table layer for each STATION_ID."))
+
+
+if __name__ == "__main__":
+    import sys
+    app = QtWidgets.QApplication(sys.argv)
+    DischargeTableAssignmentDialog = QtWidgets.QDialog()
+    ui = Ui_DischargeTableAssignmentDialog()
+    ui.setupUi(DischargeTableAssignmentDialog)
+    DischargeTableAssignmentDialog.show()
+    sys.exit(app.exec_())

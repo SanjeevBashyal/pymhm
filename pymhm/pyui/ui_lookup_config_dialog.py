@@ -57,3 +57,13 @@ class Ui_LookupConfigDialog(object):
         self.label_lookupTable.setText(_translate("LookupConfigDialog", "Lookup table"))
         self.label_mappingField.setText(_translate("LookupConfigDialog", "Mapping field"))
         self.label_classField.setText(_translate("LookupConfigDialog", "Class field"))
+
+
+if __name__ == "__main__":
+    import sys
+    app = QtWidgets.QApplication(sys.argv)
+    LookupConfigDialog = QtWidgets.QDialog()
+    ui = Ui_LookupConfigDialog()
+    ui.setupUi(LookupConfigDialog)
+    LookupConfigDialog.show()
+    sys.exit(app.exec_())

@@ -59,3 +59,13 @@ class Ui_ElevationBandDialog(object):
         self.label_maxElevation.setText(_translate("ElevationBandDialog", "Selected DEM maximum:"))
         self.max_elevation_value.setText(_translate("ElevationBandDialog", "0.00"))
         self.label_width.setText(_translate("ElevationBandDialog", "Elevation window width:"))
+
+
+if __name__ == "__main__":
+    import sys
+    app = QtWidgets.QApplication(sys.argv)
+    ElevationBandDialog = QtWidgets.QDialog()
+    ui = Ui_ElevationBandDialog()
+    ui.setupUi(ElevationBandDialog)
+    ElevationBandDialog.show()
+    sys.exit(app.exec_())

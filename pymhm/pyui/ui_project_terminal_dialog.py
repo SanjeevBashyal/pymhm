@@ -48,3 +48,13 @@ class Ui_ProjectTerminalDialog(object):
         self.send_button.setText(_translate("ProjectTerminalDialog", "Run"))
         self.clear_button.setText(_translate("ProjectTerminalDialog", "Clear"))
         self.close_button.setText(_translate("ProjectTerminalDialog", "Close"))
+
+
+if __name__ == "__main__":
+    import sys
+    app = QtWidgets.QApplication(sys.argv)
+    ProjectTerminalDialog = QtWidgets.QDialog()
+    ui = Ui_ProjectTerminalDialog()
+    ui.setupUi(ProjectTerminalDialog)
+    ProjectTerminalDialog.show()
+    sys.exit(app.exec_())
