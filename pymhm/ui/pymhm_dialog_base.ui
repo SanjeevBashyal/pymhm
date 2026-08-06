@@ -1686,19 +1686,38 @@
         </layout>
        </item>
        <item>
-        <layout class="QHBoxLayout" name="horizontalLayout">
+        <layout class="QHBoxLayout" name="horizontalLayout_domainDefinition" stretch="0,0,0,0">
          <property name="topMargin">
           <number>6</number>
          </property>
          <item>
-          <widget class="QPushButton" name="pushButton_domainDelineator">
+          <widget class="QLabel" name="label_domainDefinition">
            <property name="text">
-            <string>Domain Delineator</string>
+            <string>Domain Definition:</string>
            </property>
           </widget>
          </item>
          <item>
-          <spacer name="horizontalSpacer_2">
+          <widget class="QComboBox" name="comboBox_domainDefinitionType">
+           <item>
+            <property name="text">
+             <string>Single Domain [DEM extent]</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Select Domains [using Snapped Pour Points]</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Select Domains [using Domain Delineator]</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_domainDefinition">
            <property name="orientation">
             <enum>Qt::Horizontal</enum>
            </property>
@@ -1727,7 +1746,7 @@
         </widget>
        </item>
        <item>
-        <widget class="QGroupBox" name="groupBox_Processing">
+        <widget class="QGroupBox" name="groupBox_displayMorphLayers">
          <property name="title">
           <string>Display Raster Map Inputs</string>
          </property>
@@ -1737,100 +1756,107 @@
          <property name="checkable">
           <bool>false</bool>
          </property>
-         <layout class="QGridLayout" name="gridLayout_2">
+         <layout class="QVBoxLayout" name="verticalLayout_4">
           <property name="topMargin">
            <number>3</number>
           </property>
           <property name="bottomMargin">
            <number>3</number>
           </property>
-          <property name="verticalSpacing">
-           <number>3</number>
-          </property>
-          <item row="4" column="1">
-           <widget class="QPushButton" name="pushButton_aspect">
-            <property name="text">
-             <string>Aspect</string>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="2">
-           <widget class="QPushButton" name="pushButton_gaugePosition">
-            <property name="text">
-             <string>Gauge Position</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="3">
-           <widget class="QPushButton" name="pushButton_hydrogeology">
-            <property name="text">
-             <string>Hydrogeology</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="1">
-           <widget class="QPushButton" name="pushButton_slope">
-            <property name="text">
-             <string>Slope</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="2">
-           <widget class="QPushButton" name="pushButton_flowDirection">
-            <property name="text">
-             <string>Flow Direction</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="3">
-           <widget class="QPushButton" name="pushButton_landUse">
-            <property name="text">
-             <string>Land Use</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="3">
-           <widget class="QPushButton" name="pushButton_soil">
-            <property name="text">
-             <string>Soil</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="2">
-           <widget class="QPushButton" name="pushButton_flowAccumulation">
-            <property name="text">
-             <string>Flow Accumulation</string>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="3">
-           <widget class="QPushButton" name="pushButton_LAI">
-            <property name="text">
-             <string>LAI</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QPushButton" name="pushButton_fillDem">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>16777215</width>
-              <height>16777215</height>
-             </size>
-            </property>
-            <property name="toolTip">
-             <string>Fill Sinks in DEM</string>
-            </property>
-            <property name="text">
-             <string>DEM (Filled)</string>
-            </property>
-           </widget>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_displayMorphLayers" stretch="1,3,1">
+            <item>
+             <widget class="QComboBox" name="comboBox_morphVariableToDisplay">
+              <property name="maximumSize">
+               <size>
+                <width>16777215</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="currentIndex">
+               <number>-1</number>
+              </property>
+              <item>
+               <property name="text">
+                <string>Dem</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Slope</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Aspect</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Flow Accumulation</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Flow Direction</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>IDGauges</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Land Use</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Soil</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Geology</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Lai</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Domain Mask</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+            <item>
+             <widget class="QDateTimeEdit" name="dateTimeEdit_forHistoricalInputs">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="pushButton_morphLayerDisplay">
+              <property name="maximumSize">
+               <size>
+                <width>40</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="toolTip">
+               <string>Browse for meteorology data folder</string>
+              </property>
+              <property name="text">
+               <string>➤</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
           </item>
          </layout>
         </widget>
@@ -2394,7 +2420,7 @@
                <widget class="QDateTimeEdit" name="dateTimeEdit"/>
               </item>
               <item>
-               <widget class="QPushButton" name="pushButton_browse_meteoDisplay">
+               <widget class="QPushButton" name="pushButton_meteoDisplay">
                 <property name="maximumSize">
                  <size>
                   <width>40</width>
