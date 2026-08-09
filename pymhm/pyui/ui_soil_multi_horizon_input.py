@@ -35,6 +35,19 @@ class Ui_Dialog(object):
         self.horizontalLayout_nSoilHorizons.addWidget(self.spinBox_nSoilHorizons)
         spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout_nSoilHorizons.addItem(spacerItem)
+        self.pushButton_addHorizonInputWidgets = QtWidgets.QPushButton(self.tab_config)
+        self.pushButton_addHorizonInputWidgets.setMinimumSize(QtCore.QSize(23, 23))
+        self.pushButton_addHorizonInputWidgets.setMaximumSize(QtCore.QSize(23, 16777215))
+        self.pushButton_addHorizonInputWidgets.setAutoFillBackground(False)
+        self.pushButton_addHorizonInputWidgets.setStyleSheet("    QPushButton {\n"
+"        text-align: left;\n"
+"    }")
+        self.pushButton_addHorizonInputWidgets.setText("")
+        icon = QtGui.QIcon()
+        icon.addPixmap(QtGui.QPixmap(":/plugins/pymhm/Resources/run.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        self.pushButton_addHorizonInputWidgets.setIcon(icon)
+        self.pushButton_addHorizonInputWidgets.setObjectName("pushButton_addHorizonInputWidgets")
+        self.horizontalLayout_nSoilHorizons.addWidget(self.pushButton_addHorizonInputWidgets)
         self.verticalLayout_2.addLayout(self.horizontalLayout_nSoilHorizons)
         self.tableWidget_soilHorizonDepthInputs = QtWidgets.QTableWidget(self.tab_config)
         self.tableWidget_soilHorizonDepthInputs.setMinimumSize(QtCore.QSize(480, 0))
@@ -158,6 +171,7 @@ class Ui_Dialog(object):
         _translate = QtCore.QCoreApplication.translate
         Dialog.setWindowTitle(_translate("Dialog", "Dialog"))
         self.label_nSoilHorizons.setText(_translate("Dialog", "Number of Horizons:"))
+        self.pushButton_addHorizonInputWidgets.setToolTip(_translate("Dialog", "Execute All Morphology"))
         item = self.tableWidget_soilHorizonDepthInputs.verticalHeaderItem(0)
         item.setText(_translate("Dialog", "Horizon 1"))
         item = self.tableWidget_soilHorizonDepthInputs.horizontalHeaderItem(0)
@@ -185,6 +199,7 @@ class Ui_Dialog(object):
         self.pushButton_browseBulkDensityInputHorizon1.setToolTip(_translate("Dialog", "Select Project Folder"))
         self.pushButton_browseBulkDensityInputHorizon1.setText(_translate("Dialog", "..."))
         self.tabWidget_multiHorizonSoilInput.setTabText(self.tabWidget_multiHorizonSoilInput.indexOf(self.tab_bulkDensityInputs), _translate("Dialog", "Bulk Density"))
+import resources_rc
 
 
 if __name__ == "__main__":

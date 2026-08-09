@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'pymhm/ui/discharge_table_assignment_dialog.ui'
+# Form implementation generated from reading ui file 'pymhm/ui/domain_and_discharge_table_assignment_dialog.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #
@@ -29,32 +29,36 @@ class Ui_DischargeTableAssignmentDialog(object):
         self.rows_widget.setObjectName("rows_widget")
         self.rows_layout = QtWidgets.QGridLayout(self.rows_widget)
         self.rows_layout.setObjectName("rows_layout")
-        self.label_pourPointIDValue = QtWidgets.QLabel(self.rows_widget)
-        self.label_pourPointIDValue.setText("")
-        self.label_pourPointIDValue.setObjectName("label_pourPointIDValue")
-        self.rows_layout.addWidget(self.label_pourPointIDValue, 0, 1, 1, 1)
-        self.label_pourPointID = QtWidgets.QLabel(self.rows_widget)
-        self.label_pourPointID.setObjectName("label_pourPointID")
-        self.rows_layout.addWidget(self.label_pourPointID, 0, 0, 1, 1)
         spacerItem = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.rows_layout.addItem(spacerItem, 1, 0, 1, 1)
         self.pushButton_browseDischargeTable1 = QtWidgets.QPushButton(self.rows_widget)
         self.pushButton_browseDischargeTable1.setEnabled(False)
         self.pushButton_browseDischargeTable1.setMaximumSize(QtCore.QSize(40, 16777215))
         self.pushButton_browseDischargeTable1.setObjectName("pushButton_browseDischargeTable1")
-        self.rows_layout.addWidget(self.pushButton_browseDischargeTable1, 0, 4, 1, 1)
+        self.rows_layout.addWidget(self.pushButton_browseDischargeTable1, 0, 5, 1, 1)
         self.comboBox_dischargeTableInput = QtWidgets.QComboBox(self.rows_widget)
         self.comboBox_dischargeTableInput.setEnabled(False)
         self.comboBox_dischargeTableInput.setObjectName("comboBox_dischargeTableInput")
-        self.rows_layout.addWidget(self.comboBox_dischargeTableInput, 0, 3, 1, 1)
+        self.rows_layout.addWidget(self.comboBox_dischargeTableInput, 0, 4, 1, 1)
         self.checkBox_isGauge = QtWidgets.QCheckBox(self.rows_widget)
         self.checkBox_isGauge.setObjectName("checkBox_isGauge")
-        self.rows_layout.addWidget(self.checkBox_isGauge, 0, 2, 1, 1)
+        self.rows_layout.addWidget(self.checkBox_isGauge, 0, 3, 1, 1)
+        self.label_pourPointID = QtWidgets.QLabel(self.rows_widget)
+        self.label_pourPointID.setObjectName("label_pourPointID")
+        self.rows_layout.addWidget(self.label_pourPointID, 0, 0, 1, 1)
+        self.label_pourPointIDValue = QtWidgets.QLabel(self.rows_widget)
+        self.label_pourPointIDValue.setText("")
+        self.label_pourPointIDValue.setObjectName("label_pourPointIDValue")
+        self.rows_layout.addWidget(self.label_pourPointIDValue, 0, 1, 1, 1)
+        self.checkBox_isDomain = QtWidgets.QCheckBox(self.rows_widget)
+        self.checkBox_isDomain.setObjectName("checkBox_isDomain")
+        self.rows_layout.addWidget(self.checkBox_isDomain, 0, 2, 1, 1)
         self.rows_layout.setColumnStretch(0, 2)
         self.rows_layout.setColumnStretch(1, 1)
         self.rows_layout.setColumnStretch(2, 2)
-        self.rows_layout.setColumnStretch(3, 5)
-        self.rows_layout.setColumnStretch(4, 1)
+        self.rows_layout.setColumnStretch(3, 2)
+        self.rows_layout.setColumnStretch(4, 5)
+        self.rows_layout.setColumnStretch(5, 1)
         self.scroll_area.setWidget(self.rows_widget)
         self.verticalLayout.addWidget(self.scroll_area)
         self.buttons = QtWidgets.QDialogButtonBox(DischargeTableAssignmentDialog)
@@ -72,10 +76,11 @@ class Ui_DischargeTableAssignmentDialog(object):
         _translate = QtCore.QCoreApplication.translate
         DischargeTableAssignmentDialog.setWindowTitle(_translate("DischargeTableAssignmentDialog", "Assign Discharge Tables"))
         self.intro_label.setText(_translate("DischargeTableAssignmentDialog", "Select one discharge table layer for each STATION_ID."))
-        self.label_pourPointID.setText(_translate("DischargeTableAssignmentDialog", "Pour Point ID:"))
         self.pushButton_browseDischargeTable1.setToolTip(_translate("DischargeTableAssignmentDialog", "Select Project Folder"))
         self.pushButton_browseDischargeTable1.setText(_translate("DischargeTableAssignmentDialog", "..."))
         self.checkBox_isGauge.setText(_translate("DischargeTableAssignmentDialog", "Is Gauge?"))
+        self.label_pourPointID.setText(_translate("DischargeTableAssignmentDialog", "Pour Point ID:"))
+        self.checkBox_isDomain.setText(_translate("DischargeTableAssignmentDialog", "Is Domain?"))
 
 
 if __name__ == "__main__":

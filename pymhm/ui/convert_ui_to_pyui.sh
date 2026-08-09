@@ -4,6 +4,7 @@ pyrcc5 pymhm/ui/resources.qrc -o pymhm/resources_rc.py
 pyuic5 -x pymhm/ui/project_terminal_dialog.ui -o pymhm/pyui/ui_project_terminal_dialog.py
 pyuic5 -x pymhm/ui/domain_delineator_dialog.ui -o pymhm/pyui/ui_domain_delineator_dialog.py
 pyuic5 -x pymhm/ui/discharge_table_assignment_dialog.ui -o pymhm/pyui/ui_discharge_table_assignment_dialog.py
+pyuic5 -x pymhm/ui/domain_and_discharge_table_assignment_dialog.ui -o pymhm/pyui/ui_domain_and_discharge_table_assignment_dialog.py
 pyuic5 -x pymhm/ui/elevation_band_dialog.ui -o pymhm/pyui/ui_elevation_band_dialog.py
 pyuic5 -x pymhm/ui/lookup_config_dialog.ui -o pymhm/pyui/ui_lookup_config_dialog.py
 pyuic5 -x pymhm/ui/land_use_historical_input.ui -o pymhm/pyui/ui_land_use_historical_input.py
