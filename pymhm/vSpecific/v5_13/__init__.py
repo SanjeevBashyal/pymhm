@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from typing import Any
+from pathlib import Path
 
 from ..common import (
     coordinate_flag,
     domain_count,
     geology_count,
     geoparameter,
+    namelist_settings,
     repeat,
     resolution,
 )
@@ -24,6 +26,7 @@ def build_dimensions(dialog: Any) -> dict[str, int]:
 
 def build_initial_values(dialog: Any) -> dict[str, Any]:
     count = domain_count(dialog)
+    settings = namelist_settings(dialog)
     l1 = resolution(dialog, "current_l1_resolution")
     l11 = resolution(dialog, "current_l11_resolution")
     mainconfig: dict[str, Any] = {
@@ -78,12 +81,7 @@ def build_initial_values(dialog: Any) -> dict[str, Any]:
             "processSelection": {
                 "processCase": [1, 1, 1, 1, 0, 1, 1, 3, 1, 0, 0],
             },
-            "LCover": {
-                "nLCoverScene": 1,
-                "LCoverYearStart": [1900],
-                "LCoverYearEnd": [2100],
-                "LCoverfName": ["lc.asc"],
-            },
+            "LCover": _land_cover_values(settings),
             "directories_MPR": {
                 "dir_gridded_LAI": repeat("data/lai/", count),
             },
@@ -93,7 +91,97 @@ def build_initial_values(dialog: Any) -> dict[str, Any]:
     geo_values = geoparameter(dialog, geo_count, component_major=False)
     if geo_values is not None:
         values["parameter"] = {"geoparameter": {"GeoParam": geo_values}}
+    soil = _soil_values(settings)
+    if soil:
+        values["main"]["soildata"] = soil
+    gauges = _gauge_values(settings, count)
+    if gauges:
+        values["main"]["evaluation_gauges"] = gauges
     return values
+
+
+def _land_cover_values(settings: dict[str, Any]) -> dict[str, Any]:
+    configured = settings.get("land_cover", {})
+    scenes = configured.get("scenes", []) if isinstance(configured, dict) else []
+    valid = []
+    for scene in scenes:
+        if not isinstance(scene, dict):
+            continue
+        try:
+            start = int(scene["start_year"])
+            end = int(scene["end_year"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        path = scene.get("output_path") or scene.get("path") or scene.get("filename")
+        if path:
+            valid.append((start, end, Path(str(path)).name))
+    if not valid:
+        valid = [(1900, 2100, "lc.asc")]
+    valid = valid[:50]
+    pad = 50 - len(valid)
+    return {
+        "nLCoverScene": len(valid),
+        "LCoverYearStart": [item[0] for item in valid] + [0] * pad,
+        "LCoverYearEnd": [item[1] for item in valid] + [0] * pad,
+        "LCoverfName": [item[2] for item in valid] + [""] * pad,
+    }
+
+
+def _soil_values(settings: dict[str, Any]) -> dict[str, Any]:
+    soil = settings.get("soil", {})
+    horizons = soil.get("horizons", []) if isinstance(soil, dict) else []
+    depths = []
+    for horizon in horizons[:10]:
+        if not isinstance(horizon, dict):
+            continue
+        try:
+            depths.append(float(horizon["lower_depth"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not depths:
+        return {}
+    tillage = int(soil.get("tillage_depth") or depths[0])
+    padded = depths + [depths[-1]] * (10 - len(depths))
+    return {
+        "iFlag_soilDB": 0,
+        "tillageDepth": tillage,
+        "nSoilHorizons_mHM": len(depths),
+        "soil_Depth": padded,
+    }
+
+
+def _gauge_values(settings: dict[str, Any], count: int) -> dict[str, Any]:
+    gauges = settings.get("gauges", [])
+    if not isinstance(gauges, list) or not gauges:
+        return {}
+    rows = [[] for _ in range(count)]
+    for gauge in gauges:
+        if not isinstance(gauge, dict):
+            continue
+        try:
+            gauge_id = int(gauge["gauge_id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        filename = str(gauge.get("gauge_filename") or f"{gauge_id}.txt")
+        for domain_id in gauge.get("domain_ids", []):
+            try:
+                index = int(domain_id) - 1
+            except (TypeError, ValueError):
+                continue
+            if 0 <= index < count and len(rows[index]) < 200:
+                rows[index].append((gauge_id, Path(filename).name))
+    identifiers = [
+        [item[0] for item in row] + [0] * (200 - len(row)) for row in rows
+    ]
+    filenames = [
+        [item[1] for item in row] + [""] * (200 - len(row)) for row in rows
+    ]
+    return {
+        "nGaugesTotal": len({item[0] for row in rows for item in row}),
+        "NoGauges_domain": [len(row) for row in rows],
+        "Gauge_id": identifiers,
+        "gauge_filename": filenames,
+    }
 
 
 __all__ = ["build_dimensions", "build_initial_values"]

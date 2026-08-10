@@ -12,8 +12,16 @@ from ...project_layout import workspace_folder
 
 
 STATE_FILENAME = "pymhm_domain_delineation_state.json"
-STATE_VERSION = 1
+STATE_VERSION = 2
 DEM_DOMAIN_ID = "__dem__"
+DOMAIN_MODE_DEM_EXTENT = "dem_extent"
+DOMAIN_MODE_SNAPPED = "snapped_pour_points"
+DOMAIN_MODE_DELINEATOR = "domain_delineator"
+DOMAIN_MODES = {
+    DOMAIN_MODE_DEM_EXTENT,
+    DOMAIN_MODE_SNAPPED,
+    DOMAIN_MODE_DELINEATOR,
+}
 PathInput = Union[str, Path]
 
 
@@ -21,9 +29,12 @@ def default_state() -> Dict[str, Any]:
     """Return a new empty domain-delineation state."""
     return {
         "version": STATE_VERSION,
+        "definition_mode": "",
         "pour_points_source": "",
         "outlet_id_field": "",
+        "outlet_order": [],
         "dem_domain": False,
+        "dem_domain_id": None,
         "outlets": {},
     }
 
@@ -43,6 +54,10 @@ def _normalized_state(value: object) -> Dict[str, Any]:
         if isinstance(item, str):
             state[key] = item
 
+    definition_mode = value.get("definition_mode", value.get("definition_type"))
+    if definition_mode in DOMAIN_MODES:
+        state["definition_mode"] = definition_mode
+
     if isinstance(value.get("dem_domain"), bool):
         state["dem_domain"] = value["dem_domain"]
 
@@ -53,6 +68,56 @@ def _normalized_state(value: object) -> Dict[str, Any]:
             for outlet_id, record in outlets.items()
             if isinstance(record, Mapping)
         }
+    requested_order = value.get("outlet_order", [])
+    if isinstance(requested_order, (list, tuple)):
+        for outlet_id in requested_order:
+            text = str(outlet_id)
+            if text in state["outlets"] and text not in state["outlet_order"]:
+                state["outlet_order"].append(text)
+    for outlet_id in state["outlets"]:
+        if outlet_id not in state["outlet_order"]:
+            state["outlet_order"].append(outlet_id)
+    assign_domain_ids(state)
+    return state
+
+
+def ordered_outlet_ids(state: Mapping[str, Any]) -> List[str]:
+    """Return outlet IDs in their explicit stable feature order."""
+    outlets = state.get("outlets", {})
+    if not isinstance(outlets, Mapping):
+        return []
+    ordered: List[str] = []
+    requested = state.get("outlet_order", [])
+    if isinstance(requested, (list, tuple)):
+        for value in requested:
+            outlet_id = str(value)
+            if outlet_id in outlets and outlet_id not in ordered:
+                ordered.append(outlet_id)
+    for value in outlets:
+        outlet_id = str(value)
+        if outlet_id not in ordered:
+            ordered.append(outlet_id)
+    return ordered
+
+
+def assign_domain_ids(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Assign deterministic contiguous IDs to the active domains in-place."""
+    outlets = state.get("outlets", {})
+    if not isinstance(outlets, dict):
+        state["outlets"] = {}
+        outlets = state["outlets"]
+    state["outlet_order"] = ordered_outlet_ids(state)
+    domain_id = 1
+    for outlet_id in state["outlet_order"]:
+        record = outlets.get(outlet_id)
+        if not isinstance(record, dict):
+            continue
+        if _enabled(record, "is_domain", "domain"):
+            record["domain_id"] = domain_id
+            domain_id += 1
+        else:
+            record.pop("domain_id", None)
+    state["dem_domain_id"] = domain_id if state.get("dem_domain") is True else None
     return state
 
 
@@ -128,6 +193,10 @@ def _serialized_state(
         for key in ("mask_path", "vector_path"):
             if record.get(key):
                 record[key] = serialize_output_path(project_folder, record[key])
+        if record.get("gauge_path"):
+            record["gauge_path"] = serialize_output_path(
+                project_folder, record["gauge_path"]
+            )
     return state
 
 
@@ -165,8 +234,9 @@ def gauged_outlet_ids(state: Mapping[str, Any]) -> List[str]:
     if not isinstance(outlets, Mapping):
         return []
     return [
-        str(outlet_id)
-        for outlet_id, record in outlets.items()
+        outlet_id
+        for outlet_id in ordered_outlet_ids(state)
+        for record in (outlets.get(outlet_id),)
         if isinstance(record, Mapping)
         and _enabled(record, "is_gauged", "gauged")
     ]
@@ -174,10 +244,12 @@ def gauged_outlet_ids(state: Mapping[str, Any]) -> List[str]:
 
 def active_domain_records(state: Mapping[str, Any]) -> List[Dict[str, Any]]:
     """Return active outlet domains plus the optional synthetic DEM domain."""
+    state = _normalized_state(state)
     records: List[Dict[str, Any]] = []
     outlets = state.get("outlets", {})
     if isinstance(outlets, Mapping):
-        for outlet_id, record in outlets.items():
+        for outlet_id in ordered_outlet_ids(state):
+            record = outlets.get(outlet_id)
             if not isinstance(record, Mapping):
                 continue
             if _enabled(record, "is_domain", "domain"):
@@ -190,6 +262,7 @@ def active_domain_records(state: Mapping[str, Any]) -> List[Dict[str, Any]]:
         records.append(
             {
                 "outlet_id": DEM_DOMAIN_ID,
+                "domain_id": state["dem_domain_id"],
                 "is_domain": True,
                 "is_dem_domain": True,
                 "gauged_outlet_ids": gauged_outlet_ids(state),
@@ -201,3 +274,40 @@ def active_domain_records(state: Mapping[str, Any]) -> List[Dict[str, Any]]:
 def domain_count(state: Mapping[str, Any]) -> int:
     """Return the number of active outlet and DEM domains."""
     return len(active_domain_records(state))
+
+
+def gauge_records(state: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    """Return normalized gauge metadata suitable for namelist projection."""
+    state = _normalized_state(state)
+    outlets = state["outlets"]
+    records: List[Dict[str, Any]] = []
+    for outlet_id in gauged_outlet_ids(state):
+        record = outlets[outlet_id]
+        try:
+            gauge_id = int(record.get("gauge_id"))
+        except (TypeError, ValueError):
+            try:
+                numeric = float(outlet_id)
+                gauge_id = int(numeric) if numeric.is_integer() else None
+            except (TypeError, ValueError):
+                gauge_id = None
+        domain_ids = []
+        for value in record.get("domain_ids", []):
+            try:
+                domain_id = int(value)
+            except (TypeError, ValueError):
+                continue
+            if domain_id > 0 and domain_id not in domain_ids:
+                domain_ids.append(domain_id)
+        records.append(
+            {
+                "outlet_id": outlet_id,
+                "gauge_id": gauge_id,
+                "gauge_filename": str(
+                    record.get("gauge_filename") or f"{outlet_id}.txt"
+                ),
+                "gauge_path": str(record.get("gauge_path", "") or ""),
+                "domain_ids": domain_ids,
+            }
+        )
+    return records

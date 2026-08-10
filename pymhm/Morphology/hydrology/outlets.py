@@ -85,6 +85,12 @@ def station_id_text(value) -> str:
     if not text or text.upper() == "NULL":
         return ""
 
+    # String fields may deliberately contain leading zeroes used by existing
+    # observation filenames.  Preserve that field value verbatim; only
+    # normalise values supplied by numeric fields (for example ``7.0``).
+    if isinstance(value, str):
+        return text
+
     try:
         numeric = float(text)
         if numeric.is_integer():

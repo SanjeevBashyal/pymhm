@@ -9,10 +9,17 @@ from typing import Any
 
 from ..grid_resolution import ceil_cellsize, is_geographic_unit
 from ..project_layout import geometry_folder, morph_folder
+from ..nml_settings import load_settings
 
 
 def repeat(value: Any, count: int) -> list[Any]:
     return [value for _ in range(max(1, int(count)))]
+
+
+def namelist_settings(dialog: Any) -> dict[str, Any]:
+    """Return the project-local processing handoff, if configured."""
+    project = getattr(dialog, "project_folder", None)
+    return load_settings(project) if project else {"version": 1}
 
 
 def domain_count(dialog: Any) -> int:

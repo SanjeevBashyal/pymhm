@@ -51,9 +51,16 @@ class CategoricalProcessingMixin(
     """Prepare categorical morphology inputs with one shared workflow."""
 
     def process_land_use(self) -> bool:
+        advanced = getattr(self.dialog, "process_advanced_categorical_input", None)
+        if advanced is not None:
+            return bool(advanced("lc"))
         return self._process_categorical("lc")
 
     def process_soil(self, write_classdefinition=True) -> bool:
+        uses_advanced = getattr(self.dialog, "uses_advanced_categorical_input", None)
+        advanced = getattr(self.dialog, "process_advanced_categorical_input", None)
+        if uses_advanced is not None and advanced is not None and uses_advanced("soil"):
+            return bool(advanced("soil"))
         return self._process_categorical(
             "soil", write_classdefinition=write_classdefinition
         )
@@ -189,6 +196,10 @@ class CategoricalProcessingMixin(
             self.mark_output_prepared(
                 str(definition), name=definition.name, loaded=False
             )
+        if kind == "soil":
+            record = getattr(self.dialog, "record_standard_soil_output", None)
+            if record is not None:
+                record(None, str(definition) if definition else None)
         self.log_message(f"{spec['label']} data prepared successfully.")
         return True
 
@@ -315,6 +326,16 @@ class CategoricalProcessingMixin(
         self.categorical_ready_outputs = ready
         self.load_layer(str(target), spec["layer_name"])
         self.mark_output_prepared(str(target), name=target.name)
+        if kind == "soil":
+            record = getattr(self.dialog, "record_standard_soil_output", None)
+            if record is not None:
+                definition_path = (
+                    target.parent / definition if definition else None
+                )
+                record(
+                    str(target),
+                    str(definition_path) if definition_path else None,
+                )
         self.log_message(f"Copied mHM-ready {spec['label']} data to {target}.")
         return True
 
@@ -382,13 +403,18 @@ class CategoricalProcessingMixin(
     def _categorical_mode(self, kind):
         method = getattr(self.dialog, "categorical_input_mode", None)
         if method is not None:
-            return (
+            value = (
                 str(method(kind) or "")
                 .strip()
                 .lower()
                 .replace("-", "_")
                 .replace(" ", "_")
             )
+            if "lookup_table" in value:
+                return "lookup_table"
+            if value == "mhm_ready":
+                return value
+            return value
         return ""
 
     def _categorical_lookup(self, kind):

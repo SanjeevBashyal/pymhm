@@ -296,6 +296,42 @@
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_6">
        <item>
+        <layout class="QHBoxLayout" name="horizontalLayout">
+         <property name="topMargin">
+          <number>10</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="label_bulkDensityUnit">
+           <property name="text">
+            <string>Bulk Density Unit:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="comboBox_bulkDensityUnit">
+           <property name="currentIndex">
+            <number>-1</number>
+           </property>
+           <item>
+            <property name="text">
+             <string>g/cm3</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>kg/m3</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>cg/cm3</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
         <widget class="QLabel" name="label_bulkDensityDescription">
          <property name="text">
           <string>Select bulk density (g/cm3) layers for each horizon:</string>

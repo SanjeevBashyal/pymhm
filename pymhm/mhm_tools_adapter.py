@@ -240,6 +240,105 @@ def prepare_categorical_file(
     return output_path
 
 
+def prepare_land_cover_periods(
+    input_path: str | Path,
+    dem_file: str | Path,
+    output_path: str | Path,
+    lookup_table: str | Path,
+    mapping_field: str,
+    class_field: str,
+    *,
+    output_type: str,
+    input_crs=None,
+    dem_crs=None,
+    resampling: str = "auto",
+    log: LogCallback | None = None,
+) -> tuple[Path, ...]:
+    """Format a land-cover period manifest through the public mHM-tools API."""
+    from mhm_tools import pre
+
+    output = Path(output_path)
+    output.mkdir(parents=True, exist_ok=True)
+    lookup_path = Path(lookup_table)
+    kwargs = {
+        "input_path": Path(input_path),
+        "dem_file": Path(dem_file),
+        "output_path": output,
+        "lookup_table": lookup_path,
+        "mapping_field": mapping_field,
+        "class_field": class_field,
+        "output_type": output_type,
+        "resampling": resampling,
+    }
+    if input_crs is not None:
+        kwargs["input_crs"] = input_crs
+    if dem_crs is not None:
+        kwargs["dem_crs"] = dem_crs
+    if lookup_path.suffix.lower() == ".txt":
+        with TemporaryDirectory(prefix="pymhm_lc_lookup_", dir=output) as temporary:
+            lookup_csv = Path(temporary) / "lookup.csv"
+            read_categorical_lookup_table(lookup_path).to_csv(lookup_csv, index=False)
+            kwargs["lookup_table"] = lookup_csv
+            with capture_messages(log):
+                outputs = tuple(Path(path) for path in pre.format_lc_periods(**kwargs))
+    else:
+        with capture_messages(log):
+            outputs = tuple(Path(path) for path in pre.format_lc_periods(**kwargs))
+    return _require_outputs(outputs)
+
+
+def prepare_soil_horizons(
+    input_path: str | Path,
+    dem_file: str | Path,
+    output_path: str | Path,
+    *,
+    output_type: str,
+    input_crs=None,
+    dem_crs=None,
+    resampling: str = "auto",
+    composition_step: float = 5.0,
+    bulk_density_step: float = 0.1,
+    log: LogCallback | None = None,
+) -> tuple[Path, Path]:
+    """Format a soil-horizon manifest through the public mHM-tools API."""
+    from mhm_tools import pre
+
+    output = Path(output_path)
+    output.mkdir(parents=True, exist_ok=True)
+    kwargs = {
+        "input_path": Path(input_path),
+        "dem_file": Path(dem_file),
+        "output_path": output,
+        "output_type": output_type,
+        "resampling": resampling,
+        "composition_step": composition_step,
+        "bulk_density_step": bulk_density_step,
+    }
+    if input_crs is not None:
+        kwargs["input_crs"] = input_crs
+    if dem_crs is not None:
+        kwargs["dem_crs"] = dem_crs
+    with capture_messages(log):
+        outputs = tuple(Path(path) for path in pre.format_soil_horizons(**kwargs))
+    validated = _require_outputs(outputs)
+    if len(validated) != 2:
+        raise RuntimeError(
+            "mHM-tools did not return soil data and classdefinition outputs."
+        )
+    return validated[0], validated[1]
+
+
+def _require_outputs(outputs: tuple[Path, ...]) -> tuple[Path, ...]:
+    if not outputs:
+        raise RuntimeError("mHM-tools did not return any formatted outputs.")
+    missing = [str(path) for path in outputs if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(
+            "mHM-tools did not create the expected output(s): " + ", ".join(missing)
+        )
+    return outputs
+
+
 def create_latlon_file(
     out_file: str | Path,
     level0: dict | str | Path,
@@ -284,5 +383,7 @@ __all__ = [
     "capture_messages",
     "create_latlon_file",
     "prepare_categorical_file",
+    "prepare_land_cover_periods",
+    "prepare_soil_horizons",
     "read_categorical_lookup_table",
 ]

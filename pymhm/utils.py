@@ -68,7 +68,10 @@ class DialogUtils:
 
     def load_layer(self, path, name, is_raster=True):
         """Loads a layer into the QGIS project."""
-        if not path or not os.path.exists(path):
+        check_path = path
+        if str(path).startswith('NETCDF:"') and '":' in str(path):
+            check_path = str(path).split('NETCDF:"', 1)[1].split('\":', 1)[0]
+        if not path or not os.path.exists(check_path):
             self.log_message(f"ERROR: Output file not found at {path}")
             return
 
@@ -81,6 +84,7 @@ class DialogUtils:
 
         QgsProject.instance().addMapLayer(layer)
         self.log_message(f"Layer '{name}' added to project.")
+        return layer
 
     def get_dem_extent_and_resolution(self):
         """Get DEM extent and pixel resolution for clipping and rasterization"""

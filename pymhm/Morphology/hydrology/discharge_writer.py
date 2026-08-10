@@ -30,7 +30,7 @@ def write_streamflow_observation(layer, station_id: str, output_folder: Path) ->
             f"No valid discharge records were found in layer '{layer.name()}'.")
 
     output_folder.mkdir(parents=True, exist_ok=True)
-    output_file = output_folder / f"{station_id}.txt"
+    output_file = output_folder / streamflow_filename(station_id)
     start_date = records[0].timestamp
     end_date = records[-1].timestamp
 
@@ -49,6 +49,20 @@ def write_streamflow_observation(layer, station_id: str, output_folder: Path) ->
                 f"{dt.year:04d}  {dt.month:02d}  {dt.day:02d}  00  00   {record.value:10.3f}\n")
 
     return output_file
+
+
+def streamflow_filename(station_id: str) -> str:
+    """Return an observation filename without changing the outlet field value."""
+    value = str(station_id or "").strip()
+    if (
+        not value
+        or value in {".", ".."}
+        or "\x00" in value
+        or "/" in value
+        or "\\" in value
+    ):
+        raise ValueError(f"Outlet ID '{value}' is not safe for a filename.")
+    return f"{value}.txt"
 
 
 def records_from_layer(layer) -> list[DischargeRecord]:

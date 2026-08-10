@@ -16,6 +16,7 @@ from pymhm.Morphology.watershed.domain_state import (
     active_domain_records,
     default_state,
     domain_count,
+    gauge_records,
     gauged_outlet_ids,
     load_state,
     resolve_input_path,
@@ -96,7 +97,10 @@ def test_save_is_atomic_normalized_and_does_not_mutate_input(
 
     assert path == project / "mhm-plugin" / path.name
     saved = json.loads(path.read_text(encoding="utf-8"))
-    assert saved["version"] == 1
+    assert saved["version"] == 2
+    assert saved["outlet_order"] == ["7"]
+    assert saved["outlets"]["7"]["domain_id"] == 1
+    assert saved["dem_domain_id"] == 2
     assert saved["outlets"]["7"]["discharge_file"] == "inputs/gauge.csv"
     assert saved["outlets"]["7"]["mask_path"] == "Z Temp/Geometry/mask.tif"
     assert saved["outlets"]["7"]["vector_path"] == "Z Temp/Geometry/mask.gpkg"
@@ -125,4 +129,60 @@ def test_active_domains_include_optional_dem_domain_and_gauges() -> None:
     assert records[-1]["gauged_outlet_ids"] == ["A", "B"]
     assert records[0]["is_dem_domain"] is False
     assert records[-1]["is_dem_domain"] is True
+    assert [record["domain_id"] for record in records] == [1, 2, 3]
     assert domain_count(state) == 3
+
+
+def test_saved_order_and_gauge_metadata_survive_sorted_json(tmp_path: Path) -> None:
+    output = (
+        tmp_path
+        / "project"
+        / "mhm-plugin"
+        / "data"
+        / "observation"
+        / "streamflow"
+        / "001.txt"
+    )
+    state = {
+        "version": 1,
+        "definition_type": "snapped_pour_points",
+        "outlet_order": ["20", "001", "3"],
+        "outlets": {
+            "001": {
+                "is_gauged": True,
+                "is_domain": True,
+                "gauge_id": 1,
+                "gauge_filename": "001.txt",
+                "gauge_path": str(output),
+                "domain_ids": [1, 2],
+            },
+            "20": {"is_domain": True},
+            "3": {"is_domain": False},
+        },
+    }
+
+    path = save_state(tmp_path / "project", state)
+    loaded = load_state(tmp_path / "project")
+
+    assert loaded["version"] == 2
+    assert loaded["definition_mode"] == "snapped_pour_points"
+    assert loaded["outlet_order"] == ["20", "001", "3"]
+    assert loaded["outlets"]["20"]["domain_id"] == 1
+    assert loaded["outlets"]["001"]["domain_id"] == 2
+    assert loaded["outlets"]["001"]["gauge_path"] == (
+        "data/observation/streamflow/001.txt"
+    )
+    assert gauge_records(loaded) == [
+        {
+            "outlet_id": "001",
+            "gauge_id": 1,
+            "gauge_filename": "001.txt",
+            "gauge_path": "data/observation/streamflow/001.txt",
+            "domain_ids": [1, 2],
+        }
+    ]
+    assert json.loads(path.read_text(encoding="utf-8"))["outlet_order"] == [
+        "20",
+        "001",
+        "3",
+    ]

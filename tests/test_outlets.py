@@ -69,16 +69,16 @@ def test_station_field_lookup_remains_backward_compatible():
         find_outlet_id_field(layer, "missing")
 
 
-def test_selected_outlet_values_are_normalized_and_must_be_unique():
+def test_selected_outlet_values_preserve_string_ids_and_must_be_unique():
     layer = _Layer(
         ["code"],
         [{"code": " 01 "}, {"code": 2.0}, {"code": "three"}],
     )
 
-    assert outlet_ids_from_layer(layer, "code") == ["1", "2", "three"]
+    assert outlet_ids_from_layer(layer, "code") == ["01", "2", "three"]
 
-    duplicate = _Layer(["code"], [{"code": "01"}, {"code": 1}])
-    with pytest.raises(StationIdError, match="Duplicate outlet ID '1'"):
+    duplicate = _Layer(["code"], [{"code": "01"}, {"code": " 01 "}])
+    with pytest.raises(StationIdError, match="Duplicate outlet ID '01'"):
         outlet_ids_from_layer(duplicate, "code")
 
     empty = _Layer(["code"], [{"code": None}])

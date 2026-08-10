@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..common import domain_count, geology_count, geoparameter, repeat, resolution
+from ..common import (
+    domain_count,
+    geology_count,
+    geoparameter,
+    namelist_settings,
+    repeat,
+    resolution,
+)
 
 
 def build_dimensions(dialog: Any) -> dict[str, int]:
@@ -17,6 +24,7 @@ def build_dimensions(dialog: Any) -> dict[str, int]:
 
 def build_initial_values(dialog: Any) -> dict[str, Any]:
     count = domain_count(dialog)
+    settings = namelist_settings(dialog)
     geo_count = geology_count(dialog)
     l1 = resolution(dialog, "current_l1_resolution")
     l11 = resolution(dialog, "current_l11_resolution")
@@ -92,7 +100,65 @@ def build_initial_values(dialog: Any) -> dict[str, Any]:
     geo_values = geoparameter(dialog, geo_count)
     if geo_values is not None:
         values["parameter"] = {"geoparameter": {"GeoParam": geo_values}}
+    _apply_land_cover(values["main"], settings, count)
+    _apply_soil(values["main"], settings, count)
     return values
+
+
+def _apply_land_cover(main, settings, count):
+    land_cover = settings.get("land_cover", {})
+    if not isinstance(land_cover, dict):
+        return
+    path = land_cover.get("output_path") or land_cover.get("path")
+    if path:
+        main["config_mpr"]["land_cover_path"] = repeat(str(path), count)
+    variable = land_cover.get("variable")
+    if variable:
+        main["config_mpr"]["land_cover_var"] = repeat(str(variable), count)
+
+
+def _apply_soil(main, settings, count):
+    soil = settings.get("soil", {})
+    horizons = soil.get("horizons", []) if isinstance(soil, dict) else []
+    if not isinstance(soil, dict):
+        return
+    mode = int(soil.get("soil_db_mode", 1 if horizons else 0))
+    path = soil.get("output_path") or soil.get("path")
+    if path:
+        field = "soil_horizon_class_path" if mode == 1 else "soil_class_path"
+        main["config_input"][field] = repeat(str(path), count)
+    variable = soil.get("variable")
+    if variable:
+        main["config_input"]["soil_class_var"] = repeat(str(variable), count)
+    lookup = soil.get("classdefinition_path") or soil.get("lut_path")
+    if lookup:
+        main["config_mpr"]["soil_lut_path"] = repeat(str(lookup), count)
+    if not horizons:
+        main["config_mpr"]["soil_db_mode"] = repeat(mode, count)
+        return
+    lower_depths = []
+    for horizon in horizons[:10]:
+        if not isinstance(horizon, dict):
+            continue
+        try:
+            lower_depths.append(int(round(float(horizon["lower_depth"]))))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not lower_depths:
+        return
+    main["config_mpr"].update(
+        {
+            "soil_db_mode": repeat(mode, count),
+            "tillage_depth": repeat(
+                int(soil.get("tillage_depth") or lower_depths[0]), count
+            ),
+            "n_layers": repeat(len(lower_depths), count),
+            "soil_depth": [
+                repeat(depth, count) for depth in lower_depths
+            ]
+            + [repeat(0, count) for _ in range(10 - len(lower_depths))],
+        }
+    )
 
 
 __all__ = ["build_dimensions", "build_initial_values"]

@@ -2,11 +2,12 @@
 """Interactive per-outlet watershed delineation dialog."""
 from __future__ import annotations
 
+import copy
 import os
-import re
 from pathlib import Path
 
 from qgis.PyQt.QtCore import QEvent, Qt
+from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
     QApplication,
     QDialog,
@@ -21,27 +22,23 @@ from qgis.core import (
     QgsRasterLayer,
     QgsVectorLayer,
 )
-from qgis.gui import QgsMapCanvas, QgsMapToolEmitPoint
+from qgis.gui import QgsMapCanvas, QgsMapToolEmitPoint, QgsVertexMarker
 
 from .input_selection import scan_project_inputs
-from .Morphology.hydrology.discharge_writer import (
-    write_streamflow_observation,
-)
-from .Morphology.hydrology.observation_paths import (
-    streamflow_observation_folder,
-)
+from .Morphology.hydrology.discharge_dialog import OutletAssignment
 from .Morphology.hydrology.outlets import (
     StationIdError,
-    station_id_int,
     station_id_text,
 )
 from .Morphology.watershed.domain_state import (
-    load_state,
+    DOMAIN_MODE_DELINEATOR,
+    active_domain_records,
+    assign_domain_ids,
     resolve_input_path,
     resolve_output_path,
     save_state,
 )
-from .project_layout import geometry_folder
+from .Morphology.watershed.domain_workflow import DomainWorkflow
 from .pyui.ui_domain_delineator_dialog import Ui_DomainDelineatorDialog
 
 
@@ -64,6 +61,13 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         self.pour_points_layer = pour_points_layer
         self.outlet_id_field = str(outlet_id_field)
         self.outlet_ids = [str(value) for value in outlet_ids]
+        self.workflow = DomainWorkflow(
+            main_dialog,
+            processor,
+            pour_points_layer,
+            outlet_id_field,
+            self.outlet_ids,
+        )
         self.current_outlet_id = ""
         self._preview_result = None
         self._preview_channel_path = ""
@@ -74,6 +78,13 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         layout = QVBoxLayout(self.widget_mapCanvasHost)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.canvas)
+        self._outlet_marker = QgsVertexMarker(self.canvas)
+        self._outlet_marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
+        self._outlet_marker.setIconSize(22)
+        self._outlet_marker.setPenWidth(4)
+        self._outlet_marker.setColor(QColor(220, 30, 30))
+        self._outlet_marker.setFillColor(QColor(255, 240, 40, 180))
+        self._outlet_marker.hide()
 
         self._load_state()
         self._features = self._outlet_features()
@@ -100,34 +111,14 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         self.pushButton_close.clicked.connect(self.reject)
 
     def _load_state(self):
-        source = self._layer_source(self.pour_points_layer)
-        state = load_state(self.project_folder)
-        if (
-            state.get("pour_points_source")
-            and state["pour_points_source"] != source
-        ) or (
-            state.get("outlet_id_field")
-            and state["outlet_id_field"] != self.outlet_id_field
-        ):
-            state["outlets"] = {}
-
-        records = state.setdefault("outlets", {})
-        state["outlets"] = {
-            outlet_id: dict(records.get(outlet_id, {}))
-            for outlet_id in self.outlet_ids
-        }
-        state["pour_points_source"] = source
-        state["outlet_id_field"] = self.outlet_id_field
-        state["dem_domain"] = bool(self.main_dialog.checkBox_DEMdomain.isChecked())
-        self.state = state
+        self.state = self.workflow.load_synced_state(
+            DOMAIN_MODE_DELINEATOR,
+            bool(self.main_dialog.checkBox_DEMdomain.isChecked()),
+        )
 
     @staticmethod
     def _layer_source(layer):
-        source = str(layer.source() or "")
-        local_path = source.split("|", 1)[0]
-        if os.path.exists(local_path):
-            return str(Path(local_path).resolve())
-        return source
+        return DomainWorkflow.layer_source(layer)
 
     def _outlet_features(self):
         features = {}
@@ -190,6 +181,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
     def _load_outlet(self, outlet_id):
         self.current_outlet_id = str(outlet_id or "")
         if not self.current_outlet_id:
+            self._outlet_marker.hide()
             return
 
         self._preview_result = None
@@ -429,7 +421,8 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         outlet_id = self.current_outlet_id
         if not outlet_id:
             return
-        record = dict(self.state["outlets"].get(outlet_id, {}))
+        proposed_state = copy.deepcopy(self.state)
+        record = dict(proposed_state["outlets"].get(outlet_id, {}))
         was_gauged = bool(
             record.get("is_gauged", record.get("gauged", False)))
         is_gauged = self.checkBox_isGaugedOutlet.isChecked()
@@ -439,8 +432,21 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         cursor_set = False
 
         try:
+            assignment = OutletAssignment(
+                outlet_id=outlet_id,
+                is_gauge=is_gauged,
+                is_domain=is_domain,
+                discharge_layer=(
+                    QgsVectorLayer(
+                        discharge_path,
+                        Path(discharge_path).name,
+                        "ogr",
+                    )
+                    if is_gauged and discharge_path
+                    else None
+                ),
+            )
             if is_gauged:
-                station_id_int(outlet_id)
                 if not discharge_path:
                     raise ValueError(
                         "Select a discharge CSV or TXT file for this gauge.")
@@ -449,10 +455,22 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
                 ):
                     raise ValueError(
                         "The selected discharge file is already used elsewhere.")
+            prepared = self.workflow.validate_gauge_assignments([assignment])
 
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            cursor_set = True
-            result = None
+            self.workflow.apply_assignment_records(
+                proposed_state,
+                [assignment],
+                prepared,
+            )
+            record = proposed_state["outlets"][outlet_id]
+            record["threshold_cells"] = self.spinBox_channelThreshold.value()
+            proposed_state["dem_domain"] = bool(
+                self.main_dialog.checkBox_DEMdomain.isChecked()
+            )
+            assign_domain_ids(proposed_state)
+            self.workflow.require_active_domain(proposed_state)
+            self.workflow.validate_unique_state_gauge_ids(proposed_state)
+
             if is_domain:
                 picked = (
                     self._preview_result.get("picked")
@@ -462,63 +480,91 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
                 if not isinstance(picked, dict):
                     raise ValueError(
                         "Pick a map location before saving this domain.")
+                record["picked"] = dict(picked)
+
+            delineations = []
+            for domain in active_domain_records(proposed_state):
+                if domain.get("is_dem_domain"):
+                    continue
+                domain_outlet_id = domain["outlet_id"]
+                domain_record = proposed_state["outlets"][domain_outlet_id]
+                picked = domain_record.get("picked")
+                if not isinstance(picked, dict):
+                    raise ValueError(
+                        "Pick and save a location for domain outlet "
+                        f"{domain_outlet_id}."
+                    )
                 x, y = self._picked_in_dem_crs(picked)
-                raster_path, vector_path = self._outlet_paths(outlet_id)
-                self._watershed_layer = None
-                self._refresh_canvas()
+                raster_path, vector_path = self._outlet_paths(
+                    domain_outlet_id,
+                    state=proposed_state,
+                )
+                delineations.append(
+                    (
+                        domain_outlet_id,
+                        domain_record,
+                        x,
+                        y,
+                        raster_path,
+                        vector_path,
+                    )
+                )
+
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            cursor_set = True
+            self._watershed_layer = None
+            self._refresh_canvas()
+            for (
+                domain_outlet_id,
+                domain_record,
+                x,
+                y,
+                raster_path,
+                vector_path,
+            ) in delineations:
                 result = self.processor.delineate_single_outlet(
                     x,
                     y,
                     raster_path,
                     vector_path,
-                    basin_id=self.outlet_ids.index(outlet_id) + 1,
+                    basin_id=int(domain_record["domain_id"]),
                     context=self._flow_context,
                 )
                 if not result:
-                    raise RuntimeError("Watershed delineation failed.")
-
-            record["is_gauged"] = is_gauged
-            record["is_domain"] = is_domain
-            record["threshold_cells"] = self.spinBox_channelThreshold.value()
-            record["discharge_file"] = discharge_path if is_gauged else ""
-            if result:
+                    raise RuntimeError(
+                        "Watershed delineation failed for outlet "
+                        f"{domain_outlet_id}."
+                    )
                 center_x, center_y = result["cell_center"]
-                record.update({
-                    "picked": {
-                        "x": float(center_x),
-                        "y": float(center_y),
-                        "crs": self._filled_dem_layer.crs().authid(),
-                    },
-                    "catchment_area_m2": result["catchment_area_m2"],
-                    "mask_path": result["raster_path"],
-                    "vector_path": result["vector_path"],
-                })
-
-            self.state["outlets"][outlet_id] = record
-            self.state["dem_domain"] = bool(
-                self.main_dialog.checkBox_DEMdomain.isChecked())
-            if self.state["dem_domain"]:
-                self._prepare_dem_domain()
-            self._merge_active_domains()
-
-            if is_gauged:
-                layer = QgsVectorLayer(
-                    discharge_path, Path(discharge_path).name, "ogr")
-                output = write_streamflow_observation(
-                    layer,
-                    outlet_id,
-                    Path(streamflow_observation_folder(self.project_folder)),
+                domain_record.update(
+                    {
+                        "picked": {
+                            "x": float(center_x),
+                            "y": float(center_y),
+                            "crs": self._filled_dem_layer.crs().authid(),
+                        },
+                        "catchment_area_m2": result["catchment_area_m2"],
+                        "mask_path": result["raster_path"],
+                        "vector_path": result["vector_path"],
+                    }
                 )
-                self.processor.mark_output_prepared(
-                    str(output), name=output.name, loaded=False)
 
-            save_state(self.project_folder, self.state)
+            if proposed_state["dem_domain"]:
+                self.workflow.prepare_dem_domain(proposed_state)
+            self.workflow.merge_active_domains(proposed_state)
+            self.workflow.update_gauge_domain_ids(
+                proposed_state,
+                self.pour_points_layer,
+            )
+            self.workflow.write_gauges(prepared)
+            save_state(self.project_folder, proposed_state)
+            self.state = proposed_state
             if was_gauged and not is_gauged:
                 self._remove_observation_file(outlet_id)
             self.main_dialog.save_input_state()
             self.processor.update_gauged_outlet_count()
             self._preview_result = None
-            self._show_saved_watershed(record)
+            self._show_saved_watershed(record if is_domain else {})
             QApplication.restoreOverrideCursor()
             cursor_set = False
             QMessageBox.information(
@@ -532,18 +578,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
                 QApplication.restoreOverrideCursor()
 
     def _remove_observation_file(self, outlet_id):
-        path = (
-            Path(streamflow_observation_folder(self.project_folder))
-            / f"{outlet_id}.txt"
-        )
-        try:
-            path.unlink(missing_ok=True)
-            key = self.processor.output_state_key(str(path))
-            self.processor.processing_state.get("outputs", {}).pop(key, None)
-            self.processor.save_processing_state()
-        except OSError as error:
-            self.main_dialog.log_message(
-                f"WARNING: Could not remove old discharge output: {error}")
+        self.workflow.remove_observation_file(outlet_id)
 
     def _picked_in_dem_crs(self, picked):
         x = float(picked["x"])
@@ -564,153 +599,23 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         return point.x(), point.y()
 
     def _prepare_dem_domain(self):
-        output_raster, output_vector = self._dem_paths()
-        reference = self.processor._read_raster_array(
-            self.processor.filled_dem_path, as_float=True)
-        if not reference:
-            raise RuntimeError("Could not read the filled DEM.")
-        deps = self.processor._get_python_morphology_deps()
-        dem, invalid_mask, _ = self.processor._normalise_dem_array(
-            reference["array"], reference["nodata"])
-        if dem is None:
-            raise RuntimeError("Could not determine the valid DEM domain.")
-        domain = deps["np"].where(~invalid_mask, 1, 0).astype(
-            deps["np"].int32)
-        if not self.processor._write_raster_array(
-            output_raster,
-            domain,
-            reference,
-            nodata=0,
-            gdal_type=deps["gdal"].GDT_Int32,
-        ):
-            raise RuntimeError("Could not write the DEM-domain mask.")
-        if not self._polygonize_mask(output_raster, output_vector):
-            raise RuntimeError("Could not write the DEM-domain polygon.")
-
-    def _polygonize_mask(self, raster_path, vector_path):
-        raw_path = os.path.splitext(vector_path)[0] + "_raw.shp"
-        self.processor._remove_vector_dataset(raw_path)
-        try:
-            result = self.processor.run_processing_algorithm(
-                "gdal:polygonize",
-                {
-                    "INPUT": raster_path,
-                    "BAND": 1,
-                    "FIELD": "DN",
-                    "EIGHT_CONNECTEDNESS": False,
-                    "EXTRA": "",
-                    "OUTPUT": raw_path,
-                },
-            )
-            return bool(
-                result
-                and os.path.exists(raw_path)
-                and self.processor._copy_nonzero_polygons(
-                    raw_path, vector_path)
-            )
-        finally:
-            self.processor._remove_vector_dataset(raw_path)
+        return self.workflow.prepare_dem_domain(self.state)
 
     def _merge_active_domains(self):
-        vector_paths = []
-        for outlet_id, record in self.state["outlets"].items():
-            if not record.get("is_domain", record.get("domain", False)):
-                continue
-            value = record.get("vector_path")
-            path = str(resolve_output_path(
-                self.project_folder, value)) if value else ""
-            if not path or not os.path.exists(path):
-                raise ValueError(
-                    f"Delineate and save domain outlet {outlet_id} first.")
-            vector_paths.append(path)
-
-        if self.state.get("dem_domain"):
-            dem_vector = self._dem_paths()[1]
-            if not os.path.exists(dem_vector):
-                raise RuntimeError("The DEM-domain polygon is missing.")
-            vector_paths.append(dem_vector)
-
-        merged_path = os.path.join(
-            geometry_folder(self.project_folder),
-            "Watersheds",
-            "4_watershed_merged_vector.shp",
-        )
-        if not vector_paths:
-            self.processor._remove_vector_dataset(merged_path)
-            self.processor.merged_watershed_path = None
-            self.processor.watershed_vector_path = None
-            return
-
-        for path in vector_paths:
-            layer = QgsVectorLayer(path, Path(path).stem, "ogr")
-            if not layer.isValid() or layer.featureCount() < 1:
-                raise ValueError(
-                    f"Domain polygon is invalid or empty: {Path(path).name}")
-
-        pending_path = os.path.splitext(merged_path)[0] + "_pending.shp"
-        self.processor._remove_vector_dataset(pending_path)
-        try:
-            result = self.main_dialog.run_processing_algorithm(
-                "native:mergevectorlayers",
-                {"LAYERS": vector_paths, "CRS": None, "OUTPUT": pending_path},
-            )
-            pending_layer = QgsVectorLayer(
-                pending_path, "Pending merged domains", "ogr")
-            valid = (
-                bool(result)
-                and pending_layer.isValid()
-                and pending_layer.featureCount() > 0
-            )
-            pending_layer = None
-            if not valid:
-                raise RuntimeError(
-                    "Could not merge the active domain polygons.")
-            self._publish_vector_dataset(pending_path, merged_path)
-        finally:
-            self.processor._remove_vector_dataset(pending_path)
-
-        self.processor.merged_watershed_path = merged_path
-        self.processor.watershed_vector_path = merged_path
-        self.processor.mark_output_prepared(
-            merged_path, name="4_watershed_merged", loaded=False)
-
-    def _publish_vector_dataset(self, source_path, target_path):
-        source_base = os.path.splitext(source_path)[0]
-        target_base = os.path.splitext(target_path)[0]
-        self.processor._remove_vector_dataset(target_path)
-        for extension in (
-            ".shp", ".shx", ".dbf", ".prj", ".cpg", ".qpj", ".fix"
-        ):
-            source = source_base + extension
-            if os.path.exists(source):
-                os.replace(source, target_base + extension)
+        return self.workflow.merge_active_domains(self.state)
 
     def _domain_output_folder(self):
-        path = os.path.join(
-            geometry_folder(self.project_folder),
-            "Watersheds",
-            "DomainDelineation",
-        )
-        os.makedirs(path, exist_ok=True)
-        return path
+        return self.workflow.domain_output_folder()
 
-    def _safe_outlet_name(self, outlet_id):
-        value = re.sub(r"[^A-Za-z0-9_-]+", "_", str(outlet_id)).strip("_")
-        index = self.outlet_ids.index(str(outlet_id)) + 1
-        return f"{index}_{value or 'outlet'}"
-
-    def _outlet_paths(self, outlet_id, preview=False):
-        prefix = "_preview_" if preview else "4_watershed_"
-        base = os.path.join(
-            self._domain_output_folder(),
-            prefix + self._safe_outlet_name(outlet_id),
+    def _outlet_paths(self, outlet_id, preview=False, state=None):
+        return self.workflow.outlet_paths(
+            outlet_id,
+            state or self.state,
+            preview=preview,
         )
-        return base + ".tif", base + ".shp"
 
     def _dem_paths(self):
-        base = os.path.join(
-            self._domain_output_folder(), "4_watershed_DEM")
-        return base + ".tif", base + ".shp"
+        return self.workflow.dem_paths()
 
     def _show_saved_watershed(self, record):
         self._watershed_layer = None
@@ -738,6 +643,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
     def _zoom_to_outlet(self):
         feature = self._features.get(self.current_outlet_id)
         if feature is None or feature.geometry().isEmpty():
+            self._outlet_marker.hide()
             return
         geometry = QgsGeometry(feature.geometry())
         source = self.pour_points_layer.crs()
@@ -746,6 +652,12 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             transform = QgsCoordinateTransform(
                 source, target, QgsProject.instance())
             geometry.transform(transform)
+
+        marker_point = geometry.asPoint()
+        if marker_point.isEmpty():
+            marker_point = geometry.centroid().asPoint()
+        self._outlet_marker.setCenter(marker_point)
+        self._outlet_marker.show()
 
         extent = geometry.boundingBox()
         padding = max(
@@ -762,6 +674,13 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
 
     def _cleanup(self, *_args):
         self._stop_picking()
+        if self._outlet_marker is not None:
+            self._outlet_marker.hide()
+            try:
+                self.canvas.scene().removeItem(self._outlet_marker)
+            except RuntimeError:
+                pass
+            self._outlet_marker = None
         self.canvas.setLayers([])
 
     def closeEvent(self, event):

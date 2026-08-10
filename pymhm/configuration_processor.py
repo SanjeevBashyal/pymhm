@@ -33,6 +33,9 @@ class ConfigurationProcessor:
         project_folder = self.dialog.project_folder
         if project_folder:
             ensure_project_structure(project_folder, self.selected_version())
+            refresh = getattr(self.dialog, "refresh_advanced_nml_settings", None)
+            if refresh is not None:
+                refresh()
         self.dialog.save_input_state()
 
     def edit_namelists(self) -> bool:

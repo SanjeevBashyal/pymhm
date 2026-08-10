@@ -8,6 +8,7 @@ standalone_qgis.install(force=True)
 # isort: off
 from pymhm.Morphology.hydrology.discharge_writer import (
     records_from_layer,
+    streamflow_filename,
     write_streamflow_observation,
 )
 # isort: on
@@ -38,3 +39,27 @@ def test_semicolon_delimited_txt_is_supported(tmp_path):
     output = write_streamflow_observation(layer, "7", tmp_path / "output")
     assert output.name == "7.txt"
     assert "2020  01  02" in output.read_text(encoding="utf-8")
+
+
+def test_observation_filename_preserves_leading_zeroes(tmp_path):
+    source = tmp_path / "gauge.csv"
+    source.write_text(
+        "date,discharge\n2020-01-01,1.25\n",
+        encoding="utf-8",
+    )
+
+    output = write_streamflow_observation(
+        _FileLayer(source),
+        "001",
+        tmp_path / "output",
+    )
+
+    assert output.name == "001.txt"
+    assert streamflow_filename("001") == "001.txt"
+
+
+def test_observation_filename_rejects_path_components():
+    import pytest
+
+    with pytest.raises(ValueError, match="safe for a filename"):
+        streamflow_filename("../7")

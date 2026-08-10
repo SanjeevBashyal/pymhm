@@ -55,6 +55,11 @@ from .project_layout import (data_folder, data_raw_folder,
                              ensure_project_structure, geometry_folder,
                              output_folder, restart_folder,
                              workspace_folder, z_temp_folder)
+from .morphology_display import (
+    DISPLAY_KEYS,
+    land_cover_periods,
+    resolve_display_output,
+)
 from .qgis_compat import map_layer_filters
 from .terminal_dialog import ProjectTerminalDialog
 from .pyui.ui_pymhm_dialog_base import Ui_pymhmDialog
@@ -215,8 +220,12 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.setupUi(self)
         self._categorical_lookup_configs = {}
         self._categorical_modes = {}
+        self._advanced_inputs = {}
+        self._land_cover_ready_source = ""
+        self._domain_definition_mode = ""
         self._input_adapters = {}
         self.configure_widget_aliases()
+        self.configure_morphology_display()
 
         # --- Filter map layer combo boxes to show only relevant layer types ---
         self.mMapLayerComboBox_dem.setFilters(map_layer_filters("RasterLayer"))
@@ -226,9 +235,10 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.mMapLayerComboBox_soil.setFilters(
             map_layer_filters("RasterLayer", "VectorLayer")
         )
-        self.mMapLayerComboBox_land_cover.setFilters(
-            map_layer_filters("RasterLayer", "VectorLayer")
-        )
+        if hasattr(self, "mMapLayerComboBox_land_cover"):
+            self.mMapLayerComboBox_land_cover.setFilters(
+                map_layer_filters("RasterLayer", "VectorLayer")
+            )
         self.mMapLayerComboBox_geology.setFilters(
             map_layer_filters("RasterLayer", "VectorLayer")
         )
@@ -309,6 +319,11 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         if hasattr(self, "comboBox_lai_inputType"):
             self.comboBox_laiInputType = self.comboBox_lai_inputType
+        if (
+            hasattr(self, "comboBox_landUseInputType")
+            and not hasattr(self, "comboBox_landCover_inputType")
+        ):
+            self.comboBox_landCover_inputType = self.comboBox_landUseInputType
 
         if (
             hasattr(self, "pushButton_executeAllMorphology")
@@ -340,15 +355,29 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if hasattr(self, "pushButton_Terminal") and not hasattr(self, "pushButton_terminal"):
             self.pushButton_terminal = self.pushButton_Terminal
 
+    def configure_morphology_display(self):
+        """Attach stable keys to the morphology display choices."""
+        combo = getattr(self, "comboBox_morphVariableToDisplay", None)
+        if combo is not None:
+            for index, key in enumerate(DISPLAY_KEYS[: combo.count()]):
+                combo.setItemData(index, key)
+        editor = getattr(self, "dateTimeEdit_forHistoricalInputs", None)
+        if editor is not None:
+            editor.setEnabled(False)
+
     def configure_input_layer_combo_boxes(self):
         """Allow input layer boxes to start empty so layers are chosen deliberately."""
 
         layer_combo_boxes = [
-            self.mMapLayerComboBox_dem,
-            self.mMapLayerComboBox_pour_points,
-            self.mMapLayerComboBox_soil,
-            self.mMapLayerComboBox_land_cover,
-            self.mMapLayerComboBox_geology,
+            combo
+            for combo in (
+                getattr(self, "mMapLayerComboBox_dem", None),
+                getattr(self, "mMapLayerComboBox_pour_points", None),
+                getattr(self, "mMapLayerComboBox_soil", None),
+                getattr(self, "mMapLayerComboBox_land_cover", None),
+                getattr(self, "mMapLayerComboBox_geology", None),
+            )
+            if combo is not None
         ]
 
         if hasattr(self, "mMapLayerComboBox_LAI_Class"):
@@ -462,7 +491,26 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             path = widget.text().strip()
             if os.path.isfile(path):
                 paths.add(os.path.normcase(os.path.abspath(path)))
+        for value in self._advanced_inputs.values():
+            data = value.as_dict() if hasattr(value, "as_dict") else value
+            for path in self._nested_existing_paths(data):
+                paths.add(os.path.normcase(os.path.abspath(path)))
+        if os.path.isfile(self._land_cover_ready_source):
+            paths.add(
+                os.path.normcase(os.path.abspath(self._land_cover_ready_source))
+            )
         return paths
+
+    @classmethod
+    def _nested_existing_paths(cls, value):
+        if isinstance(value, dict):
+            for item in value.values():
+                yield from cls._nested_existing_paths(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                yield from cls._nested_existing_paths(item)
+        elif isinstance(value, str) and os.path.isfile(value):
+            yield value
 
     def meteo_input_widgets(self):
         """Return folder/source widgets for the three meteorology inputs."""
@@ -818,25 +866,26 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.connect_input_source_signals()
 
         # Morphology/Geometry processing - delegate to processor
-        self.connect_processor_button(
-            self.pushButton_convertDEMtoASC,
+        self.connect_optional_processor_button(
+            "pushButton_convertDEMtoASC",
             "Convert DEM to ASC",
             self.morphology_processor.convert_dem_to_asc,
         )
-        self.connect_processor_button(
-            self.pushButton_fillDem, "Fill DEM", self.morphology_processor.fill_dem
+        self.connect_optional_processor_button(
+            "pushButton_fillDem", "Fill DEM", self.morphology_processor.fill_dem
         )
-        self.connect_processor_button(
-            self.pushButton_createNetwork,
+        self.connect_optional_processor_button(
+            "pushButton_createNetwork",
             "Create Channel Network",
             self.morphology_processor.process_channel_network,
         )
-        self.connect_processor_button(
-            self.pushButton_snapPoints,
+        self.connect_optional_processor_button(
+            "pushButton_snapPoints",
             "Snap Pour Points",
             self.morphology_processor.snap_points,
         )
-        self.pushButton_delineate.clicked.connect(self.open_domain_delineator)
+        if hasattr(self, "pushButton_delineate"):
+            self.pushButton_delineate.clicked.connect(self.open_domain_delineator)
         if hasattr(self, "pushButton_elevation_bands"):
             self.connect_processor_button(
                 self.pushButton_elevation_bands,
@@ -851,24 +900,24 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             )
 
         # Hydrological processing - delegate to processor
-        self.connect_processor_button(
-            self.pushButton_aspect, "Aspect", self.morphology_processor.process_aspect
+        self.connect_optional_processor_button(
+            "pushButton_aspect", "Aspect", self.morphology_processor.process_aspect
         )
-        self.connect_processor_button(
-            self.pushButton_slope, "Slope", self.morphology_processor.process_slope
+        self.connect_optional_processor_button(
+            "pushButton_slope", "Slope", self.morphology_processor.process_slope
         )
-        self.connect_processor_button(
-            self.pushButton_flowAccumulation,
+        self.connect_optional_processor_button(
+            "pushButton_flowAccumulation",
             "Flow Accumulation",
             self.morphology_processor.process_flow_accumulation,
         )
-        self.connect_processor_button(
-            self.pushButton_flowDirection,
+        self.connect_optional_processor_button(
+            "pushButton_flowDirection",
             "Flow Direction",
             self.morphology_processor.process_flow_direction,
         )
-        self.connect_processor_button(
-            self.pushButton_gaugePosition,
+        self.connect_optional_processor_button(
+            "pushButton_gaugePosition",
             "Gauge Position",
             self.morphology_processor.process_gauge_position,
         )
@@ -897,21 +946,22 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.checkBox_DEMdomain.toggled.connect(
             self.handle_model_input_changed
         )
-        self.pushButton_domainDelineator.clicked.connect(
-            self.open_domain_delineator
-        )
+        if hasattr(self, "comboBox_domainDefinitionType"):
+            self.comboBox_domainDefinitionType.activated.connect(
+                self.handle_domain_definition_type
+            )
 
         # Layer processing - delegate to processor
-        self.connect_processor_button(
-            self.pushButton_landUse,
+        self.connect_optional_processor_button(
+            "pushButton_landUse",
             "Land Use",
             self.morphology_processor.process_land_use,
         )
-        self.connect_processor_button(
-            self.pushButton_soil, "Soil", self.morphology_processor.process_soil
+        self.connect_optional_processor_button(
+            "pushButton_soil", "Soil", self.morphology_processor.process_soil
         )
-        self.connect_processor_button(
-            self.pushButton_hydrogeology,
+        self.connect_optional_processor_button(
+            "pushButton_hydrogeology",
             "Hydrogeology",
             self.morphology_processor.process_geology,
         )
@@ -920,6 +970,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 self.pushButton_LAI,
                 "LAI",
                 self.morphology_processor.process_lai,
+            )
+        if hasattr(self, "pushButton_morphLayerDisplay"):
+            self.pushButton_morphLayerDisplay.clicked.connect(
+                self.display_selected_morphology_layer
+            )
+        if hasattr(self, "comboBox_morphVariableToDisplay"):
+            self.comboBox_morphVariableToDisplay.currentIndexChanged.connect(
+                self.update_morphology_date_control
             )
 
         # Reset geometry
@@ -1003,6 +1061,12 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         project_crs = QgsProject.instance().crs()
         if project_crs.isValid():
             self.mProjectionSelectionWidget_crs.setCrs(project_crs)
+
+    def connect_optional_processor_button(self, name, label, callback):
+        """Connect a processing control when it exists in the active UI."""
+        button = getattr(self, name, None)
+        if button is not None:
+            self.connect_processor_button(button, label, callback)
 
     def connect_grid_resolution_signals(self):
         """Refresh derived grid controls when DEM/L1/L11 selections change."""
@@ -1651,6 +1715,166 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.morphology_processor.resetGeometry()
         self.refresh_morphology_workflow_button_states()
 
+    def handle_domain_definition_type(self, index):
+        """Dispatch the selected domain-definition workflow."""
+        if self._loading_input_state:
+            return
+        previous = self._domain_definition_mode
+        previous_dem = self.checkBox_DEMdomain.isChecked()
+        if int(index) == 2:
+            self._domain_definition_mode = self.comboBox_domainDefinitionType.currentText()
+            self.save_input_state()
+            self.open_domain_delineator()
+            return
+        mode = "dem" if int(index) == 0 else "snapped"
+        self.checkBox_DEMdomain.setChecked(mode == "dem")
+        if self.open_domain_assignment(mode):
+            self._domain_definition_mode = self.comboBox_domainDefinitionType.currentText()
+            self.save_input_state()
+            return
+        self.checkBox_DEMdomain.setChecked(previous_dem)
+        combo = self.comboBox_domainDefinitionType
+        combo.blockSignals(True)
+        combo.setCurrentIndex(combo.findText(previous) if previous else -1)
+        combo.blockSignals(False)
+        self.save_input_state()
+
+    def open_domain_assignment(self, mode):
+        """Open the non-interactive domain/gauge assignment workflow."""
+        if getattr(sys.modules.get("qgis"), "_pymhm_standalone_qgis", False):
+            QMessageBox.information(
+                self,
+                "Domain Assignment",
+                "Domain preparation requires the QGIS plugin runtime.",
+            )
+            return False
+        if not self.project_folder:
+            QMessageBox.warning(self, "Domain Assignment", "Select a project folder first.")
+            return False
+        try:
+            outlet_ids = self.selected_outlet_ids()
+        except StationIdError as error:
+            QMessageBox.warning(self, "Domain Assignment", str(error))
+            return False
+        if not outlet_ids:
+            QMessageBox.warning(
+                self,
+                "Domain Assignment",
+                "The pour-point layer does not contain any outlet features.",
+            )
+            return False
+        try:
+            from .Morphology.hydrology.discharge_dialog import (
+                DischargeTableAssignmentDialog,
+                DomainAndDischargeTableAssignmentDialog,
+            )
+            from .Morphology.watershed.domain_workflow import DomainWorkflow
+            from .Morphology.watershed.domain_state import (
+                DOMAIN_MODE_DEM_EXTENT,
+                DOMAIN_MODE_SNAPPED,
+            )
+            from .nml_settings import sync_domain_settings
+
+            layer = self.mMapLayerComboBox_pour_points.currentLayer()
+            workflow = DomainWorkflow(
+                self,
+                self.morphology_processor,
+                layer,
+                self.selected_outlet_id_field(),
+                outlet_ids,
+            )
+            definition = (
+                DOMAIN_MODE_DEM_EXTENT if mode == "dem" else DOMAIN_MODE_SNAPPED
+            )
+            state = workflow.load_synced_state(definition, mode == "dem")
+            dialog_class = (
+                DischargeTableAssignmentDialog
+                if mode == "dem"
+                else DomainAndDischargeTableAssignmentDialog
+            )
+            dialog = dialog_class(
+                outlet_ids,
+                self,
+                initial_records=state.get("outlets", {}),
+            )
+            execute = getattr(dialog, "exec", None) or dialog.exec_
+            if execute() != QDialog.Accepted:
+                return False
+            assignments = dialog.selected_assignments()
+            if mode == "dem":
+                workflow.apply_dem_extent(assignments)
+            else:
+                workflow.apply_snapped_domains(assignments)
+            sync_domain_settings(self.project_folder)
+            self.morphology_processor.update_gauged_outlet_count()
+            self.invalidate_meteo_morph_setup()
+            return True
+        except Exception as error:
+            self.log_message(f"ERROR: Domain assignment failed: {error}")
+            self.log_message(f"Traceback: {traceback.format_exc()}")
+            QMessageBox.critical(self, "Domain Assignment", str(error))
+            return False
+
+    def update_morphology_date_control(self, index=None):
+        """Enable the date selector only for historical land cover."""
+        editor = getattr(self, "dateTimeEdit_forHistoricalInputs", None)
+        combo = getattr(self, "comboBox_morphVariableToDisplay", None)
+        if editor is None or combo is None:
+            return
+        key = combo.currentData()
+        periods = land_cover_periods(self.project_folder) if self.project_folder else []
+        enabled = key == "land_cover" and len(periods) > 1
+        editor.setEnabled(enabled)
+        if not enabled:
+            return
+        try:
+            first = min(int(period["start_year"]) for period in periods)
+            last = max(int(period["end_year"]) for period in periods)
+        except (KeyError, TypeError, ValueError):
+            editor.setEnabled(False)
+            return
+        editor.setMinimumDate(QtCore.QDate(first, 1, 1))
+        editor.setMaximumDate(QtCore.QDate(last, 12, 31))
+        editor.setDate(QtCore.QDate(first, 1, 1))
+
+    def display_selected_morphology_layer(self, checked=False):
+        """Load the prepared output selected by the display combo box."""
+        if not self.project_folder:
+            QMessageBox.warning(self, "Display Layer", "Select a project folder first.")
+            return
+        combo = self.comboBox_morphVariableToDisplay
+        key = combo.currentData()
+        if not key:
+            QMessageBox.warning(self, "Display Layer", "Select a morphology layer.")
+            return
+        year = None
+        if self.dateTimeEdit_forHistoricalInputs.isEnabled():
+            year = self.dateTimeEdit_forHistoricalInputs.date().year()
+        output = resolve_display_output(self.project_folder, key, year=year)
+        if output is None:
+            QMessageBox.warning(
+                self,
+                "Display Layer",
+                "The selected morphology output has not been prepared yet.",
+            )
+            return
+        source = str(output.path)
+        if output.variable and output.path.suffix.lower() == ".nc":
+            source = f'NETCDF:"{output.path}":{output.variable}'
+        layer = self.load_layer(source, output.name, output.is_raster)
+        if layer is not None and output.band and output.band > 1:
+            try:
+                from qgis.core import QgsSingleBandGrayRenderer
+
+                layer.setRenderer(
+                    QgsSingleBandGrayRenderer(layer.dataProvider(), output.band)
+                )
+                layer.triggerRepaint()
+            except Exception as error:
+                self.log_message(
+                    f"WARNING: Could not select historical band {output.band}: {error}"
+                )
+
     def open_domain_delineator(self, checked=False):
         """Open the per-outlet domain delineation dialog in QGIS."""
         if getattr(sys.modules.get("qgis"), "_pymhm_standalone_qgis", False):
@@ -1700,6 +1924,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             QMessageBox.critical(self, "Domain Delineator", str(error))
         finally:
             self._domain_delineator_dialog = None
+            try:
+                from .nml_settings import sync_domain_settings
+
+                sync_domain_settings(self.project_folder)
+            except Exception as error:
+                self.log_message(
+                    f"WARNING: Could not update domain namelist settings: {error}"
+                )
             self.save_input_state()
             self.morphology_processor.update_gauged_outlet_count()
 
@@ -2100,11 +2332,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
     def categorical_type_combo(self, kind):
         """Return the land-cover, soil, or geology input-type combo box."""
         name = {
-            "lc": "comboBox_landCover_inputType",
+            "lc": "comboBox_landUseInputType",
             "soil": "comboBox_soil_inputType",
             "geology": "comboBox_geology_inputType",
         }[kind]
-        return getattr(self, name)
+        combo = getattr(self, name, None)
+        if combo is None and kind == "lc":
+            combo = getattr(self, "comboBox_landCover_inputType")
+        return combo
 
     def categorical_input_mode(self, kind):
         """Return the selected categorical input mode."""
@@ -2122,7 +2357,17 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if self._loading_input_state:
             self._categorical_modes[kind] = text
             return
-        if text.lower() != "lookup table":
+        normalized = text.lower()
+        if kind == "lc":
+            self.handle_land_use_input_type(text, previous)
+            return
+        if kind == "soil" and "multi-horizon" in normalized:
+            self.handle_multi_horizon_soil_input(text, previous)
+            return
+        if "lookup table" not in normalized:
+            if kind == "soil":
+                self._advanced_inputs.pop("soil", None)
+                self._save_standard_soil_nml_input("mhm_ready")
             self._categorical_modes[kind] = text
             self.save_input_state()
             self.invalidate_meteo_morph_setup()
@@ -2153,8 +2398,303 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             "class_field": config.class_field,
         }
         self._categorical_modes[kind] = text
+        if kind == "soil":
+            self._advanced_inputs.pop("soil", None)
+            self._save_standard_soil_nml_input("single_categorical")
         self.save_input_state()
         self.invalidate_meteo_morph_setup()
+
+    def handle_land_use_input_type(self, text, previous=""):
+        """Collect the selected ready, single, or historical land-use input."""
+        if not self.project_folder:
+            QMessageBox.warning(
+                self,
+                "Project Folder Required",
+                "Select a project folder before configuring land use.",
+            )
+            self._restore_categorical_mode("lc", previous)
+            return
+        if str(text).strip().lower() == "mhm ready":
+            path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select mHM-ready Land Cover",
+                self.project_folder,
+                "Land-cover rasters (*.asc *.nc *.tif);;All files (*)",
+            )
+            if not path:
+                self._restore_categorical_mode("lc", previous)
+                return
+            try:
+                from .advanced_input_processing import configure_ready_land_cover
+
+                output = configure_ready_land_cover(
+                    self.project_folder,
+                    path,
+                    self.comboBox_mHMversion.currentText(),
+                )
+                self._land_cover_ready_source = str(Path(path).resolve())
+                self._advanced_inputs.pop("land_cover", None)
+                self.morphology_processor.mark_output_prepared(
+                    str(output), name=output.name, loaded=False
+                )
+                self.log_message(f"mHM-ready land cover saved: {output}")
+            except Exception as error:
+                QMessageBox.critical(self, "Land-use Input", str(error))
+                self._restore_categorical_mode("lc", previous)
+                return
+        else:
+            from .advanced_input_dialogs import HistoricalLandUseDialog
+
+            initial = self._advanced_inputs.get("land_cover")
+            dialog = HistoricalLandUseDialog(
+                self.project_folder,
+                self,
+                initial=initial,
+                all_time="single layer" in str(text).lower(),
+            )
+            execute = getattr(dialog, "exec", None) or dialog.exec_
+            if execute() != QDialog.Accepted:
+                self._restore_categorical_mode("lc", previous)
+                return
+            value = dialog.selected_input()
+            self._advanced_inputs["land_cover"] = value
+            self._land_cover_ready_source = ""
+            self._save_land_cover_nml_input(value)
+        self._categorical_modes["lc"] = str(text)
+        self.save_input_state()
+        self.invalidate_meteo_morph_setup()
+        self.update_morphology_date_control()
+
+    def handle_multi_horizon_soil_input(self, text, previous=""):
+        """Collect and persist the multi-horizon soil source configuration."""
+        if not self.project_folder:
+            QMessageBox.warning(
+                self,
+                "Project Folder Required",
+                "Select a project folder before configuring soil inputs.",
+            )
+            self._restore_categorical_mode("soil", previous)
+            return
+        from .advanced_input_dialogs import MultiHorizonSoilDialog
+
+        dialog = MultiHorizonSoilDialog(
+            self.project_folder,
+            self,
+            initial=self._advanced_inputs.get("soil"),
+        )
+        execute = getattr(dialog, "exec", None) or dialog.exec_
+        if execute() != QDialog.Accepted:
+            self._restore_categorical_mode("soil", previous)
+            return
+        value = dialog.selected_input()
+        self._advanced_inputs["soil"] = value
+        self._categorical_modes["soil"] = str(text)
+        self._save_soil_nml_input(value)
+        self.save_input_state()
+        self.invalidate_meteo_morph_setup()
+
+    def uses_advanced_categorical_input(self, kind):
+        """Return whether processing should use the advanced input pipeline."""
+        text = self.categorical_input_mode(kind).lower()
+        return kind == "lc" or (kind == "soil" and "multi-horizon" in text)
+
+    def process_advanced_categorical_input(self, kind):
+        """Prepare configured historical land use or multi-horizon soil."""
+        if not self.check_prerequisites():
+            return False
+        if not self.morphology_processor._ensure_filled_dem(
+            self.morphology_processor.fill_dem
+        ):
+            return False
+        version = self.comboBox_mHMversion.currentText().strip()
+        try:
+            if kind == "lc" and self.categorical_input_mode("lc").lower() == "mhm ready":
+                from .advanced_input_processing import configure_ready_land_cover
+
+                if not self._land_cover_ready_source:
+                    raise ValueError("Select an mHM-ready land-cover file first.")
+                outputs = (
+                    configure_ready_land_cover(
+                        self.project_folder,
+                        self._land_cover_ready_source,
+                        version,
+                    ),
+                )
+            elif kind == "lc":
+                from .advanced_input_processing import process_land_cover_input
+
+                value = self._land_use_input_value(
+                    self._advanced_inputs.get("land_cover")
+                )
+                outputs = process_land_cover_input(
+                    self.project_folder,
+                    version,
+                    value,
+                    self.morphology_processor.filled_dem_path,
+                    log=self.log_message,
+                )
+            else:
+                from .advanced_input_processing import process_soil_input
+
+                value = self._soil_input_value(self._advanced_inputs.get("soil"))
+                outputs = process_soil_input(
+                    self.project_folder,
+                    version,
+                    value,
+                    self.morphology_processor.filled_dem_path,
+                    log=self.log_message,
+                )
+            for output in outputs:
+                self.morphology_processor.mark_output_prepared(
+                    str(output), name=output.name, loaded=False
+                )
+            self.log_message(
+                f"Advanced {'land-cover' if kind == 'lc' else 'soil'} data prepared."
+            )
+            self.update_morphology_date_control()
+            return True
+        except Exception as error:
+            self.log_message(f"ERROR preparing advanced {kind} data: {error}")
+            QMessageBox.critical(self, "Morphology Input Error", str(error))
+            return False
+
+    def _save_land_cover_nml_input(self, value):
+        from .nml_settings import update_section
+
+        update_section(
+            self.project_folder,
+            "land_cover",
+            {
+                "mode": "historical" if len(value.periods) > 1 else "single",
+                "variable": "land_cover",
+                "lookup_table": str(value.lookup_table),
+                "mapping_field": value.mapping_field,
+                "class_field": value.class_field,
+                "scenes": [
+                    {
+                        "start_year": item.start_year,
+                        "end_year": item.end_year,
+                        "source_path": str(item.file_path),
+                    }
+                    for item in value.periods
+                ],
+            },
+        )
+
+    def _save_soil_nml_input(self, value):
+        from .nml_settings import update_section
+
+        data = value.as_dict()
+        data.update(
+            {
+                "mode": "multi_horizon",
+                "soil_db_mode": (
+                    0 if self.comboBox_mHMversion.currentText().startswith("5") else 1
+                ),
+                "variable": "soil_class",
+                "source_bulk_density_unit": value.bulk_density_unit,
+                "bulk_density_unit": "g/cm3",
+                "composition_normalization": "component_sum_percent",
+            }
+        )
+        update_section(self.project_folder, "soil", data)
+
+    def _save_standard_soil_nml_input(
+        self, mode, output_path=None, classdefinition_path=None
+    ):
+        if not self.project_folder:
+            return
+        from .nml_settings import relative_workspace_path, update_section
+
+        output = (
+            relative_workspace_path(self.project_folder, output_path)
+            if output_path
+            else "data/static/morph/soil_class.asc"
+        )
+        definition = (
+            relative_workspace_path(self.project_folder, classdefinition_path)
+            if classdefinition_path
+            else "data/static/morph/soil_classdefinition.txt"
+        )
+        update_section(
+            self.project_folder,
+            "soil",
+            {
+                "mode": mode,
+                "soil_db_mode": 0,
+                "output_path": output,
+                "variable": "soil_class",
+                "classdefinition_path": definition,
+                "horizons": [],
+            },
+        )
+
+    def record_standard_soil_output(self, output_path=None, classdefinition_path=None):
+        """Update the namelist handoff after standard soil preparation."""
+        self._save_standard_soil_nml_input(
+            "mhm_ready" if self.categorical_input_mode("soil").lower() == "mhm ready"
+            else "single_categorical",
+            output_path,
+            classdefinition_path,
+        )
+
+    def refresh_advanced_nml_settings(self):
+        """Refresh version-dependent settings after the mHM version changes."""
+        value = self._advanced_inputs.get("soil")
+        if value:
+            self._save_soil_nml_input(self._soil_input_value(value))
+        land_cover = self._advanced_inputs.get("land_cover")
+        if land_cover:
+            self._save_land_cover_nml_input(
+                self._land_use_input_value(land_cover)
+            )
+        self.invalidate_meteo_morph_setup()
+
+    @staticmethod
+    def _land_use_input_value(value):
+        from .advanced_input_manifests import LandUseInput, LandUsePeriod
+
+        if isinstance(value, LandUseInput):
+            return value
+        if not isinstance(value, dict):
+            raise ValueError("Configure the land-use layers first.")
+        return LandUseInput(
+            tuple(
+                LandUsePeriod(
+                    int(item["start_year"]),
+                    int(item["end_year"]),
+                    Path(item["file_path"]),
+                )
+                for item in value.get("periods", [])
+            ),
+            Path(value.get("lookup_table", "")),
+            str(value.get("mapping_field", "")),
+            str(value.get("class_field", "")),
+        )
+
+    @staticmethod
+    def _soil_input_value(value):
+        from .advanced_input_manifests import SoilHorizon, SoilInput
+
+        if isinstance(value, SoilInput):
+            return value
+        if not isinstance(value, dict):
+            raise ValueError("Configure the multi-horizon soil layers first.")
+        return SoilInput(
+            tuple(
+                SoilHorizon(
+                    int(item["horizon"]),
+                    float(item["upper_depth"]),
+                    float(item["lower_depth"]),
+                    Path(item["clay_layer"]),
+                    Path(item["sand_layer"]),
+                    Path(item["silt_layer"]),
+                    Path(item["bulk_density_layer"]),
+                )
+                for item in value.get("horizons", [])
+            ),
+            str(value.get("bulk_density_unit", "")),
+        )
 
     def _restore_categorical_mode(self, kind, text):
         combo = self.categorical_type_combo(kind)
@@ -2174,13 +2714,17 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
     def input_layer_widgets(self):
         """Return persistent layer input widgets and their state keys."""
-        widgets = [
-            ("dem", self.mMapLayerComboBox_dem),
-            ("pour_points", self.mMapLayerComboBox_pour_points),
-            ("soil", self.mMapLayerComboBox_soil),
-            ("land_cover", self.mMapLayerComboBox_land_cover),
-            ("geology", self.mMapLayerComboBox_geology),
-        ]
+        widgets = []
+        for key, name in (
+            ("dem", "mMapLayerComboBox_dem"),
+            ("pour_points", "mMapLayerComboBox_pour_points"),
+            ("soil", "mMapLayerComboBox_soil"),
+            ("land_cover", "mMapLayerComboBox_land_cover"),
+            ("geology", "mMapLayerComboBox_geology"),
+        ):
+            widget = getattr(self, name, None)
+            if widget is not None:
+                widgets.append((key, widget))
 
         if hasattr(self, "mMapLayerComboBox_LAI_Class"):
             widgets.append(("lai_class", self.mMapLayerComboBox_LAI_Class))
@@ -2288,9 +2832,18 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 for kind in ("lc", "soil", "geology")
             },
             "categorical_lookups": self._serialized_categorical_lookups(),
+            "advanced_inputs": {
+                kind: value.as_dict() if hasattr(value, "as_dict") else value
+                for kind, value in self._advanced_inputs.items()
+            },
+            "land_cover_ready_source": self._land_cover_ready_source,
             "meteo_inputs": self.serialized_meteo_inputs(),
             "pour_point_outlet_id_field": self.selected_outlet_id_field(),
             "dem_domain": self.checkBox_DEMdomain.isChecked(),
+            "domain_definition_type": (
+                self.comboBox_domainDefinitionType.currentText().strip()
+                if hasattr(self, "comboBox_domainDefinitionType") else ""
+            ),
             "crs_authid": crs.authid() if crs and crs.isValid() else "",
             "project_layout": {
                 "data_folder": data_folder(self.project_folder),
@@ -2383,6 +2936,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self.restore_lai_input_type(state.get("lai_input_type", ""))
             self.restore_input_crs(state.get("crs_authid", ""))
             self.restore_categorical_inputs(state)
+            self.restore_advanced_inputs(state)
             self.refresh_input_sources()
             self.refresh_meteo_folder_sources()
             self.restore_input_layers(state.get("layers", {}))
@@ -2414,6 +2968,10 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.checkBox_DEMdomain.blockSignals(True)
         self.checkBox_DEMdomain.setChecked(False)
         self.checkBox_DEMdomain.blockSignals(False)
+        if hasattr(self, "comboBox_domainDefinitionType"):
+            self.comboBox_domainDefinitionType.blockSignals(True)
+            self.comboBox_domainDefinitionType.setCurrentIndex(-1)
+            self.comboBox_domainDefinitionType.blockSignals(False)
         for _, folder_combo, source_combo in self.meteo_input_widgets():
             folder_combo.blockSignals(True)
             folder_combo.setCurrentIndex(-1)
@@ -2431,6 +2989,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.checkBox_enableFolderSearch.blockSignals(False)
         self._categorical_lookup_configs = {}
         self._categorical_modes = {}
+        self._advanced_inputs = {}
+        self._land_cover_ready_source = ""
+        self._domain_definition_mode = ""
         self._preferred_l1_resolution = None
         self._preferred_l11_resolution = None
 
@@ -2442,6 +3003,13 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.checkBox_DEMdomain.blockSignals(True)
         self.checkBox_DEMdomain.setChecked(bool(state.get("dem_domain", False)))
         self.checkBox_DEMdomain.blockSignals(False)
+        combo = getattr(self, "comboBox_domainDefinitionType", None)
+        if combo is not None:
+            text = str(state.get("domain_definition_type", "") or "")
+            combo.blockSignals(True)
+            combo.setCurrentIndex(combo.findText(text) if text else -1)
+            combo.blockSignals(False)
+            self._domain_definition_mode = text
 
     def restore_meteo_inputs(self, state):
         """Restore the three meteo folders, source modes, and L2 multiplier."""
@@ -2510,6 +3078,15 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                         break
             combo.setCurrentIndex(index)
             self._categorical_modes[kind] = str(text) if index >= 0 else ""
+
+    def restore_advanced_inputs(self, state):
+        """Restore advanced source records without reopening their dialogs."""
+        inputs = state.get("advanced_inputs", {})
+        self._advanced_inputs = dict(inputs) if isinstance(inputs, dict) else {}
+        source = str(state.get("land_cover_ready_source", "") or "")
+        if source and not os.path.isabs(source):
+            source = os.path.abspath(os.path.join(self.project_folder, source))
+        self._land_cover_ready_source = source
 
     def restore_mhm_version(self, version):
         """Restore the saved mHM version selection."""

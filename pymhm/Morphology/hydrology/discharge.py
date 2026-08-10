@@ -5,14 +5,18 @@ from __future__ import annotations
 from ..common import QMessageBox
 from ..core.base import BaseProcessingMixin
 from .discharge_dialog import DischargeTableAssignmentDialog
-from .discharge_writer import write_streamflow_observation
-from .observation_paths import streamflow_observation_folder
 from .outlets import (
     StationIdError,
-    configured_gauged_outlet_ids,
     selected_outlet_id_field,
     station_ids_from_layer,
 )
+from ..watershed.domain_state import (
+    active_domain_records,
+    load_state,
+    save_state,
+    state_path,
+)
+from ..watershed.domain_workflow import DomainWorkflow
 
 
 class DischargeAssignmentMixin(BaseProcessingMixin):
@@ -35,23 +39,7 @@ class DischargeAssignmentMixin(BaseProcessingMixin):
                 pour_points_layer,
                 field_name=selected_outlet_id_field(self.dialog),
             )
-            configured_ids = configured_gauged_outlet_ids(
-                self.dialog.project_folder
-            )
-            if configured_ids is None:
-                station_ids = all_station_ids
-            else:
-                missing_ids = set(configured_ids) - set(all_station_ids)
-                if missing_ids:
-                    raise StationIdError(
-                        "Configured gauged outlet IDs are missing from the "
-                        f"pour points: {', '.join(sorted(missing_ids))}.")
-                configured_set = set(configured_ids)
-                station_ids = [
-                    station_id
-                    for station_id in all_station_ids
-                    if station_id in configured_set
-                ]
+            station_ids = all_station_ids
         except StationIdError as e:
             QMessageBox.critical(self.dialog, "Invalid Outlet IDs", str(e))
             self.log_message(f"ERROR: {e}")
@@ -60,57 +48,81 @@ class DischargeAssignmentMixin(BaseProcessingMixin):
         if not station_ids:
             QMessageBox.warning(
                 self.dialog,
-                "No Gauged Outlets",
-                "No outlets are marked as gauged.")
+                "No Pour Points",
+                "The selected pour-point layer does not contain any features.")
             return
 
-        dialog = DischargeTableAssignmentDialog(station_ids, self.dialog)
+        existing_state = (
+            load_state(self.dialog.project_folder)
+            if state_path(self.dialog.project_folder).is_file()
+            else None
+        )
+        dialog = DischargeTableAssignmentDialog(
+            station_ids,
+            self.dialog,
+            initial_records=(existing_state or {}).get("outlets", {}),
+        )
         if dialog.exec_() != dialog.Accepted:
             self.log_message("Discharge table assignment cancelled.")
             return
 
-        selected_layers = dialog.selected_layers()
-        output_folder = streamflow_observation_folder(self.dialog.project_folder)
-        self.log_message(f"Streamflow observation output folder: {output_folder}")
-
-        written = []
-        for station_id in station_ids:
-            layer = selected_layers.get(station_id)
-            if not layer or not layer.isValid():
-                QMessageBox.warning(
-                    self.dialog,
-                    "Missing Discharge Table",
-                    f"Please select a valid discharge table for STATION_ID {station_id}.")
-                return
-
-            self.log_message(
-                f"STATION_ID {station_id}: discharge table {layer.name()} | {layer.source()}")
-            try:
-                output_file = write_streamflow_observation(
-                    layer,
-                    station_id,
-                    output_folder,
+        assignments = dialog.selected_assignments()
+        workflow = DomainWorkflow(
+            self.dialog,
+            self,
+            pour_points_layer,
+            selected_outlet_id_field(self.dialog),
+            station_ids,
+        )
+        try:
+            prepared = workflow.validate_gauge_assignments(assignments)
+            if not prepared:
+                raise ValueError("Select at least one gauged outlet.")
+            state = None
+            previous = set()
+            if existing_state is not None:
+                previous = set(
+                    outlet_id
+                    for outlet_id, record in existing_state["outlets"].items()
+                    if record.get("is_gauged", record.get("gauged", False))
                 )
-            except Exception as e:
-                QMessageBox.critical(
-                    self.dialog,
-                    "Discharge Table Error",
-                    f"Could not write streamflow observations for STATION_ID {station_id}.\n{e}")
-                self.log_message(
-                    f"ERROR: Could not write streamflow observations for {station_id}: {e}")
-                return
+                state = workflow.load_synced_state(
+                    existing_state.get("definition_mode", ""),
+                    existing_state.get("dem_domain", False),
+                )
+                workflow.apply_assignment_records(state, assignments, prepared)
+                workflow.validate_unique_state_gauge_ids(state)
+                if active_domain_records(state):
+                    workflow.update_gauge_domain_ids(state)
+                else:
+                    for record in state["outlets"].values():
+                        if record.get("is_gauged", False):
+                            record["domain_ids"] = []
 
-            self.mark_output_prepared(
-                str(output_file),
-                name=output_file.name,
-                loaded=False,
+            workflow.write_gauges(prepared)
+            if state is not None:
+                save_state(self.dialog.project_folder, state)
+                workflow.remove_deselected_gauges(previous, state)
+        except (StationIdError, ValueError, RuntimeError) as error:
+            QMessageBox.critical(
+                self.dialog,
+                "Discharge Table Error",
+                str(error),
             )
-            written.append(output_file)
-            self.log_message(f"Written streamflow observations: {output_file}")
+            self.log_message(f"ERROR: {error}")
+            return
+
+        for gauge in prepared.values():
+            self.log_message(
+                f"Written streamflow observations: {gauge.output_path}"
+            )
 
         self.log_message(
-            f"Discharge table assignment completed for {len(written)} gauged outlet(s).")
+            "Discharge table assignment completed for "
+            f"{len(prepared)} gauged outlet(s)."
+        )
         QMessageBox.information(
             self.dialog,
             "Success",
-            f"Prepared {len(written)} streamflow observation file(s).")
+            f"Prepared {len(prepared)} streamflow observation file(s).",
+        )

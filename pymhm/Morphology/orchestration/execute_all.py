@@ -72,7 +72,14 @@ class ExecuteAllMixin(
             if not self.process_land_use():
                 return fail("Land Cover processing failed. Aborting Execute All.")
             land_cover_ready = self._categorical_mode("lc") == "mhm_ready"
-            if land_cover_ready and not os.path.exists(
+            advanced_land_cover = bool(
+                getattr(
+                    self.dialog,
+                    "uses_advanced_categorical_input",
+                    lambda _kind: False,
+                )("lc")
+            )
+            if land_cover_ready and not advanced_land_cover and not os.path.exists(
                 self.categorical_ready_outputs.get("lc", "")
             ):
                 return fail(
@@ -91,7 +98,33 @@ class ExecuteAllMixin(
             )
             if not self.process_soil(write_classdefinition=True):
                 return fail("Soil processing failed. Aborting Execute All.")
-            if self._categorical_mode("soil") == "mhm_ready":
+            advanced_soil = bool(
+                getattr(
+                    self.dialog,
+                    "uses_advanced_categorical_input",
+                    lambda _kind: False,
+                )("soil")
+            )
+            if advanced_soil:
+                version = self.dialog.comboBox_mHMversion.currentText().strip()
+                if version.startswith("5"):
+                    soil_raster = os.path.join(
+                        morph_folder(self.dialog.project_folder), "soil_class.asc"
+                    )
+                    soil_definition = os.path.join(
+                        morph_folder(self.dialog.project_folder),
+                        "soil_classdefinition.txt",
+                    )
+                else:
+                    soil_raster = os.path.join(
+                        morph_folder(self.dialog.project_folder),
+                        "soil_horizon_class.nc",
+                    )
+                    soil_definition = os.path.join(
+                        morph_folder(self.dialog.project_folder),
+                        "soil_classdefinition_iFlag_soilDB_1.txt",
+                    )
+            elif self._categorical_mode("soil") == "mhm_ready":
                 soil_raster = self.categorical_ready_outputs.get("soil", "")
             if not os.path.exists(soil_raster) or not os.path.exists(
                     soil_definition):
