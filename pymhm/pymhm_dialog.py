@@ -299,7 +299,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 "mMapLayerComboBox_pour_points",
             ),
             "land_cover": (
-                "comboBox_landCoverInput",
+                "comboBox_landUseInput",
                 "mMapLayerComboBox_land_cover",
             ),
             "soil": ("comboBox_soilInput", "mMapLayerComboBox_soil"),
@@ -817,7 +817,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         for kind, button_name in (
             ("dem", "pushButton_browseDEMInput"),
             ("pour_points", "pushButton_browsePourPointInput"),
-            ("land_cover", "pushButton_browseLandCoverInput"),
+            ("land_cover", "pushButton_browseLandUseInput"),
             ("soil", "pushButton_soilInput"),
             ("geology", "pushButton_geologyInput"),
             ("lai", "pushButton_laiInput"),
