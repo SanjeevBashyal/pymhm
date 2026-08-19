@@ -113,17 +113,24 @@ def raster_resolution_info(layer) -> dict | None:
     if width <= 0 or height <= 0:
         return None
 
-    x_resolution = abs((extent.xMaximum() - extent.xMinimum()) / width)
-    y_resolution = abs((extent.yMaximum() - extent.yMinimum()) / height)
+    exact_x_resolution = abs((extent.xMaximum() - extent.xMinimum()) / width)
+    exact_y_resolution = abs((extent.yMaximum() - extent.yMinimum()) / height)
+    exact_resolution = (exact_x_resolution + exact_y_resolution) / 2.0
     crs = layer.crs()
     unit = qgis_crs_unit_label(crs)
-    x_resolution = ceil_cellsize(x_resolution, unit)
-    y_resolution = ceil_cellsize(y_resolution, unit)
+    x_resolution = ceil_cellsize(exact_x_resolution, unit)
+    y_resolution = ceil_cellsize(exact_y_resolution, unit)
     resolution = ceil_cellsize((x_resolution + y_resolution) / 2.0, unit)
     return {
         "resolution": resolution,
         "x_resolution": x_resolution,
         "y_resolution": y_resolution,
+        # Unrounded values. Grid construction must use these: flooring a
+        # repeating cell size such as 1/1200 degrees drifts by a fraction of a
+        # cell per row, which breaks the L0/L2 alignment over tall rasters.
+        "exact_resolution": exact_resolution,
+        "exact_x_resolution": exact_x_resolution,
+        "exact_y_resolution": exact_y_resolution,
         "unit": unit,
         "crs_authid": qgis_crs_to_authid(crs),
         "cellsize_precision": cellsize_precision_for_unit(unit),
@@ -133,6 +140,7 @@ def raster_resolution_info(layer) -> dict | None:
             "xllcorner": float(extent.xMinimum()),
             "yllcorner": float(extent.yMinimum()),
             "cellsize": float(resolution),
+            "exact_cellsize": float(exact_resolution),
             "nodata_value": NODATA_VALUE,
             "unit": unit,
             "cellsize_precision": cellsize_precision_for_unit(unit),
@@ -165,7 +173,8 @@ def read_header_file(path, unit: str | None = None) -> dict | None:
         header["yllcorner"] = header["yllcenter"] - 0.5 * header.get("cellsize", 1.0)
     header.setdefault("nodata_value", NODATA_VALUE)
     if unit is not None and "cellsize" in header:
-        header["cellsize"] = ceil_cellsize(header["cellsize"], unit)
+        # Record the unit but keep the written cell size exactly as stored. A
+        # grid-defining cell size must never be re-rounded on the way in.
         header["unit"] = unit
         header["cellsize_precision"] = cellsize_precision_for_unit(unit)
 
@@ -256,11 +265,16 @@ def integer_resolution_factor(
         fine_resolution: float,
         unit: str | None = None,
         tolerance=None) -> int | None:
-    """Return integer coarse/fine factor when the ratio is close enough."""
+    """Return integer coarse/fine factor when the ratio is close enough.
+
+    The inputs are compared as given. Rounding them to a fixed number of
+    decimals first turns an exact ratio such as 0.1 / (1/1200) into 119.99999
+    and the factor is then rejected.
+    """
     if coarse_resolution <= 0 or fine_resolution <= 0:
         return None
-    coarse_resolution = ceil_cellsize(coarse_resolution, unit)
-    fine_resolution = ceil_cellsize(fine_resolution, unit)
+    coarse_resolution = float(coarse_resolution)
+    fine_resolution = float(fine_resolution)
     if tolerance is None:
         tolerance = 1e-7
     ratio = coarse_resolution / fine_resolution
@@ -277,8 +291,8 @@ def possible_resolutions(
         coarse_resolution: float,
         unit: str | None = None) -> list[float]:
     """Return all resolutions between fine and coarse compatible with both."""
-    fine_resolution = ceil_cellsize(fine_resolution, unit)
-    coarse_resolution = ceil_cellsize(coarse_resolution, unit)
+    fine_resolution = float(fine_resolution)
+    coarse_resolution = float(coarse_resolution)
     ratio = integer_resolution_factor(
         coarse_resolution,
         fine_resolution,
@@ -290,10 +304,7 @@ def possible_resolutions(
     for divisor in range(1, ratio + 1):
         if ratio % divisor == 0:
             quotient = ratio // divisor
-            if quotient == 1:
-                values.append(float(coarse_resolution))
-            else:
-                values.append(ceil_cellsize(coarse_resolution / quotient, unit))
+            values.append(float(coarse_resolution) / quotient)
     return values
 
 
@@ -308,7 +319,7 @@ def header_bounds(header: dict) -> tuple[float, float, float, float]:
 
 def header_for_bounds(bounds, cellsize: float, unit: str | None = None) -> dict:
     """Create a header snapped outward to cellsize boundaries."""
-    cellsize = ceil_cellsize(cellsize, unit)
+    cellsize = float(cellsize)
     xmin, xmax, ymin, ymax = bounds
     xll = math.floor(min(xmin, xmax) / cellsize) * cellsize
     yll = math.floor(min(ymin, ymax) / cellsize) * cellsize
@@ -335,7 +346,7 @@ def header_for_aligned_bounds(
         anchor_y: float,
         unit: str | None = None) -> dict:
     """Create the smallest outward-snapped header aligned to an anchor grid."""
-    cellsize = ceil_cellsize(cellsize, unit)
+    cellsize = float(cellsize)
     xmin, xmax, ymin, ymax = bounds
     xll = anchor_x + math.floor(
         (min(xmin, xmax) - anchor_x) / cellsize
@@ -368,7 +379,7 @@ def header_for_existing_bounds(
         cellsize: float,
         unit: str | None = None) -> dict:
     """Create a compatible header on the same lower-left and upper-right bounds."""
-    cellsize = ceil_cellsize(cellsize, unit)
+    cellsize = float(cellsize)
     xmin, xmax, ymin, ymax = header_bounds(reference_header)
     ncols = max(1, int(round((xmax - xmin) / cellsize)))
     nrows = max(1, int(round((ymax - ymin) / cellsize)))
@@ -383,6 +394,145 @@ def header_for_existing_bounds(
         "cellsize_precision": cellsize_precision_for_unit(
             unit or reference_header.get("unit", "")),
     }
+
+
+def aligned_l0_l2_headers(
+        bounds,
+        l0_header: dict,
+        multiplier: int,
+        unit: str | None = None) -> tuple[dict, dict]:
+    """Return the smallest common extent with exactly n-by-n L0 cells per L2 cell."""
+    try:
+        ratio = int(multiplier)
+    except (TypeError, ValueError) as error:
+        raise ValueError("The L2 resolution multiplier must be an integer.") from error
+    if ratio < 1:
+        raise ValueError("The L2 resolution multiplier must be at least 1.")
+
+    l0_cellsize = float(l0_header["cellsize"])
+    if not math.isfinite(l0_cellsize) or l0_cellsize <= 0:
+        raise ValueError("The L0 cell size must be positive.")
+    anchor_x = float(l0_header["xllcorner"])
+    anchor_y = float(l0_header["yllcorner"])
+    l2_cellsize = ratio * l0_cellsize
+    xmin, xmax, ymin, ymax = map(float, bounds)
+
+    def grid_index(value, anchor, *, upper):
+        quotient = (value - anchor) / l2_cellsize
+        nearest = round(quotient)
+        tolerance = 1e-9 * max(1.0, abs(quotient))
+        if math.isclose(quotient, nearest, rel_tol=0.0, abs_tol=tolerance):
+            return int(nearest)
+        return int(math.ceil(quotient) if upper else math.floor(quotient))
+
+    x0 = grid_index(min(xmin, xmax), anchor_x, upper=False)
+    x1 = grid_index(max(xmin, xmax), anchor_x, upper=True)
+    y0 = grid_index(min(ymin, ymax), anchor_y, upper=False)
+    y1 = grid_index(max(ymin, ymax), anchor_y, upper=True)
+    resolved_unit = unit or l0_header.get("unit", "")
+    l2 = {
+        "ncols": max(1, x1 - x0),
+        "nrows": max(1, y1 - y0),
+        "xllcorner": anchor_x + x0 * l2_cellsize,
+        "yllcorner": anchor_y + y0 * l2_cellsize,
+        "cellsize": l2_cellsize,
+        "nodata_value": NODATA_VALUE,
+        "unit": resolved_unit,
+        "cellsize_precision": cellsize_precision_for_unit(resolved_unit),
+    }
+    l0 = {
+        **l2,
+        "ncols": int(l2["ncols"]) * ratio,
+        "nrows": int(l2["nrows"]) * ratio,
+        "cellsize": l0_cellsize,
+    }
+    validate_l0_l2_alignment(l0, l2, ratio)
+    return l0, l2
+
+
+def l0_header_from_l2(
+        l2_header: dict,
+        l0_cellsize: float,
+        multiplier: int) -> dict:
+    """Derive an exact L0 header from a saved L2 header and multiplier."""
+    ratio = int(multiplier)
+    l2_cellsize = float(l2_header["cellsize"])
+    tolerance = max(abs(l2_cellsize), 1.0) * 1e-9
+    if ratio < 1 or not math.isclose(
+            l2_cellsize, ratio * float(l0_cellsize),
+            rel_tol=0.0, abs_tol=tolerance):
+        raise ValueError("The saved L2 resolution is not an exact multiple of L0.")
+    l0 = {
+        **dict(l2_header),
+        "ncols": int(l2_header["ncols"]) * ratio,
+        "nrows": int(l2_header["nrows"]) * ratio,
+        "cellsize": float(l0_cellsize),
+    }
+    validate_l0_l2_alignment(l0, l2_header, ratio)
+    return l0
+
+
+def validate_l0_l2_alignment(l0_header: dict, l2_header: dict, multiplier: int) -> None:
+    """Raise when two headers do not share an exact integer L0/L2 contract."""
+    ratio = int(multiplier)
+    if ratio < 1:
+        raise ValueError("The L2 resolution multiplier must be at least 1.")
+    l0_cellsize = float(l0_header["cellsize"])
+    l2_cellsize = float(l2_header["cellsize"])
+    tolerance = max(abs(l2_cellsize), abs(l0_cellsize), 1.0) * 1e-9
+    if not math.isclose(
+            l2_cellsize, ratio * l0_cellsize,
+            rel_tol=0.0, abs_tol=tolerance):
+        raise ValueError("L2 cell size must equal multiplier x L0 cell size.")
+    if (
+            int(l0_header["ncols"]) != int(l2_header["ncols"]) * ratio
+            or int(l0_header["nrows"]) != int(l2_header["nrows"]) * ratio):
+        raise ValueError("L0 dimensions must equal L2 dimensions x multiplier.")
+    for key in ("xllcorner", "yllcorner"):
+        if not math.isclose(
+                float(l0_header[key]), float(l2_header[key]),
+                rel_tol=0.0, abs_tol=tolerance):
+            raise ValueError("L0 and L2 must share the same lower-left boundary.")
+    if any(
+            not math.isclose(left, right, rel_tol=0.0, abs_tol=tolerance)
+            for left, right in zip(
+                header_bounds(l0_header), header_bounds(l2_header))):
+        raise ValueError("L0 and L2 must share the same outer extent.")
+
+
+def axes_match_header(x_values, y_values, header: dict) -> bool:
+    """Return True when source axes sit exactly on the header cell grid."""
+    import numpy as np
+
+    cellsize = float(header["cellsize"])
+    tolerance = abs(cellsize) * 1e-6
+    target_x, target_y = header_center_coordinates(header)
+    pairs = ((x_values, target_x), (y_values, sorted(target_y)))
+    for values, target in pairs:
+        values = np.sort(np.asarray(values, dtype="float64").ravel())
+        if values.size < 1:
+            return False
+        if values.size > 1:
+            spacing = float(np.abs(np.diff(values)).max())
+            if abs(spacing - cellsize) > tolerance:
+                return False
+        offset = (float(values[0]) - float(target[0])) / cellsize
+        if abs(offset - round(offset)) > 1e-6:
+            return False
+    return True
+
+
+def reindex_to_header(da, x_dim: str, y_dim: str, header: dict, fill_value=None):
+    """Place an already aligned array on the exact header grid by cell lookup."""
+    if fill_value is None:
+        fill_value = float("nan")
+    x_values, y_values = header_center_coordinates(header)
+    return da.reindex(
+        {x_dim: x_values, y_dim: y_values},
+        method="nearest",
+        tolerance=abs(float(header["cellsize"])) * 1e-6,
+        fill_value=fill_value,
+    )
 
 
 def selected_dem_layer(dialog):
@@ -666,8 +816,14 @@ def build_meteo_l2_grid(
         l0_info = dialog.filled_dem_resolution_info()
     if not l0_info:
         raise ValueError("Filled DEM is required before preparing meteorology data.")
-    x_resolution = float(l0_info.get("x_resolution", l0_info["resolution"]))
-    y_resolution = float(l0_info.get("y_resolution", l0_info["resolution"]))
+    x_resolution = float(
+        l0_info.get("exact_x_resolution")
+        or l0_info.get("x_resolution", l0_info["resolution"])
+    )
+    y_resolution = float(
+        l0_info.get("exact_y_resolution")
+        or l0_info.get("y_resolution", l0_info["resolution"])
+    )
     if abs(x_resolution - y_resolution) > max(
             abs(x_resolution), abs(y_resolution), 1.0) * 1e-6:
         raise ValueError(
@@ -686,25 +842,30 @@ def build_meteo_l2_grid(
         )
 
     target_unit = qgis_crs_unit_label(target_crs)
-    l0_resolution = ceil_cellsize(l0_info["resolution"], target_unit)
+    # Anchor the grid on the filled DEM's own cell size, unrounded. A floored
+    # cell size drifts against the source grid and the L0 window copy then
+    # rejects every raster as misaligned.
+    l0_resolution = float(
+        l0_info.get("exact_resolution")
+        or ceil_cellsize(l0_info["resolution"], target_unit)
+    )
     try:
         ratio = int(multiplier)
     except (TypeError, ValueError):
         raise ValueError("The L2 resolution multiplier must be an integer.")
     if ratio < 1:
         raise ValueError("The L2 resolution multiplier must be at least 1.")
-    adjusted_resolution = ceil_cellsize(
-        ratio * l0_resolution,
-        target_unit,
-    )
     l0_header = l0_info.get("header") or {}
     if "xllcorner" not in l0_header or "yllcorner" not in l0_header:
         raise ValueError("Could not determine the L0 grid anchor from the filled DEM.")
-    l2_header = header_for_aligned_bounds(
+    exact_l0_header, l2_header = aligned_l0_l2_headers(
         extent_to_bounds(extent),
-        adjusted_resolution,
-        float(l0_header["xllcorner"]),
-        float(l0_header["yllcorner"]),
+        {
+            **l0_header,
+            "cellsize": l0_resolution,
+            "unit": target_unit,
+        },
+        ratio,
         target_unit,
     )
     lon_mesh, lat_mesh = target_lon_lat_mesh_from_header(l2_header, target_crs)
@@ -722,7 +883,7 @@ def build_meteo_l2_grid(
         "version": 2,
         "l0_resolution": l0_resolution,
         "l0_unit": target_unit,
-        "l2_resolution": adjusted_resolution,
+        "l2_resolution": float(l2_header["cellsize"]),
         "l2_unit": target_unit,
         "l2_ratio_to_l0": ratio,
         "extent_source": os.path.basename(str(extent_source).split("|")[0]),
@@ -730,6 +891,7 @@ def build_meteo_l2_grid(
         "l2_bounds": header_bounds(l2_header),
         "crs_authid": qgis_crs_to_authid(target_crs),
         "l2_header": l2_header,
+        "l0_header": exact_l0_header,
     }
     if raw_metadata:
         metadata.update({

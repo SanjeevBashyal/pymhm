@@ -9,7 +9,12 @@ from pathlib import Path
 
 def _field(columns, requested):
     normalized = _normalize(requested)
-    matches = [column for column in columns if _normalize(column) == normalized]
+    matches = [
+        column
+        for column in columns
+        if not str(column).strip().startswith("*")
+        and _normalize(column) == normalized
+    ]
     if len(matches) != 1:
         available = ", ".join(str(column) for column in columns)
         raise ValueError(
@@ -17,6 +22,16 @@ def _field(columns, requested):
             f"Available fields: {available or '<none>'}."
         )
     return matches[0]
+
+
+def _optional_field(columns, *names):
+    """Resolve the first available non-starred optional geology field."""
+    for name in names:
+        try:
+            return _field(columns, name)
+        except ValueError:
+            pass
+    return None
 
 
 def _normalize(value):
@@ -47,11 +62,12 @@ def _boolean(value, field, row):
 
 def write_geology_metadata(lookup_table, class_field, output_file):
     """Write metadata consumed by pymhm's geology parameter configuration."""
-    from ...mhm_tools_adapter import read_categorical_lookup_table
+    from .mhm_tools_adapter import read_categorical_lookup_table
 
     table = read_categorical_lookup_table(lookup_table)
     class_column = _field(table.columns, class_field)
-    geo_column = _field(table.columns, "GEO_CLASS")
+    geo_column = _optional_field(table.columns, "GEO_CLASS", "GEO_ID")
+    geo_column = geo_column or class_column
     karst_column = _field(table.columns, "KARSTIC")
     parameter_column = _field(table.columns, "PARAMETER_VALUE")
     rows = []

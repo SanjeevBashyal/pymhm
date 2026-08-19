@@ -150,6 +150,7 @@ def test_assignment_state_separates_filename_text_from_numeric_gauge_id(tmp_path
                 tmp_path
                 / "mhm-plugin"
                 / "data"
+                / "master"
                 / "observation"
                 / "streamflow"
                 / "001.txt"
@@ -226,3 +227,4 @@ def test_snapped_points_are_regenerated_after_inputs_may_have_moved(tmp_path):
     assert processor.removed == [str(snapped)]
     assert result == str(snapped)
     assert snapped.read_text(encoding="utf-8") == "fresh"
+

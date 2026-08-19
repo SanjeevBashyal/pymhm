@@ -15,7 +15,7 @@ from .advanced_input_manifests import (
 )
 from .mhm_tools_adapter import prepare_land_cover_periods, prepare_soil_horizons
 from .nml_settings import relative_workspace_path, update_section
-from .project_layout import geometry_folder, morph_folder
+from .project_layout import geometry_folder, morph_staging_folder
 
 
 def process_land_cover_input(
@@ -43,7 +43,7 @@ def process_land_cover_input(
             output_type=output_type,
             log=log,
         )
-        published = _publish_directory(temporary, morph_folder(project_folder))
+        published = _publish_directory(temporary, morph_staging_folder(project_folder))
 
     data_outputs = tuple(
         path for path in published if path.suffix.lower() in {".asc", ".nc"}
@@ -107,7 +107,7 @@ def process_soil_input(
             output_type=output_type,
             log=log,
         )
-        published = _publish_directory(temporary, morph_folder(project_folder))
+        published = _publish_directory(temporary, morph_staging_folder(project_folder))
 
     data_path = _published_match(published, data.name)
     definition_path = _published_match(published, definition.name)
@@ -150,7 +150,7 @@ def configure_ready_land_cover(project_folder, source, version) -> Path:
     source = Path(source).expanduser().resolve()
     if not source.is_file() or source.suffix.lower() not in {".asc", ".nc", ".tif"}:
         raise ValueError("Select an existing ASC, NetCDF, or TIFF land-cover file.")
-    target = Path(morph_folder(project_folder)) / f"lc{source.suffix.lower()}"
+    target = Path(morph_staging_folder(project_folder)) / f"lc{source.suffix.lower()}"
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(f".{target.name}.tmp")
     shutil.copyfile(source, temporary)

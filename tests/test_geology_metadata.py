@@ -6,7 +6,11 @@ from types import ModuleType
 
 import pandas as pd
 
-from pymhm.Morphology.layers import geology_metadata
+from pymhm import standalone_qgis
+
+standalone_qgis.install(force=True)
+
+from pymhm import geology_metadata
 
 
 def test_metadata_uses_selected_class_field(tmp_path, monkeypatch):
@@ -46,3 +50,28 @@ def test_metadata_uses_selected_class_field(tmp_path, monkeypatch):
             },
         ],
     }
+
+
+def test_metadata_ignores_starred_geo_id(tmp_path, monkeypatch):
+    table = pd.DataFrame(
+        {
+            "GEOLOGY_CLASS [count]": [1],
+            "*GEO_ID [count]": [2],
+            "KARSTIC [bool]": [0],
+            "PARAMETER_VALUE [int]": [100],
+        }
+    )
+    from pymhm import mhm_tools_adapter
+
+    monkeypatch.setattr(
+        mhm_tools_adapter, "read_categorical_lookup_table", lambda _path: table
+    )
+    output = tmp_path / "geology.json"
+
+    geology_metadata.write_geology_metadata(
+        tmp_path / "lookup.csv", "GEOLOGY_CLASS [count]", output
+    )
+
+    record = json.loads(output.read_text(encoding="utf-8"))["classes"][0]
+    assert record["geo_param"] == 1
+    assert record["geology_class"] == 1

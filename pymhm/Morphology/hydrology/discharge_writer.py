@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import csv
 import math
+import os
 import re
+import tempfile
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -34,19 +36,29 @@ def write_streamflow_observation(layer, station_id: str, output_folder: Path) ->
     start_date = records[0].timestamp
     end_date = records[-1].timestamp
 
-    with output_file.open("w", encoding="utf-8", newline="\n") as stream:
-        stream.write(f"{station_id} Gauge {station_id} (daily discharge)\n")
-        stream.write("nodata   -9999\n")
-        stream.write("n       1       measurements per day [1, 1440]\n")
-        stream.write(
-            f"start  {start_date.year:04d} {start_date.month:02d} {start_date.day:02d} 00 00   (YYYY MM DD HH MM)\n")
-        stream.write(
-            f"end    {end_date.year:04d} {end_date.month:02d} {end_date.day:02d} 00 00   (YYYY MM DD HH MM)\n")
-
-        for record in records:
-            dt = record.timestamp
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{output_file.name}.", suffix=".tmp", dir=output_folder
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            stream.write(f"{station_id} Gauge {station_id} (daily discharge)\n")
+            stream.write("nodata   -9999\n")
+            stream.write("n       1       measurements per day [1, 1440]\n")
             stream.write(
-                f"{dt.year:04d}  {dt.month:02d}  {dt.day:02d}  00  00   {record.value:10.3f}\n")
+                f"start  {start_date.year:04d} {start_date.month:02d} {start_date.day:02d} 00 00   (YYYY MM DD HH MM)\n")
+            stream.write(
+                f"end    {end_date.year:04d} {end_date.month:02d} {end_date.day:02d} 00 00   (YYYY MM DD HH MM)\n")
+
+            for record in records:
+                dt = record.timestamp
+                stream.write(
+                    f"{dt.year:04d}  {dt.month:02d}  {dt.day:02d}  00  00   {record.value:10.3f}\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, output_file)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
     return output_file
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+import pandas as pd
 
 from pymhm import mhm_tools_adapter as categorical
 
@@ -118,6 +119,11 @@ def test_vector_geology_rasterizes_then_uses_identity_mapping(tmp_path, monkeypa
         rasterize_map_data=rasterize_map_data,
         format_geology_data=format_geology_data,
     )
+    monkeypatch.setattr(
+        categorical,
+        "resolve_vector_mapping_field",
+        lambda *_args: "xx",
+    )
     captures = _capture_counter(monkeypatch)
 
     categorical.prepare_categorical_file(
@@ -126,7 +132,7 @@ def test_vector_geology_rasterizes_then_uses_identity_mapping(tmp_path, monkeypa
         dem_file,
         output_file,
         lookup_table,
-        "GEO_CLASS",
+        "Class",
         "GEOLOGY_CLASS",
         is_vector=True,
         classdefinition_file=definition_file,
@@ -143,9 +149,9 @@ def test_vector_geology_rasterizes_then_uses_identity_mapping(tmp_path, monkeypa
     assert rasterize_call == {
         "input_file": input_file,
         "dem_file": dem_file,
-        "mapping_field": "GEO_CLASS",
+        "mapping_field": "xx",
         "lookup_table": lookup_table,
-        "lookup_mapping_field": "GEO_CLASS",
+        "lookup_mapping_field": "Class",
         "lookup_value_field": "GEOLOGY_CLASS",
         "input_crs": "EPSG:4326",
         "dem_crs": "EPSG:32645",
@@ -165,6 +171,28 @@ def test_vector_geology_rasterizes_then_uses_identity_mapping(tmp_path, monkeypa
         "dem_crs": "EPSG:32645",
     }
     assert not temporary_input.parent.exists()
+
+
+def test_vector_mapping_field_is_inferred_from_lookup_values(monkeypatch):
+    import geopandas as gpd
+
+    monkeypatch.setattr(
+        gpd,
+        "read_file",
+        lambda *_args, **_kwargs: pd.DataFrame(
+            {"identity": ["a", "b"], "xx": ["su", "ss"]}
+        ),
+    )
+    monkeypatch.setattr(
+        categorical,
+        "read_categorical_lookup_table",
+        lambda _path: pd.DataFrame({"Class": ["su", "ss", "wb"]}),
+    )
+
+    assert (
+        categorical.resolve_vector_mapping_field("input.shp", "lookup.csv", "Class")
+        == "xx"
+    )
 
 
 def test_land_cover_dispatches_without_classdefinition(tmp_path, monkeypatch):

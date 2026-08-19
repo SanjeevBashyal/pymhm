@@ -25,7 +25,9 @@ class ProcessingStateMixin:
         """Load the processing output registry for this project."""
         state_path = self.processing_state_path()
         if not state_path or not os.path.exists(state_path):
-            self.processing_state = {"version": 1, "outputs": {}, "workflows": {}}
+            self.processing_state = {
+                "version": 1, "outputs": {}, "workflows": {}, "grid": {},
+            }
             return
 
         try:
@@ -36,26 +38,44 @@ class ProcessingStateMixin:
             state.setdefault("version", 1)
             state.setdefault("outputs", {})
             state.setdefault("workflows", {})
+            state.setdefault("grid", {})
             self.processing_state = state
         except Exception as e:
             self.log_message(f"WARNING: Could not read processing state: {e}")
-            self.processing_state = {"version": 1, "outputs": {}, "workflows": {}}
+            self.processing_state = {
+                "version": 1, "outputs": {}, "workflows": {}, "grid": {},
+            }
+
+    OWNED_SECTIONS = ("version", "outputs", "workflows", "grid")
 
     def save_processing_state(self):
-        """Write the processing output registry to the project folder."""
+        """Write the sections this registry owns, preserving the others.
+
+        `state_cache` and the meteorology state write fingerprints and cached
+        inspections into the same file. Dumping the in-memory copy wholesale
+        would erase whatever they added since it was loaded, silently undoing
+        stage reuse, so only the owned sections are overlaid.
+        """
         state_path = self.processing_state_path()
         if not state_path:
             return
 
         try:
             os.makedirs(os.path.dirname(state_path), exist_ok=True)
+            merged = {}
+            if os.path.exists(state_path):
+                try:
+                    with open(state_path, "r", encoding="utf-8") as state_file:
+                        stored = json.load(state_file)
+                    if isinstance(stored, dict):
+                        merged = stored
+                except Exception:
+                    merged = {}
+            for section in self.OWNED_SECTIONS:
+                if section in self.processing_state:
+                    merged[section] = self.processing_state[section]
             with open(state_path, "w", encoding="utf-8") as state_file:
-                json.dump(
-                    self.processing_state,
-                    state_file,
-                    indent=2,
-                    sort_keys=True
-                )
+                json.dump(merged, state_file, indent=2, sort_keys=True)
         except Exception as e:
             self.log_message(f"WARNING: Could not save processing state: {e}")
 
@@ -180,3 +200,37 @@ class ProcessingStateMixin:
     def workflow_status(self, workflow):
         """Return a saved workflow status entry."""
         return self.processing_state.get("workflows", {}).get(workflow, {})
+
+    def save_grid_contract(self, l0_header, l2_header, multiplier):
+        """Record the validated L0/L2 headers and multiplier for later resumes."""
+        from ...grid_resolution import validate_l0_l2_alignment
+
+        ratio = int(multiplier)
+        validate_l0_l2_alignment(l0_header, l2_header, ratio)
+        self.processing_state["grid"] = {
+            "l0_header": dict(l0_header),
+            "l2_header": dict(l2_header),
+            "l2_ratio_to_l0": ratio,
+            "updated_at": utc_timestamp(),
+        }
+        self.save_processing_state()
+        return self.processing_state["grid"]
+
+    def saved_grid_contract(self):
+        """Return the saved L0/L2 grid contract, or None when it is unusable."""
+        from ...grid_resolution import validate_l0_l2_alignment
+
+        grid = self.processing_state.get("grid") or {}
+        l0_header = grid.get("l0_header")
+        l2_header = grid.get("l2_header")
+        ratio = grid.get("l2_ratio_to_l0")
+        if not isinstance(l0_header, dict) or not isinstance(l2_header, dict):
+            return None
+        try:
+            validate_l0_l2_alignment(l0_header, l2_header, int(ratio))
+        except (TypeError, ValueError) as error:
+            self.log_message(
+                f"WARNING: Discarding the saved L0/L2 grid contract: {error}"
+            )
+            return None
+        return grid

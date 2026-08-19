@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import Any
 
 from ...grid_resolution import (
+    axes_match_header,
     ceil_cellsize,
     cellsize_precision_for_unit,
+    reindex_to_header,
 )
 
 
@@ -208,6 +210,118 @@ def align_dataset_to_header(
     return aligned.to_dataset(name=var_name)
 
 
+def pad_dataset_to_header(
+        dataset,
+        header: Mapping[str, Any],
+        data_var: str | None = None,
+        nodata_value: float | int = -9999,
+        integer: bool = False):
+    """Return a dataset placed on ``header`` by exact cell lookup, padded with nodata.
+
+    Unlike :func:`align_dataset_to_header` this never resamples. The source must
+    already sit on the header cell grid; cells outside it receive ``nodata_value``.
+    Non-spatial dimensions such as time or soil horizon are preserved.
+    """
+    from mhm_tools.common.xarray_utils import get_coord_key, get_single_data_var
+
+    header = _standardize_header(header)
+    var_name = data_var
+    if var_name is None:
+        var_name = get_single_data_var(dataset)
+    if var_name is None or var_name not in dataset:
+        raise ValueError("Cannot determine a single raster data variable for L0 padding.")
+
+    x_key = get_coord_key(dataset, lon=True)
+    y_key = get_coord_key(dataset, lat=True)
+    source = dataset.sortby(x_key).sortby(y_key)
+    _assert_cells_align(source, x_key, y_key, header)
+
+    padded = reindex_to_header(
+        source[var_name].astype("float64"),
+        x_key,
+        y_key,
+        header,
+        fill_value=float(nodata_value),
+    )
+    padded = _apply_nodata(padded, nodata_value, integer)
+    if (
+            padded.sizes.get(y_key) != int(header["nrows"])
+            or padded.sizes.get(x_key) != int(header["ncols"])):
+        raise ValueError(
+            "Padded raster size does not match L0 header: "
+            f"got {padded.sizes.get(y_key)}x{padded.sizes.get(x_key)}, "
+            f"expected {int(header['nrows'])}x{int(header['ncols'])}."
+        )
+    return padded.to_dataset(name=var_name)
+
+
+def pad_l0_file_to_header(
+        path: Path | str,
+        header: Mapping[str, Any],
+        *,
+        data_var: str | None = None,
+        nodata_value: float | int = -9999,
+        integer: bool = False) -> Path:
+    """Rewrite a model-ready raster onto the exact L0 header without resampling."""
+    path = Path(path)
+    header = _standardize_header(header)
+    if path.suffix.lower() == ".asc":
+        # ASCII grids are padded by streaming text, which keeps memory flat.
+        # Loading one costs gigabytes: 3.2 GiB for a 13201 x 6001 soil raster.
+        from .ascii_pad import pad_ascii_grid
+
+        return pad_ascii_grid(path, header, nodata=nodata_value)
+    dataset = _read_raster(path, data_var)
+    if _grid_matches_header(dataset, header):
+        return path
+
+    padded = pad_dataset_to_header(
+        dataset,
+        header,
+        data_var=data_var,
+        nodata_value=nodata_value,
+        integer=integer,
+    )
+    temporary = path.with_name(f".{path.name}.tmp{path.suffix or '.nc'}")
+    temporary.unlink(missing_ok=True)
+    padded.to_netcdf(temporary)
+    dataset.close()
+    temporary.replace(path)
+    return path
+
+
+def _grid_matches_header(dataset, header: Mapping[str, Any]) -> bool:
+    """Return True when a dataset already sits exactly on the header grid."""
+    import numpy as np
+    from mhm_tools.common.xarray_utils import get_coord_key
+
+    x_key = get_coord_key(dataset, lon=True)
+    y_key = get_coord_key(dataset, lat=True)
+    target_x, target_y = _target_coordinates(header)
+    if (
+            dataset.sizes.get(x_key) != len(target_x)
+            or dataset.sizes.get(y_key) != len(target_y)):
+        return False
+    tolerance = float(header["cellsize"]) * 1e-6
+    return bool(
+        np.allclose(np.sort(dataset[x_key].values), target_x, rtol=0.0, atol=tolerance)
+        and np.allclose(
+            np.sort(dataset[y_key].values), np.sort(target_y),
+            rtol=0.0, atol=tolerance)
+    )
+
+
+def _assert_cells_align(dataset, x_key, y_key, header) -> None:
+    """Reject a source whose cells are not on the header cell grid."""
+    if not axes_match_header(
+            dataset[x_key].values, dataset[y_key].values, dict(header)):
+        raise ValueError(
+            "Source raster cells are not aligned to the L0 grid "
+            f"(cell size {float(header['cellsize'])}); it cannot be placed on "
+            "the common extent without resampling."
+        )
+
+
 def _read_raster(path: Path, data_var: str | None):
     from mhm_tools.common.file_handler import get_xarray_ds_from_file
 
@@ -263,7 +377,9 @@ def _standardize_header(header: Mapping[str, Any]) -> Header:
     if missing:
         raise ValueError(f"Grid header is missing required key(s): {', '.join(sorted(missing))}")
     unit = str(normalized.get("unit", "") or "")
-    cellsize = ceil_cellsize(float(normalized["cellsize"]), unit)
+    # The cell size is grid-defining and is kept exactly as supplied; rounding
+    # it here turns exact level ratios such as 120 into 119.99999.
+    cellsize = float(normalized["cellsize"])
     return {
         "ncols": int(float(normalized["ncols"])),
         "nrows": int(float(normalized["nrows"])),
@@ -292,8 +408,10 @@ def _resolution_ratio(
         coarse_name: str,
         unit: str | None = None,
         tolerance: float | None = None) -> int:
-    fine_cellsize = ceil_cellsize(fine_cellsize, unit)
-    coarse_cellsize = ceil_cellsize(coarse_cellsize, unit)
+    # Compare the cell sizes as given. Rounding them to a fixed number of
+    # decimals turns an exact ratio such as 0.1 / (1/1200) into 119.99999.
+    fine_cellsize = float(fine_cellsize)
+    coarse_cellsize = float(coarse_cellsize)
     precision = cellsize_precision_for_unit(unit)
     if tolerance is None:
         tolerance = max(10 ** -precision, 1e-9)
@@ -484,6 +602,8 @@ __all__ = [
     "MorphologyAsciiLayer",
     "MorphologyAsciiResult",
     "align_dataset_to_header",
+    "pad_dataset_to_header",
+    "pad_l0_file_to_header",
     "prepare_morphology_ascii_files",
     "validate_grid_headers",
 ]

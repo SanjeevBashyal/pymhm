@@ -11,7 +11,7 @@ import tempfile
 from typing import Callable, Mapping, Sequence
 
 from .ERA5Land.mhm.build import (
-    build_daily_dataset,
+    iter_daily_datasets,
 )
 from .ERA5Land.mhm.io import (
     write_header,
@@ -23,6 +23,12 @@ from .ERA5Land.mhm.specs import (
 from .ERA5Land.mhm.types import (
     ForcingSpec,
     MeteoForcingResult,
+)
+from .l2_grid import (
+    assert_header_file_matches,
+    assert_matches_header,
+    axes_match_header,
+    slice_and_pad,
 )
 
 
@@ -281,24 +287,40 @@ def process_meteo_inputs(
         for kind, folder_spec in specs.items():
             metadata = inspected[kind]
             _validate_target_coverage(metadata, target_grid)
-            for variable in variables[kind]:
+            kind_variables = variables[kind]
+            if folder_spec.source == ERA5LAND:
                 if log:
-                    log(f"{variable}: processing {len(metadata.files)} file(s)")
-                if folder_spec.source == ERA5LAND:
-                    ds_out = build_daily_dataset(
-                        metadata.files,
-                        forcing_specs[variable],
-                        bounds=None,
-                        target_lat=target_grid.lat,
-                        target_lon=target_grid.lon,
-                        target_sample_lat=target_grid.sample_lat,
-                        target_sample_lon=target_grid.sample_lon,
-                        log=log,
+                    log(
+                        f"{kind}: processing {len(metadata.files)} file(s) for "
+                        f"{', '.join(kind_variables)}"
                     )
-                else:
-                    path = _ready_path(metadata.files, variable)
-                    ds_out = _prepare_ready_dataset(
-                        path, variable, folder_spec.crs, target_grid)
+                prepared = iter_daily_datasets(
+                    metadata.files,
+                    [forcing_specs[variable] for variable in kind_variables],
+                    bounds=None,
+                    target_lat=target_grid.lat,
+                    target_lon=target_grid.lon,
+                    target_sample_lat=target_grid.sample_lat,
+                    target_sample_lon=target_grid.sample_lon,
+                    log=log,
+                )
+            else:
+                prepared = (
+                    (
+                        variable,
+                        _prepare_ready_dataset(
+                            _ready_path(metadata.files, variable),
+                            variable,
+                            folder_spec.crs,
+                            target_grid,
+                        ),
+                    )
+                    for variable in kind_variables
+                )
+
+            # Each dataset is written and released before the next is built, so
+            # the peak holds one variable rather than every variable at once.
+            for variable, ds_out in prepared:
                 if variable == "pre":
                     ds_out = _normalize_precipitation(ds_out)
                 ds_out = _attach_target_coordinates(
@@ -306,6 +328,7 @@ def process_meteo_inputs(
                     variable,
                     target_grid,
                 )
+                assert_matches_header(ds_out, variable, target_grid.header)
 
                 output_dir = output_root / variable
                 output_file = output_dir / f"{variable}.nc"
@@ -317,12 +340,14 @@ def process_meteo_inputs(
                     header_file,
                     header=dict(target_grid.header),
                 )
+                assert_header_file_matches(header_file, target_grid.header)
                 outputs[variable] = output_file
                 headers[variable] = header_file
                 files_used[variable] = (
                     len(metadata.files)
                     if folder_spec.source == ERA5LAND else 1
                 )
+                del ds_out
 
         result = _publish_meteo_result(
             MeteoForcingResult(outputs, headers, files_used),
@@ -842,10 +867,10 @@ def _resample_ready(da, ds, source_crs, target, np, xr):
                 da, np.asarray(lon), np.asarray(lat),
                 target_lon, target_lat, xr, sample_lon, sample_lat)
         x_target, y_target = target_lon, target_lat
-        if (
-                source_crs
-                and target.crs
-                and _same_crs(source_crs, target.crs)):
+        target_crs_matches = bool(
+            source_crs and target.crs and _same_crs(source_crs, target.crs)
+        )
+        if target_crs_matches:
             x_target, y_target = _header_center_axes(target.header, np)
         elif sample_lon is not None:
             x_target, y_target = sample_lon, sample_lat
@@ -896,8 +921,12 @@ def _resample_ready(da, ds, source_crs, target, np, xr):
         source = da.assign_coords(
             {x_dim: np.asarray(x_values), y_dim: np.asarray(y_values)})
         source = source.sortby(x_dim).sortby(y_dim)
-        result = source.interp(
-            {x_dim: x_target, y_dim: y_target}, method="nearest")
+        if target_crs_matches and axes_match_header(
+                x_values, y_values, target.header):
+            result = slice_and_pad(source, x_dim, y_dim, target.header)
+        else:
+            result = source.interp(
+                {x_dim: x_target, y_dim: y_target}, method="nearest")
         result = result.rename({x_dim: "lon", y_dim: "lat"})
         return result.assign_coords(lon=target_lon, lat=target_lat).transpose(
             "time", "lat", "lon")

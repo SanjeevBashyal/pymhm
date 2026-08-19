@@ -17,31 +17,31 @@ properties:
       x-fortran-len: buf
       format: directory-path
     x-fortran-shape: max_domains
-    examples: [[data/meteo/pre/]]
+    examples: [[data/master/meteo/pre/]]
   dir_Temperature:
     <<: *domain_directory
-    examples: [[data/meteo/tavg/]]
+    examples: [[data/master/meteo/tavg/]]
   dir_ReferenceET:
     <<: *domain_directory
-    examples: [[data/meteo/pet/]]
+    examples: [[data/master/meteo/pet/]]
   dir_MinTemperature:
     <<: *domain_directory
-    examples: [[data/meteo/tmin/]]
+    examples: [[data/master/meteo/tmin/]]
   dir_MaxTemperature:
     <<: *domain_directory
-    examples: [[data/meteo/tmax/]]
+    examples: [[data/master/meteo/tmax/]]
   dir_NetRadiation:
     <<: *domain_directory
-    examples: [[data/meteo/netrad/]]
+    examples: [[data/master/meteo/netrad/]]
   dir_absVapPressure:
     <<: *domain_directory
-    examples: [[data/meteo/eabs/]]
+    examples: [[data/master/meteo/eabs/]]
   dir_windspeed:
     <<: *domain_directory
-    examples: [[data/meteo/windspeed/]]
+    examples: [[data/master/meteo/windspeed/]]
   dir_Radiation:
     <<: *domain_directory
-    examples: [[data/meteo/ssrd/]]
+    examples: [[data/master/meteo/ssrd/]]
   time_step_model_inputs:
     type: array
     items:

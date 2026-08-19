@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import os
+from functools import partial
 from pathlib import Path
 
 from qgis.PyQt.QtCore import QEvent, Qt
@@ -39,7 +40,22 @@ from .Morphology.watershed.domain_state import (
     save_state,
 )
 from .Morphology.watershed.domain_workflow import DomainWorkflow
+from .Morphology.file_tasks import (
+    delineate_domains_file,
+    delineate_outlet_file,
+)
+from .project_layout import geometry_folder
+from .project_layout import domain_data_folder, domain_dem_path
 from .pyui.ui_domain_delineator_dialog import Ui_DomainDelineatorDialog
+from .viewport_raster_range import ViewportRasterRangeController
+
+
+def _run_outlet_task(task, options):
+    return delineate_outlet_file(task=task, **options)
+
+
+def _run_domains_task(task, options):
+    return delineate_domains_file(task=task, **options)
 
 
 class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
@@ -52,6 +68,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         pour_points_layer,
         outlet_id_field,
         outlet_ids,
+        prepared_context=None,
     ):
         super().__init__(main_dialog)
         self.setupUi(self)
@@ -75,6 +92,8 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         self._picking = False
 
         self.canvas = QgsMapCanvas(self.widget_mapCanvasHost)
+        self.canvas.setEnabled(True)
+        self.widget_mapCanvasHost.setEnabled(True)
         layout = QVBoxLayout(self.widget_mapCanvasHost)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.canvas)
@@ -87,8 +106,9 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         self._outlet_marker.hide()
 
         self._load_state()
+        self._draft_state = copy.deepcopy(self.state)
         self._features = self._outlet_features()
-        self._prepare_map_layers()
+        self._prepare_map_layers(prepared_context)
         self._connect_signals()
         self.finished.connect(self._cleanup)
         self.listWidget_outlets.addItems(self.outlet_ids)
@@ -100,13 +120,12 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             self._load_outlet)
         self.checkBox_isGaugedOutlet.toggled.connect(
             self._set_discharge_enabled)
-        self.checkBox_isDomainOutlet.toggled.connect(
-            self.widget_domainControls.setEnabled)
         self.pushButton_browseDischargeFile.clicked.connect(
             self._browse_discharge)
         self.pushButton_generateChannelNetwork.clicked.connect(
             self._generate_channel_network)
         self.pushButton_pickLocation.clicked.connect(self._start_picking)
+        self.pushButton_nextPourPoint.clicked.connect(self._next_outlet)
         self.pushButton_save.clicked.connect(self._save_outlet)
         self.pushButton_close.clicked.connect(self.reject)
 
@@ -128,21 +147,9 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
                 features[outlet_id] = feature
         return features
 
-    def _prepare_map_layers(self):
-        if not self.processor._ensure_filled_dem(self.processor.fill_dem):
-            raise RuntimeError("The filled DEM could not be prepared.")
-        if not self.processor._ensure_flow_accumulation(
-            self.processor.process_flow_accumulation,
-            self.processor.fill_dem,
-        ):
-            raise RuntimeError("Flow accumulation could not be prepared.")
-        if not self.processor._ensure_channel_network(
-            self.processor.process_channel_network,
-            self.processor.process_flow_accumulation,
-            self.processor.fill_dem,
-        ):
-            raise RuntimeError("The channel network could not be prepared.")
-
+    def _prepare_map_layers(self, prepared_context=None):
+        if prepared_context is None:
+            raise RuntimeError("Domain Delineator prerequisites were not prepared.")
         self._filled_dem_layer = QgsRasterLayer(
             self.processor.filled_dem_path, "Filled DEM")
         self._flow_accumulation_layer = QgsRasterLayer(
@@ -158,10 +165,15 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             raise RuntimeError("The prepared flow accumulation is invalid.")
         if not self._channel_layer.isValid():
             raise RuntimeError("The prepared channel network is invalid.")
-        self._flow_context = self.processor._build_flwdir_from_filled_dem()
-        if not self._flow_context:
-            raise RuntimeError("The filled DEM flow grid could not be prepared.")
+        self._flow_context = None
         self.canvas.setDestinationCrs(self._filled_dem_layer.crs())
+        self._viewport_range = ViewportRasterRangeController(
+            self.canvas,
+            self._flow_accumulation_layer,
+            self.processor.flow_accumulation_path,
+            self.main_dialog.task_coordinator,
+            self,
+        )
         self._watershed_layer = None
         self._refresh_canvas()
 
@@ -185,7 +197,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             return
 
         self._preview_result = None
-        record = self.state["outlets"].get(self.current_outlet_id, {})
+        record = self._draft_state["outlets"].get(self.current_outlet_id, {})
         self._channel_layer = QgsVectorLayer(
             self.processor.channel_network_vector_path,
             "Channel network",
@@ -202,8 +214,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         self.checkBox_isDomainOutlet.blockSignals(False)
         self._set_discharge_enabled(
             self.checkBox_isGaugedOutlet.isChecked())
-        self.widget_domainControls.setEnabled(
-            self.checkBox_isDomainOutlet.isChecked())
+        self.widget_domainControls.setEnabled(True)
         try:
             threshold = max(1, int(record.get("threshold_cells", 1) or 1))
         except (TypeError, ValueError):
@@ -214,6 +225,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         self._populate_discharge_files(discharge)
         area = record.get("catchment_area_m2")
         self._show_area(area)
+        self._show_picked_coordinates(record.get("picked"))
         self._show_saved_watershed(record)
         self._zoom_to_outlet()
 
@@ -232,7 +244,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
 
     def _used_discharge_paths(self, exclude_outlet=None):
         paths = set(self.main_dialog.selected_input_file_paths())
-        for outlet_id, record in self.state["outlets"].items():
+        for outlet_id, record in self._draft_state["outlets"].items():
             if outlet_id == exclude_outlet or not record.get("discharge_file"):
                 continue
             paths.add(self._normal_path(self._resolved_input(
@@ -309,32 +321,42 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         output_folder = self._domain_output_folder()
         output_path = os.path.join(
             output_folder, "2_channel_network_preview.shp")
-        try:
-            self._channel_layer = QgsVectorLayer(
-                self.processor.channel_network_vector_path,
-                "Channel network",
-                "ogr",
-            )
-            self._refresh_canvas()
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            result = self.processor.create_channel_network(
-                self.spinBox_channelThreshold.value(),
-                output_path,
-                force=True,
-                load=False,
-            )
-            if not result:
-                raise RuntimeError("Channel network generation failed.")
-            self._preview_channel_path = result
-            self._channel_layer = QgsVectorLayer(
-                result, "Channel network preview", "ogr")
-            if not self._channel_layer.isValid():
-                raise RuntimeError("The generated channel network is invalid.")
-            self._refresh_canvas()
-        except Exception as error:
-            self._show_error("Channel Network", error)
-        finally:
-            QApplication.restoreOverrideCursor()
+        self._channel_layer = QgsVectorLayer(
+            self.processor.channel_network_vector_path,
+            "Channel network",
+            "ogr",
+        )
+        self._refresh_canvas()
+        threshold = self.spinBox_channelThreshold.value()
+
+        self.main_dialog.morphology_tasks.start_hydrology(
+            key="domain-channel-preview",
+            controls=(
+                self.pushButton_generateChannelNetwork,
+                self.pushButton_close,
+            ),
+            load="",
+            channel_path=output_path,
+            threshold=threshold,
+            direction=False,
+            write_flow=False,
+            done=lambda result: self._channel_network_ready(
+                result["channel_network"]
+            ),
+            failed=lambda message: self._show_error(
+                "Channel Network", str(message).split("\n", 1)[0]
+            ),
+        )
+
+    def _channel_network_ready(self, result):
+        self._preview_channel_path = str(result)
+        self._channel_layer = QgsVectorLayer(
+            str(result), "Channel network preview", "ogr"
+        )
+        if not self._channel_layer.isValid():
+            self._show_error("Channel Network", "The generated channel network is invalid.")
+            return
+        self._refresh_canvas()
 
     def _start_picking(self):
         if not self.current_outlet_id:
@@ -384,20 +406,44 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         self._stop_picking()
         raster_path, vector_path = self._outlet_paths(
             self.current_outlet_id, preview=True)
+        self._watershed_layer = None
+        self._refresh_canvas()
+        outlet_id = self.current_outlet_id
+        x, y = point.x(), point.y()
+
+        options = {
+            "filled_dem": self.processor.filled_dem_path,
+            "x": x,
+            "y": y,
+            "raster_path": raster_path,
+            "vector_path": vector_path,
+            "basin_id": self.outlet_ids.index(outlet_id) + 1,
+        }
+        self.main_dialog.task_coordinator.submit(
+            "domain-watershed-preview",
+            f"Preview watershed {outlet_id}",
+            partial(_run_outlet_task, options=options),
+            controls=(
+                self.pushButton_pickLocation,
+                self.pushButton_nextPourPoint,
+                self.pushButton_save,
+                self.listWidget_outlets,
+                self.pushButton_close,
+            ),
+            on_success=lambda result: self._watershed_preview_ready(
+                outlet_id, result
+            ),
+            on_error=lambda message: self._show_error(
+                "Watershed Delineation", str(message).split("\n", 1)[0]
+            ),
+            resource="morphology-files",
+            task_aware=True,
+        )
+
+    def _watershed_preview_ready(self, outlet_id, result):
+        if outlet_id != self.current_outlet_id:
+            return
         try:
-            self._watershed_layer = None
-            self._refresh_canvas()
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            result = self.processor.delineate_single_outlet(
-                point.x(),
-                point.y(),
-                raster_path,
-                vector_path,
-                basin_id=self.outlet_ids.index(self.current_outlet_id) + 1,
-                context=self._flow_context,
-            )
-            if not result:
-                raise RuntimeError("Watershed delineation failed.")
             center_x, center_y = result["cell_center"]
             result["picked"] = {
                 "x": float(center_x),
@@ -406,176 +452,312 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             }
             self._preview_result = result
             self._show_area(result["catchment_area_m2"])
+            self._show_picked_coordinates(result["picked"])
             self._watershed_layer = QgsVectorLayer(
                 result["vector_path"],
-                f"Watershed {self.current_outlet_id}",
+                f"Watershed {outlet_id}",
                 "ogr",
             )
             self._refresh_canvas()
         except Exception as error:
             self._show_error("Watershed Delineation", error)
-        finally:
-            QApplication.restoreOverrideCursor()
+
+    def _current_assignment(self):
+        outlet_id = self.current_outlet_id
+        is_gauged = self.checkBox_isGaugedOutlet.isChecked()
+        discharge_path = str(self.comboBox_dischargeFile.currentData() or "")
+        if is_gauged and not discharge_path:
+            raise ValueError(
+                f"Select a discharge CSV or TXT file for gauge {outlet_id}."
+            )
+        return OutletAssignment(
+            outlet_id=outlet_id,
+            is_gauge=is_gauged,
+            is_domain=self.checkBox_isDomainOutlet.isChecked(),
+            discharge_layer=(
+                QgsVectorLayer(discharge_path, Path(discharge_path).name, "ogr")
+                if is_gauged and discharge_path
+                else None
+            ),
+        )
+
+    def _stage_current_outlet(self):
+        """Validate and retain one outlet without publishing final outputs."""
+        if not self.current_outlet_id:
+            return
+        assignment = self._current_assignment()
+        if assignment.is_gauge:
+            path = self._normal_path(
+                self.comboBox_dischargeFile.currentData() or ""
+            )
+            if path in self._used_discharge_paths(self.current_outlet_id):
+                raise ValueError("The selected discharge file is already used elsewhere.")
+        prepared = self.workflow.validate_gauge_assignments([assignment])
+        self.workflow.apply_assignment_records(
+            self._draft_state, [assignment], prepared
+        )
+        record = self._draft_state["outlets"][self.current_outlet_id]
+        record["threshold_cells"] = self.spinBox_channelThreshold.value()
+        picked = (
+            self._preview_result.get("picked")
+            if self._preview_result
+            else record.get("picked")
+        )
+        if (assignment.is_domain or assignment.is_gauge) and not isinstance(
+            picked, dict
+        ):
+            picked = self._default_gauge_point(self.current_outlet_id)
+        if isinstance(picked, dict):
+            record["picked"] = dict(picked)
+            if assignment.is_gauge:
+                record["gauge_point"] = dict(picked)
+                record["gauge_point"]["source"] = "picked"
+        elif assignment.is_gauge:
+            record["gauge_point"] = self._default_gauge_point(
+                self.current_outlet_id
+            )
+        else:
+            record.pop("gauge_point", None)
+        self._draft_state["dem_domain"] = bool(
+            self.main_dialog.checkBox_DEMdomain.isChecked()
+        )
+        assign_domain_ids(self._draft_state)
+        self._preview_result = None
+
+    def _default_gauge_point(self, outlet_id):
+        feature = self._features.get(str(outlet_id))
+        if feature is None or feature.geometry().isEmpty():
+            raise ValueError(f"Gauge outlet {outlet_id} has no default point location.")
+        geometry = QgsGeometry(feature.geometry())
+        source = self.pour_points_layer.crs()
+        target = self._filled_dem_layer.crs()
+        if source.isValid() and target.isValid() and source != target:
+            transform = QgsCoordinateTransform(
+                source, target, QgsProject.instance()
+            )
+            transform.setBallparkTransformsAreAppropriate(True)
+            geometry.transform(transform)
+        point = geometry.asPoint()
+        if point.isEmpty():
+            point = geometry.centroid().asPoint()
+        return {
+            "x": float(point.x()),
+            "y": float(point.y()),
+            "crs": target.authid() if target.isValid() else "",
+            "source": "default",
+        }
+
+    def _next_outlet(self):
+        try:
+            self._stage_current_outlet()
+        except (StationIdError, ValueError, RuntimeError) as error:
+            self._show_error("Next Outlet", error)
+            return
+        row = self.listWidget_outlets.currentRow()
+        if row + 1 < self.listWidget_outlets.count():
+            self.listWidget_outlets.setCurrentRow(row + 1)
+
+    def _all_assignments(self):
+        assignments = []
+        for outlet_id in self.outlet_ids:
+            record = self._draft_state["outlets"].get(outlet_id, {})
+            discharge_path = self._resolved_input(record.get("discharge_file"))
+            assignments.append(
+                OutletAssignment(
+                    outlet_id=outlet_id,
+                    is_gauge=bool(record.get("is_gauged", False)),
+                    is_domain=bool(record.get("is_domain", False)),
+                    discharge_layer=(
+                        QgsVectorLayer(
+                            discharge_path,
+                            Path(discharge_path).name,
+                            "ogr",
+                        )
+                        if record.get("is_gauged") and discharge_path
+                        else None
+                    ),
+                )
+            )
+        return assignments
 
     def _save_outlet(self):
-        outlet_id = self.current_outlet_id
-        if not outlet_id:
-            return
-        proposed_state = copy.deepcopy(self.state)
-        record = dict(proposed_state["outlets"].get(outlet_id, {}))
-        was_gauged = bool(
-            record.get("is_gauged", record.get("gauged", False)))
-        is_gauged = self.checkBox_isGaugedOutlet.isChecked()
-        is_domain = self.checkBox_isDomainOutlet.isChecked()
-        discharge_path = str(
-            self.comboBox_dischargeFile.currentData() or "")
-        cursor_set = False
-
         try:
-            assignment = OutletAssignment(
-                outlet_id=outlet_id,
-                is_gauge=is_gauged,
-                is_domain=is_domain,
-                discharge_layer=(
-                    QgsVectorLayer(
-                        discharge_path,
-                        Path(discharge_path).name,
-                        "ogr",
-                    )
-                    if is_gauged and discharge_path
-                    else None
-                ),
-            )
-            if is_gauged:
-                if not discharge_path:
-                    raise ValueError(
-                        "Select a discharge CSV or TXT file for this gauge.")
-                if self._normal_path(discharge_path) in (
-                    self._used_discharge_paths(outlet_id)
-                ):
-                    raise ValueError(
-                        "The selected discharge file is already used elsewhere.")
-            prepared = self.workflow.validate_gauge_assignments([assignment])
-
+            self._stage_current_outlet()
+            proposed_state = copy.deepcopy(self._draft_state)
+            assignments = self._all_assignments()
+            prepared = self.workflow.validate_gauge_assignments(assignments)
+            previously_gauged = {
+                outlet_id
+                for outlet_id, record in self.state.get("outlets", {}).items()
+                if record.get("is_gauged", False)
+            }
             self.workflow.apply_assignment_records(
-                proposed_state,
-                [assignment],
-                prepared,
-            )
-            record = proposed_state["outlets"][outlet_id]
-            record["threshold_cells"] = self.spinBox_channelThreshold.value()
-            proposed_state["dem_domain"] = bool(
-                self.main_dialog.checkBox_DEMdomain.isChecked()
+                proposed_state, assignments, prepared
             )
             assign_domain_ids(proposed_state)
             self.workflow.require_active_domain(proposed_state)
             self.workflow.validate_unique_state_gauge_ids(proposed_state)
-
-            if is_domain:
-                picked = (
-                    self._preview_result.get("picked")
-                    if self._preview_result
-                    else record.get("picked")
-                )
-                if not isinstance(picked, dict):
-                    raise ValueError(
-                        "Pick a map location before saving this domain.")
-                record["picked"] = dict(picked)
-
             delineations = []
             for domain in active_domain_records(proposed_state):
                 if domain.get("is_dem_domain"):
                     continue
-                domain_outlet_id = domain["outlet_id"]
-                domain_record = proposed_state["outlets"][domain_outlet_id]
-                picked = domain_record.get("picked")
+                outlet_id = domain["outlet_id"]
+                record = proposed_state["outlets"][outlet_id]
+                picked = record.get("picked")
                 if not isinstance(picked, dict):
                     raise ValueError(
-                        "Pick and save a location for domain outlet "
-                        f"{domain_outlet_id}."
+                        f"Pick a map location for domain outlet {outlet_id}."
                     )
-                x, y = self._picked_in_dem_crs(picked)
                 raster_path, vector_path = self._outlet_paths(
-                    domain_outlet_id,
-                    state=proposed_state,
+                    outlet_id, state=proposed_state
                 )
+                x, y = self._picked_in_dem_crs(picked)
                 delineations.append(
                     (
-                        domain_outlet_id,
-                        domain_record,
+                        outlet_id,
                         x,
                         y,
                         raster_path,
                         vector_path,
+                        int(record["domain_id"]),
+                        domain_dem_path(self.project_folder, outlet_id),
                     )
                 )
-
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            cursor_set = True
+            dem_crs_authid = self._filled_dem_layer.crs().authid()
+            dem_domain = None
+            if proposed_state.get("dem_domain"):
+                dem_raster, dem_vector = self.workflow.dem_paths()
+                dem_domain = (
+                    int(proposed_state["dem_domain_id"]),
+                    dem_raster,
+                    dem_vector,
+                    domain_dem_path(self.project_folder, "dem_extent"),
+                )
+            merged_path = os.path.join(
+                geometry_folder(self.project_folder),
+                "Watersheds",
+                "4_watershed_merged_vector.shp",
+            )
             self._watershed_layer = None
             self._refresh_canvas()
-            for (
-                domain_outlet_id,
-                domain_record,
-                x,
-                y,
-                raster_path,
-                vector_path,
-            ) in delineations:
-                result = self.processor.delineate_single_outlet(
-                    x,
-                    y,
-                    raster_path,
-                    vector_path,
-                    basin_id=int(domain_record["domain_id"]),
-                    context=self._flow_context,
-                )
-                if not result:
-                    raise RuntimeError(
-                        "Watershed delineation failed for outlet "
-                        f"{domain_outlet_id}."
-                    )
-                center_x, center_y = result["cell_center"]
-                domain_record.update(
-                    {
-                        "picked": {
-                            "x": float(center_x),
-                            "y": float(center_y),
-                            "crs": self._filled_dem_layer.crs().authid(),
-                        },
-                        "catchment_area_m2": result["catchment_area_m2"],
-                        "mask_path": result["raster_path"],
-                        "vector_path": result["vector_path"],
-                    }
-                )
-
-            if proposed_state["dem_domain"]:
-                self.workflow.prepare_dem_domain(proposed_state)
-            self.workflow.merge_active_domains(proposed_state)
-            self.workflow.update_gauge_domain_ids(
-                proposed_state,
-                self.pour_points_layer,
+            options = {
+                "filled_dem": self.processor.filled_dem_path,
+                "delineations": tuple(delineations),
+                "dem_domain": dem_domain,
+                "merged_path": merged_path,
+            }
+            started = self.main_dialog.task_coordinator.submit(
+                "domain-final-save",
+                "Save all domain and gauge inputs",
+                partial(_run_domains_task, options=options),
+                task_aware=True,
+                controls=(
+                    self.pushButton_nextPourPoint,
+                    self.pushButton_save,
+                    self.pushButton_pickLocation,
+                    self.pushButton_generateChannelNetwork,
+                    self.listWidget_outlets,
+                    self.pushButton_close,
+                ),
+                on_success=lambda result: self._domain_files_ready(
+                        result,
+                        proposed_state,
+                        prepared,
+                        previously_gauged,
+                        dem_crs_authid,
+                ),
+                on_error=lambda message: self._show_error(
+                    "Save Domain Inputs", str(message).split("\n", 1)[0]
+                ),
+                resource="morphology-files",
             )
-            self.workflow.write_gauges(prepared)
-            save_state(self.project_folder, proposed_state)
-            self.state = proposed_state
-            if was_gauged and not is_gauged:
-                self._remove_observation_file(outlet_id)
-            self.main_dialog.save_input_state()
-            self.processor.update_gauged_outlet_count()
-            self._preview_result = None
-            self._show_saved_watershed(record if is_domain else {})
-            QApplication.restoreOverrideCursor()
-            cursor_set = False
-            QMessageBox.information(
-                self, "Domain Delineator", f"Saved outlet {outlet_id}.")
+            if not started:
+                raise RuntimeError("Domain saving is already running.")
         except (StationIdError, ValueError, RuntimeError) as error:
-            self._show_error("Save Outlet", error)
+            self._show_error("Save Domain Inputs", error)
         except Exception as error:
-            self._show_error("Save Outlet", error)
-        finally:
-            if cursor_set:
-                QApplication.restoreOverrideCursor()
+            self._show_error("Save Domain Inputs", error)
+
+    def _commit_domain_state(
+        self,
+        result,
+        proposed_state,
+        prepared,
+        previously_gauged,
+        dem_crs_authid,
+    ):
+        for outlet_id, delineation in result["outlets"].items():
+            record = proposed_state["outlets"][outlet_id]
+            center_x, center_y = delineation["cell_center"]
+            record.update(
+                {
+                    "picked": {
+                        "x": float(center_x),
+                        "y": float(center_y),
+                        "crs": dem_crs_authid,
+                    },
+                    "catchment_area_m2": delineation["catchment_area_m2"],
+                    "mask_path": delineation["raster_path"],
+                    "vector_path": delineation["vector_path"],
+                    "domain_directory": domain_data_folder(
+                        self.project_folder, outlet_id
+                    ),
+                    "dem_path": delineation.get("dem_path", ""),
+                }
+            )
+        if result.get("dem_domain_path"):
+            proposed_state["dem_domain_directory"] = domain_data_folder(
+                self.project_folder, "dem_extent"
+            )
+            proposed_state["dem_domain_path"] = result["dem_domain_path"]
+        self.processor.merged_watershed_path = result["merged_path"]
+        self.processor.watershed_vector_path = result["merged_path"]
+        self.processor.mark_output_prepared(
+            result["merged_path"], name="4_watershed_merged", loaded=False
+        )
+        self.workflow.update_gauge_domain_ids(
+            proposed_state, self.pour_points_layer
+        )
+        self.workflow.write_gauges(prepared)
+        save_state(self.project_folder, proposed_state)
+        self.workflow.remove_deselected_gauges(
+            previously_gauged, proposed_state
+        )
+        from .nml_settings import sync_domain_settings
+
+        sync_domain_settings(self.project_folder)
+        self._domain_state_saved(proposed_state)
+
+    def _domain_files_ready(
+        self,
+        result,
+        proposed_state,
+        prepared,
+        previously_gauged,
+        dem_crs_authid,
+    ):
+        try:
+            self._commit_domain_state(
+                result,
+                proposed_state,
+                prepared,
+                previously_gauged,
+                dem_crs_authid,
+            )
+        except Exception as error:
+            self._show_error("Save Domain Inputs", error)
+
+    def _domain_state_saved(self, proposed_state):
+        self.state = proposed_state
+        self._draft_state = copy.deepcopy(proposed_state)
+        self.main_dialog.save_input_state()
+        self.processor.update_gauged_outlet_count()
+        self._show_saved_watershed(
+            proposed_state["outlets"].get(self.current_outlet_id, {})
+        )
+        QMessageBox.information(
+            self, "Domain Delineator", "Saved all pour-point inputs."
+        )
 
     def _remove_observation_file(self, outlet_id):
         self.workflow.remove_observation_file(outlet_id)
@@ -640,6 +822,22 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         self.label_catchmentAreaValue.setText(
             f"{area / 1_000_000.0:.3f} km²")
 
+    def _show_picked_coordinates(self, picked):
+        if not isinstance(picked, dict):
+            self.label_pourPointUpdatedCoordinatesValue.setText("-")
+            return
+        try:
+            x = float(picked["x"])
+            y = float(picked["y"])
+        except (KeyError, TypeError, ValueError):
+            self.label_pourPointUpdatedCoordinatesValue.setText("-")
+            return
+        authid = str(picked.get("crs", "") or "")
+        suffix = f" ({authid})" if authid else ""
+        self.label_pourPointUpdatedCoordinatesValue.setText(
+            f"{x:.3f}, {y:.3f}{suffix}"
+        )
+
     def _zoom_to_outlet(self):
         feature = self._features.get(self.current_outlet_id)
         if feature is None or feature.geometry().isEmpty():
@@ -674,6 +872,10 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
 
     def _cleanup(self, *_args):
         self._stop_picking()
+        controller = getattr(self, "_viewport_range", None)
+        if controller is not None:
+            controller.close()
+            self._viewport_range = None
         if self._outlet_marker is not None:
             self._outlet_marker.hide()
             try:
@@ -684,5 +886,35 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         self.canvas.setLayers([])
 
     def closeEvent(self, event):
+        if self._domain_jobs_busy():
+            event.ignore()
+            QMessageBox.information(
+                self,
+                "Processing",
+                "Wait for the active Domain Delineator task to finish.",
+            )
+            return
         self._cleanup()
         super().closeEvent(event)
+
+    def reject(self):
+        if self._domain_jobs_busy():
+            QMessageBox.information(
+                self,
+                "Processing",
+                "Wait for the active Domain Delineator task to finish.",
+            )
+            return
+        super().reject()
+
+    def _domain_jobs_busy(self):
+        coordinator = self.main_dialog.task_coordinator
+        return any(
+            coordinator.is_busy(key)
+            for key in (
+                "domain-channel-preview",
+                "domain-channel-preview-dem",
+                "domain-watershed-preview",
+                "domain-final-save",
+            )
+        )

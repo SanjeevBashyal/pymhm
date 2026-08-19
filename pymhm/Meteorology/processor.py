@@ -13,6 +13,7 @@ from .forcing import (MeteoFolderSpec, TargetGrid,
                       process_meteo_inputs)
 from .paths import expected_meteo_outputs, meteo_output_root
 from .results import log_result_summary, record_forcing_outputs
+from .reuse import required_meteo_variables, stale_meteo_variables
 from .state import MeteorologyOutputState
 from ..grid_resolution import save_meteo_grid_metadata
 
@@ -57,6 +58,31 @@ class MeteorologyProcessor:
         if hasattr(self.dialog, "update_l2_resolution_from_metadata"):
             self.dialog.update_l2_resolution_from_metadata()
 
+    def reuse_prepared_meteo_forcing(self, run: MeteorologyRun) -> bool:
+        """Return True when recorded forcing already matches the target L2 grid."""
+        variables = required_meteo_variables(run.pet is not None)
+        stale = stale_meteo_variables(
+            run.project_folder,
+            self.state.load().get("outputs", {}),
+            run.target_grid.header,
+            variables,
+        )
+        if stale:
+            for variable, reason in sorted(stale.items()):
+                self.log_message(f"{variable}: needs preparing ({reason}).")
+            return False
+
+        self.log_message(
+            "Meteorology forcing is already prepared on this L2 grid for "
+            f"{', '.join(variables)}. Skipping meteorology preparation."
+        )
+        self.log_message(
+            "Change the L2 grid or delete the files under "
+            f"{meteo_output_root(run.project_folder)} to force a rebuild."
+        )
+        save_meteo_grid_metadata(run.project_folder, run.grid_metadata)
+        return True
+
     def process_meteo_forcing(
             self,
             run: MeteorologyRun,
@@ -67,6 +93,9 @@ class MeteorologyProcessor:
             f"Meteorology output folder: "
             f"{meteo_output_root(run.project_folder)}"
         )
+        if self.reuse_prepared_meteo_forcing(run):
+            return True
+
         try:
             result = process_meteo_inputs(
                 precipitation=run.precipitation,

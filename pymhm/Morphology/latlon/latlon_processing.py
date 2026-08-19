@@ -13,7 +13,7 @@ class LatLonProcessingMixin(MaskingMixin):
     """Lat/lon grid metadata processing for mHM."""
 
     def process_lat_lon(self) -> bool:
-        """Create data/latlon.nc from L0, L1, L11, and L2 grid headers."""
+        """Create data/master/latlon.nc from L0, L1, L11, and L2 headers."""
         self.log_message("\n--- Processing Lat/Lon NetCDF ---")
 
         if not self.check_prerequisites():

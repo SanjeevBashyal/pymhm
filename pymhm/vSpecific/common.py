@@ -8,7 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from ..grid_resolution import ceil_cellsize, is_geographic_unit
-from ..project_layout import geometry_folder, morph_folder
+from ..project_layout import (
+    geometry_folder,
+    morph_folder,
+    morph_staging_folder,
+)
 from ..nml_settings import load_settings
 
 
@@ -93,11 +97,15 @@ def geology_count(dialog: Any) -> int:
     if rows:
         return max(len(rows), max(row["index"] for row in rows))
     project = getattr(dialog, "project_folder", None)
-    path = (
-        Path(morph_folder(project)) / "geology_classdefinition.txt"
-        if project
-        else None
-    )
+    # Published first, then the Execute All staging copy, so the count is
+    # available before Morphology Setup has published anything.
+    path = None
+    if project:
+        for folder in (morph_folder(project), morph_staging_folder(project)):
+            candidate = Path(folder) / "geology_classdefinition.txt"
+            if candidate.is_file():
+                path = candidate
+                break
     if path:
         try:
             match = re.search(r"nGeo_Formations\s+(\d+)", path.read_text(encoding="utf-8"))

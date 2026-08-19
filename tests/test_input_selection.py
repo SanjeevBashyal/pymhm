@@ -23,7 +23,10 @@ from qgis.PyQt import QtWidgets  # noqa: E402
 from pymhm.input_selection import (  # noqa: E402
     EXCLUDED_PROJECT_FOLDERS,
     InputComboAdapter,
+    LaiNetcdfInputDialog,
     LookupConfigDialog,
+    MhmReadyInputDialog,
+    SingleLayerInputDialog,
     loaded_qgis_items,
     scan_project_folders,
     scan_project_inputs,
@@ -174,7 +177,8 @@ def test_lookup_dialog_lists_tables_and_requires_both_fields(tmp_path):
     table = tmp_path / "inputs" / "soil.txt"
     table.parent.mkdir(parents=True)
     table.write_text(
-        "map_code\tclass_id\tname\nWR\t1\tRegosol\nCM\t2\tCambisol\n",
+        "map_code\tclass_id\tname\t*ignored\n"
+        "WR\t1\tRegosol\t10\nCM\t2\tCambisol\t20\n",
         encoding="utf-8",
     )
     _touch(tmp_path / "mhm-plugin" / "ignored.csv")
@@ -197,3 +201,52 @@ def test_lookup_dialog_lists_tables_and_requires_both_fields(tmp_path):
     assert config.lookup_table == str(table.resolve())
     assert config.mapping_field == "map_code"
     assert config.class_field == "class_id"
+
+
+def test_new_input_dialogs_set_titles_and_return_complete_paths(tmp_path):
+    _app()
+    raster = _touch(tmp_path / "soil.tif")
+    definition = _touch(tmp_path / "soil_classdefinition.txt")
+    lookup = tmp_path / "soil.csv"
+    lookup.write_text("code,class_id\nA,1\n", encoding="utf-8")
+
+    ready = MhmReadyInputDialog(
+        tmp_path,
+        "soil",
+        initial={
+            "input_path": str(raster),
+            "classdefinition_path": str(definition),
+        },
+    )
+    assert ready.groupBox_inputType.title() == "Soil"
+    assert ready.comboBox_classDefinitionInput.isEnabled()
+    assert ready.selected_config().classdefinition_path == str(definition.resolve())
+
+    single = SingleLayerInputDialog(
+        tmp_path,
+        "soil",
+        initial={
+            "input_path": str(raster),
+            "lookup_table": str(lookup),
+            "mapping_field": "code",
+            "class_field": "class_id",
+        },
+    )
+    assert single.groupBox_inputLayerType.title() == "Soil"
+    assert single.selected_config().input_path == str(raster.resolve())
+
+
+def test_lai_netcdf_dialog_returns_temporal_choices(tmp_path):
+    _app()
+    source = _touch(tmp_path / "lai.nc")
+    dialog = LaiNetcdfInputDialog(
+        tmp_path,
+        initial={
+            "input_path": str(source),
+            "input_resolution": "Daily",
+            "target_timestep": "Monthly Gridded Data",
+        },
+    )
+
+    assert dialog.selected_config().input_resolution == "Daily"
+    assert dialog.selected_config().target_timestep == "Monthly Gridded Data"

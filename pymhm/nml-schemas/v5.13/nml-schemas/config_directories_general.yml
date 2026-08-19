@@ -11,7 +11,7 @@ properties:
     type: string
     x-fortran-len: buf
     format: directory-path
-    default: data/static/morph/
+    default: data/master/static/morph/
   dir_Morpho:
     type: array
     items:
@@ -19,7 +19,7 @@ properties:
       x-fortran-len: buf
       format: directory-path
     x-fortran-shape: max_domains
-    examples: [[data/static/morph/]]
+    examples: [[data/<outlet-id>/]]
   dir_LCover:
     type: array
     items:
@@ -27,7 +27,7 @@ properties:
       x-fortran-len: buf
       format: directory-path
     x-fortran-shape: max_domains
-    examples: [[data/static/morph/]]
+    examples: [[data/master/static/morph/]]
   mhm_file_RestartOut:
     type: array
     items:
@@ -59,4 +59,4 @@ properties:
       x-fortran-len: buf
       format: file-path
     x-fortran-shape: max_domains
-    examples: [[data/latlon.nc]]
+    examples: [[data/master/latlon.nc]]

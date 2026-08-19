@@ -13,6 +13,8 @@ from ..common import (
 )
 from ..core.predecessors import PredecessorMixin
 from ..watershed.pour_point_workflow import PourPointWorkflowMixin
+from ..watershed.domain_state import load_state as load_domain_state
+from qgis.core import QgsCoordinateReferenceSystem, QgsGeometry, QgsPointXY
 from .outlets import (
     OutletCountMixin,
     StationIdError,
@@ -66,10 +68,17 @@ class GaugePositionMixin(PourPointWorkflowMixin, OutletCountMixin, PredecessorMi
             configured_ids = configured_gauged_outlet_ids(
                 self.dialog.project_folder
             )
+            domain_state = load_domain_state(self.dialog.project_folder)
+            configured_points = {
+                outlet_id: record.get("gauge_point")
+                for outlet_id, record in domain_state.get("outlets", {}).items()
+                if isinstance(record, dict) and isinstance(record.get("gauge_point"), dict)
+            }
             gauge_features = self._gauge_features(
                 snapped_layer,
                 station_field,
                 configured_ids,
+                configured_points,
             )
         except StationIdError as e:
             QMessageBox.critical(self.dialog, "Invalid Outlet IDs", str(e))
@@ -125,10 +134,21 @@ class GaugePositionMixin(PourPointWorkflowMixin, OutletCountMixin, PredecessorMi
         )
 
         point_transform = self._snapped_to_raster_transform(snapped_layer)
+        filled_dem_layer = QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
         for item in gauge_features:
             point = item["geometry"].asPoint()
-            if point_transform is not None:
-                point = point_transform.transform(point)
+            transform = point_transform
+            source_crs = item.get("crs")
+            if source_crs is not None and source_crs.isValid():
+                target_crs = filled_dem_layer.crs()
+                transform = None
+                if target_crs.isValid() and source_crs != target_crs:
+                    transform = QgsCoordinateTransform(
+                        source_crs, target_crs, QgsProject.instance()
+                    )
+                    transform.setBallparkTransformsAreAppropriate(True)
+            if transform is not None:
+                point = transform.transform(point)
 
             row, col = self._point_to_row_col(
                 point.x(),
@@ -170,7 +190,8 @@ class GaugePositionMixin(PourPointWorkflowMixin, OutletCountMixin, PredecessorMi
             self,
             layer,
             station_field: str,
-            configured_ids: list[str] | None = None) -> list[dict]:
+            configured_ids: list[str] | None = None,
+            configured_points: dict | None = None) -> list[dict]:
         """Return valid snapped gauge features with station ids."""
         gauge_features = []
         seen_station_ids = set()
@@ -199,10 +220,29 @@ class GaugePositionMixin(PourPointWorkflowMixin, OutletCountMixin, PredecessorMi
                 raise StationIdError(
                     f"Outlet ID '{station_text}' has an empty geometry.")
 
+            source_crs = None
+            point_record = (configured_points or {}).get(station_text)
+            if isinstance(point_record, dict):
+                try:
+                    geometry = QgsGeometry.fromPointXY(
+                        QgsPointXY(
+                            float(point_record["x"]),
+                            float(point_record["y"]),
+                        )
+                    )
+                    source_crs = QgsCoordinateReferenceSystem(
+                        str(point_record.get("crs", "") or "")
+                    )
+                except (KeyError, TypeError, ValueError):
+                    raise StationIdError(
+                        f"Saved gauge location for outlet '{station_text}' is invalid."
+                    )
+
             gauge_features.append({
                 "station_text": station_text,
                 "station_int": station_value,
                 "geometry": geometry,
+                "crs": source_crs,
             })
 
         missing_ids = (

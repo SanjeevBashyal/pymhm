@@ -50,9 +50,53 @@ def geometry_folder(project_folder) -> str:
     return os.path.join(z_temp_folder(project_folder), "Geometry")
 
 
+def morphology_staging_folder(project_folder) -> str:
+    """Return the staging folder for model-ready morphology inputs."""
+    return os.path.join(z_temp_folder(project_folder), "Morphology")
+
+
+def morph_staging_folder(project_folder) -> str:
+    """Return the staging folder for land cover, soil, and geology outputs.
+
+    Execute All writes here. Morphology Setup publishes into
+    `data/master/static/morph` only after crop, mask, and write succeed.
+    """
+    return os.path.join(morphology_staging_folder(project_folder), "morph")
+
+
+def lai_staging_folder(project_folder) -> str:
+    """Return the staging folder for LAI crop and mask outputs."""
+    return os.path.join(morphology_staging_folder(project_folder), "lai")
+
+
+def lai_dem_staging_path(project_folder) -> str:
+    """Return the staged LAI resampled onto the filled DEM grid."""
+    return os.path.join(lai_staging_folder(project_folder), "lai_dem.nc")
+
+
 def data_folder(project_folder) -> str:
     """Return the mHM data folder."""
     return os.path.join(workspace_folder(project_folder), "data")
+
+
+def master_data_folder(project_folder) -> str:
+    """Return the shared model-input folder used by every domain."""
+    return os.path.join(data_folder(project_folder), "master")
+
+
+def domain_data_folder(project_folder, outlet_id) -> str:
+    """Return one outlet-named domain folder, rejecting unsafe IDs."""
+    name = str(outlet_id).strip()
+    unsafe = not name or name in {".", ".."} or any(
+        char in name for char in ("/", "\\", "\0")
+    )
+    if unsafe:
+        raise ValueError(f"Outlet ID cannot be used as a domain directory: {outlet_id!r}")
+    return os.path.join(data_folder(project_folder), name)
+
+
+def domain_dem_path(project_folder, outlet_id) -> str:
+    return os.path.join(domain_data_folder(project_folder, outlet_id), "dem.asc")
 
 
 def data_raw_folder(project_folder) -> str:
@@ -61,8 +105,8 @@ def data_raw_folder(project_folder) -> str:
 
 
 def static_folder(project_folder) -> str:
-    """Return the static data folder."""
-    return os.path.join(data_folder(project_folder), "static")
+    """Return the shared static data folder."""
+    return os.path.join(master_data_folder(project_folder), "static")
 
 
 def morph_folder(project_folder) -> str:
@@ -72,7 +116,7 @@ def morph_folder(project_folder) -> str:
 
 def meteo_folder(project_folder) -> str:
     """Return the meteorology forcing data folder."""
-    return os.path.join(data_folder(project_folder), "meteo")
+    return os.path.join(master_data_folder(project_folder), "meteo")
 
 
 def raw_meteo_folder(project_folder) -> str:
@@ -82,12 +126,14 @@ def raw_meteo_folder(project_folder) -> str:
 
 def lai_folder(project_folder) -> str:
     """Return the LAI data folder."""
-    return os.path.join(data_folder(project_folder), "lai")
+    return os.path.join(master_data_folder(project_folder), "lai")
 
 
 def streamflow_observation_folder(project_folder) -> str:
     """Return the streamflow observation folder."""
-    return os.path.join(data_folder(project_folder), "observation", "streamflow")
+    return os.path.join(
+        master_data_folder(project_folder), "observation", "streamflow"
+    )
 
 
 def output_folder(project_folder) -> str:
@@ -120,10 +166,17 @@ def ensure_project_structure(project_folder, version_text=None) -> list[str]:
         created.append(workspace)
     os.makedirs(z_temp_folder(project_folder), exist_ok=True)
     os.makedirs(geometry_folder(project_folder), exist_ok=True)
+    os.makedirs(morphology_staging_folder(project_folder), exist_ok=True)
+    os.makedirs(morph_staging_folder(project_folder), exist_ok=True)
 
     template = project_template_dir(version_text)
     if template:
         for root, dirs, _ in os.walk(template):
+            dirs[:] = [
+                name
+                for name in dirs
+                if not (name.startswith("<") and name.endswith(">"))
+            ]
             for dirname in dirs:
                 src = os.path.join(root, dirname)
                 rel = os.path.relpath(src, template)
@@ -134,6 +187,7 @@ def ensure_project_structure(project_folder, version_text=None) -> list[str]:
 
     for path in (
             data_folder(project_folder),
+            master_data_folder(project_folder),
             data_raw_folder(project_folder),
             static_folder(project_folder),
             morph_folder(project_folder),

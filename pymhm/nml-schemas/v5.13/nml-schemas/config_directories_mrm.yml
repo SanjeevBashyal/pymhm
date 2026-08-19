@@ -9,10 +9,10 @@ properties:
       x-fortran-len: buf
       format: directory-path
     x-fortran-shape: max_domains
-    examples: [[data/observation/streamflow/]]
+    examples: [[data/master/observation/streamflow/]]
   dir_Total_Runoff:
     <<: *domain_directory
     examples: [[output/]]
   dir_Bankfull_Runoff:
     <<: *domain_directory
-    examples: [[data/static/morph/]]
+    examples: [[data/master/static/morph/]]

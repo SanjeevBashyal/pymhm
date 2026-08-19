@@ -77,6 +77,8 @@ def test_save_is_atomic_normalized_and_does_not_mutate_input(
     discharge = project / "inputs" / "gauge.csv"
     mask = project / "mhm-plugin" / "Z Temp" / "Geometry" / "mask.tif"
     vector = mask.with_suffix(".gpkg")
+    domain_directory = project / "mhm-plugin" / "data" / "7"
+    domain_dem = domain_directory / "dem.asc"
     state = {
         "version": 99,
         "pour_points_source": "inputs/outlets.gpkg",
@@ -89,6 +91,8 @@ def test_save_is_atomic_normalized_and_does_not_mutate_input(
                 "discharge_file": str(discharge),
                 "mask_path": str(mask),
                 "vector_path": str(vector),
+                "domain_directory": str(domain_directory),
+                "dem_path": str(domain_dem),
             }
         },
     }
@@ -104,6 +108,8 @@ def test_save_is_atomic_normalized_and_does_not_mutate_input(
     assert saved["outlets"]["7"]["discharge_file"] == "inputs/gauge.csv"
     assert saved["outlets"]["7"]["mask_path"] == "Z Temp/Geometry/mask.tif"
     assert saved["outlets"]["7"]["vector_path"] == "Z Temp/Geometry/mask.gpkg"
+    assert saved["outlets"]["7"]["domain_directory"] == "data/7"
+    assert saved["outlets"]["7"]["dem_path"] == "data/7/dem.asc"
     assert state["outlets"][7]["mask_path"] == str(mask)
     assert not list(path.parent.glob(f".{path.name}.*.tmp"))
     assert load_state(project) == saved
@@ -133,6 +139,36 @@ def test_active_domains_include_optional_dem_domain_and_gauges() -> None:
     assert domain_count(state) == 3
 
 
+def test_dem_domain_can_be_the_only_active_domain(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    save_state(
+        project,
+        {
+            "definition_mode": "dem_extent",
+            "dem_domain": True,
+            "dem_domain_directory": "data/dem_extent",
+            "dem_domain_path": "data/dem_extent/dem.asc",
+            "outlets": {
+                # Gauged but not delineated: no outlet-derived watershed exists.
+                "A": {"is_domain": False, "is_gauged": True, "gauge_id": 7},
+            },
+        },
+    )
+
+    state = load_state(project)
+    records = active_domain_records(state)
+
+    assert domain_count(state) == 1
+    assert len(records) == 1
+    record = records[0]
+    assert record["outlet_id"] == DEM_DOMAIN_ID
+    assert record["is_dem_domain"] is True
+    assert record["domain_id"] == 1
+    assert record["gauged_outlet_ids"] == ["A"]
+    assert record["domain_directory"] == "data/dem_extent"
+    assert record["dem_path"] == "data/dem_extent/dem.asc"
+
+
 def test_saved_order_and_gauge_metadata_survive_sorted_json(tmp_path: Path) -> None:
     output = (
         tmp_path
@@ -155,6 +191,12 @@ def test_saved_order_and_gauge_metadata_survive_sorted_json(tmp_path: Path) -> N
                 "gauge_filename": "001.txt",
                 "gauge_path": str(output),
                 "domain_ids": [1, 2],
+                "gauge_point": {
+                    "x": 12.5,
+                    "y": 47.25,
+                    "crs": "EPSG:4326",
+                    "source": "picked",
+                },
             },
             "20": {"is_domain": True},
             "3": {"is_domain": False},
@@ -172,6 +214,7 @@ def test_saved_order_and_gauge_metadata_survive_sorted_json(tmp_path: Path) -> N
     assert loaded["outlets"]["001"]["gauge_path"] == (
         "data/observation/streamflow/001.txt"
     )
+    assert loaded["outlets"]["001"]["gauge_point"]["source"] == "picked"
     assert gauge_records(loaded) == [
         {
             "outlet_id": "001",

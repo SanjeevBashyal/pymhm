@@ -8,7 +8,10 @@ standalone_qgis.install(force=True)
 
 # isort: off
 from pymhm.Morphology.orchestration.execute_all import ExecuteAllMixin  # noqa: E402
-from pymhm.project_layout import geometry_folder, morph_folder  # noqa: E402
+from pymhm.project_layout import (  # noqa: E402
+    geometry_folder,
+    morph_staging_folder,
+)
 # isort: on
 
 
@@ -65,18 +68,18 @@ class _WorkflowHarness:
     def process_soil(self, write_classdefinition=True):
         self.calls.append("soil")
         geometry = Path(geometry_folder(self.dialog.project_folder))
-        morph = Path(morph_folder(self.dialog.project_folder))
+        staging = Path(morph_staging_folder(self.dialog.project_folder))
         self._touch(geometry / "3_soil.tif")
-        self._touch(morph / "soil_classdefinition.txt")
+        self._touch(staging / "soil_classdefinition.txt")
         return True
 
     def process_geology(self, write_classdefinition=True):
         self.calls.append("geology")
         geometry = Path(geometry_folder(self.dialog.project_folder))
-        morph = Path(morph_folder(self.dialog.project_folder))
+        staging = Path(morph_staging_folder(self.dialog.project_folder))
         self._touch(geometry / "3_geology_processed.tif")
         self._touch(geometry / "geology_class_metadata.json")
-        self._touch(morph / "geology_classdefinition.txt")
+        self._touch(staging / "geology_classdefinition.txt")
         return True
 
     def _categorical_mode(self, _kind):
@@ -113,6 +116,10 @@ class _WorkflowHarness:
     def process_gauge_position(self):
         self.calls.append("gauge")
 
+    def resample_lai_to_dem_grid(self, show_error_dialog=True):
+        self.calls.append("lai")
+        return True
+
     def _restore_existing_path(self, _attribute, *_filenames):
         return None
 
@@ -135,6 +142,10 @@ class _WorkflowHarness:
         self.calls.append("write")
         return True
 
+    def align_advanced_inputs_to_l0(self, show_error_dialog=True):
+        self.calls.append("align_advanced")
+        return True
+
 
 def test_execute_all_stops_before_finalization(tmp_path):
     workflow = _WorkflowHarness(tmp_path)
@@ -150,6 +161,7 @@ def test_execute_all_stops_before_finalization(tmp_path):
         "land_cover",
         "soil",
         "geology",
+        "lai",
         "flow_accumulation",
         "flow_direction",
         "channel_network",
@@ -167,7 +179,13 @@ def test_combined_setup_runs_finalization_in_order(tmp_path):
         show_error_dialog=False,
         workflow_key="meteo_morph_setup",
     )
-    assert workflow.calls == ["crop", "mask", "latlon", "write"]
+    assert workflow.calls == [
+        "crop",
+        "mask",
+        "latlon",
+        "write",
+        "align_advanced",
+    ]
     assert workflow.statuses[-1][:2] == (
         "meteo_morph_setup",
         "completed",
@@ -185,3 +203,54 @@ def test_combined_setup_stops_when_latlon_fails(tmp_path):
     )
     assert workflow.calls == ["crop", "mask", "latlon"]
     assert workflow.statuses[-1][:2] == ("meteo_morph_setup", "failed")
+
+
+def test_each_morph_setup_step_records_its_status(tmp_path):
+    """Crop, mask, latlon, write and publish each land in the state json."""
+    workflow = _WorkflowHarness(tmp_path)
+
+    assert ExecuteAllMixin.execute_morph_setup_processing(
+        workflow,
+        show_error_dialog=False,
+        workflow_key="meteo_morph_setup",
+    )
+
+    prefix = "meteo_morph_setup_"
+    recorded = [entry for entry in workflow.statuses if entry[0].startswith(prefix)]
+    steps = [key for key, status, _m in recorded if status == "completed"]
+    assert steps == [
+        "meteo_morph_setup_crop",
+        "meteo_morph_setup_mask",
+        "meteo_morph_setup_latlon",
+        "meteo_morph_setup_write",
+        "meteo_morph_setup_publish",
+    ]
+    # Every step is marked running before it is marked completed.
+    for step in steps:
+        order = [status for key, status, _m in recorded if key == step]
+        assert order == ["running", "completed"], (step, order)
+
+
+def test_a_failing_step_is_recorded_as_failed_and_stops_the_rest(tmp_path):
+    workflow = _WorkflowHarness(tmp_path)
+    workflow.latlon_result = False
+
+    assert not ExecuteAllMixin.execute_morph_setup_processing(
+        workflow,
+        show_error_dialog=False,
+        workflow_key="meteo_morph_setup",
+    )
+
+    prefix = "meteo_morph_setup_"
+    statuses = dict(
+        (key, status)
+        for key, status, _m in workflow.statuses
+        if key.startswith(prefix)
+    )
+    assert statuses["meteo_morph_setup_crop"] == "completed"
+    assert statuses["meteo_morph_setup_mask"] == "completed"
+    assert statuses["meteo_morph_setup_latlon"] == "failed"
+    # The later steps never ran, so they were never recorded.
+    assert "meteo_morph_setup_write" not in statuses
+    assert "meteo_morph_setup_publish" not in statuses
+    assert workflow.calls == ["crop", "mask", "latlon"]

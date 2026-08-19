@@ -69,8 +69,8 @@ def test_land_cover_processing_writes_period_state(tmp_path, monkeypatch):
     state = load_settings(tmp_path)["land_cover"]
     assert state["variable"] == "land_cover"
     assert [scene["output_path"] for scene in state["scenes"]] == [
-        "data/static/morph/lc_1990_1999.asc",
-        "data/static/morph/lc_2000_2010.asc",
+        "Z Temp/Morphology/morph/lc_1990_1999.asc",
+        "Z Temp/Morphology/morph/lc_2000_2010.asc",
     ]
     values = build_initial_values("5.13", Dialog(tmp_path))["main"]["LCover"]
     assert values["nLCoverScene"] == 2
@@ -114,7 +114,7 @@ def test_soil_processing_saves_v6_schema_values_and_units(tmp_path, monkeypatch)
     assert main["config_mpr"]["n_layers"] == [1]
     assert main["config_mpr"]["soil_depth"][0] == [300]
     assert main["config_input"]["soil_horizon_class_path"] == [
-        "data/static/morph/soil_horizon_class.nc"
+        "Z Temp/Morphology/morph/soil_horizon_class.nc"
     ]
 
 

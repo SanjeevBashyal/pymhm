@@ -1,0 +1,240 @@
+"""Advanced categorical inputs must be placed on the common L0 grid, never resampled."""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from pymhm import standalone_qgis  # noqa: E402
+
+standalone_qgis.install(force=True)
+
+from pymhm.Morphology.latlon.ascii_morphology import (  # noqa: E402
+    pad_dataset_to_header,
+    pad_l0_file_to_header,
+)
+from pymhm.Morphology.layers.advanced_l0 import (  # noqa: E402
+    missing_model_inputs,
+    publish_model_inputs,
+    staged_files,
+)
+from pymhm.nml_settings import update_section  # noqa: E402
+from pymhm.project_layout import (  # noqa: E402
+    morph_folder,
+    morph_staging_folder,
+    workspace_folder,
+)
+
+xr = pytest.importorskip("xarray")
+
+
+# Filled-DEM sized grid: 2 columns by 2 rows starting at (200, 200).
+SOURCE_X = [250.0, 350.0]
+SOURCE_Y = [350.0, 250.0]
+SOURCE_VALUES = np.array([[1.0, 2.0], [3.0, 4.0]])
+# Expanded common L0 extent: one extra cell on every side.
+L0_HEADER = {
+    "ncols": 4,
+    "nrows": 4,
+    "xllcorner": 100.0,
+    "yllcorner": 100.0,
+    "cellsize": 100.0,
+    "nodata_value": -9999.0,
+    "unit": "m",
+}
+
+
+def _dataset(x_values=None, y_values=None, values=None, name="soil_class"):
+    return xr.DataArray(
+        SOURCE_VALUES if values is None else values,
+        dims=("y", "x"),
+        coords={
+            "y": np.asarray(SOURCE_Y if y_values is None else y_values, dtype="float64"),
+            "x": np.asarray(SOURCE_X if x_values is None else x_values, dtype="float64"),
+        },
+        name=name,
+    ).to_dataset()
+
+
+def test_source_is_placed_on_the_expanded_extent_and_padded_with_nodata():
+    padded = pad_dataset_to_header(_dataset(), L0_HEADER, integer=True)
+    values = padded["soil_class"].sortby("y", ascending=False).sortby("x").values
+
+    assert values.shape == (4, 4)
+    np.testing.assert_array_equal(values[1:3, 1:3], SOURCE_VALUES)
+    outside = np.ones(values.shape, dtype=bool)
+    outside[1:3, 1:3] = False
+    assert np.all(values[outside] == -9999)
+
+
+def test_extra_dimensions_such_as_soil_horizons_are_preserved():
+    horizons = np.stack([SOURCE_VALUES, SOURCE_VALUES + 10.0])
+    dataset = xr.DataArray(
+        horizons,
+        dims=("horizon", "y", "x"),
+        coords={
+            "horizon": [1, 2],
+            "y": np.asarray(SOURCE_Y, dtype="float64"),
+            "x": np.asarray(SOURCE_X, dtype="float64"),
+        },
+        name="soil_class",
+    ).to_dataset()
+
+    padded = pad_dataset_to_header(dataset, L0_HEADER, integer=True)
+    values = padded["soil_class"].sortby("y", ascending=False).sortby("x").values
+
+    assert values.shape == (2, 4, 4)
+    np.testing.assert_array_equal(values[0, 1:3, 1:3], SOURCE_VALUES)
+    np.testing.assert_array_equal(values[1, 1:3, 1:3], SOURCE_VALUES + 10.0)
+
+
+def test_a_misaligned_source_is_rejected_instead_of_resampled():
+    shifted = _dataset(x_values=[300.0, 400.0])
+
+    with pytest.raises(ValueError, match="not aligned to the L0 grid"):
+        pad_dataset_to_header(shifted, L0_HEADER)
+
+
+def test_a_file_already_on_the_l0_grid_is_left_untouched(tmp_path):
+    path = tmp_path / "soil_horizon_class.nc"
+    x_values = [150.0, 250.0, 350.0, 450.0]
+    y_values = [450.0, 350.0, 250.0, 150.0]
+    values = np.arange(16, dtype="float64").reshape(4, 4)
+    _dataset(x_values, y_values, values).to_netcdf(path)
+    before = path.read_bytes()
+
+    assert pad_l0_file_to_header(path, L0_HEADER, integer=True) == path
+    assert path.read_bytes() == before
+
+
+def _staged_asc(project, name, ncols=2, nrows=2, xll=100.0, yll=100.0, cell=100.0):
+    """Write a staged ASCII grid as Execute All would."""
+    folder = Path(morph_staging_folder(project))
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    rows = "\n".join(
+        " ".join(str(row * ncols + column + 1) for column in range(ncols))
+        for row in range(nrows)
+    )
+    path.write_text(
+        f"ncols         {ncols}\nnrows         {nrows}\n"
+        f"xllcorner     {xll}\nyllcorner     {yll}\n"
+        f"cellsize      {cell}\nNODATA_value  -9999\n{rows}\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+L0_TARGET = {
+    "ncols": 4, "nrows": 4, "xllcorner": 0.0, "yllcorner": 0.0,
+    "cellsize": 100.0, "unit": "m", "nodata_value": -9999.0,
+}
+
+
+def test_rasters_are_padded_then_moved_and_definitions_carried(tmp_path):
+    _staged_asc(tmp_path, "soil_class.asc")
+    definition = Path(morph_staging_folder(tmp_path)) / "soil_classdefinition.txt"
+    definition.write_text("1 sand\n", encoding="utf-8")
+
+    published = publish_model_inputs(tmp_path, L0_TARGET)
+
+    master = Path(morph_folder(tmp_path))
+    assert sorted(path.name for path in published) == [
+        "soil_class.asc", "soil_classdefinition.txt",
+    ]
+    # Staging is emptied; both files now live under data/master.
+    assert staged_files(tmp_path) == []
+    assert (master / "soil_classdefinition.txt").read_text(encoding="utf-8") == "1 sand\n"
+    header = (master / "soil_class.asc").read_text(encoding="utf-8").splitlines()
+    assert header[0].split()[1] == "4" and header[1].split()[1] == "4"
+
+
+def test_publishing_repoints_the_namelist_handoff_at_data_master(tmp_path):
+    _staged_asc(tmp_path, "soil_class.asc")
+    _staged_asc(tmp_path, "lc_2015_2015.asc")
+    definition = Path(morph_staging_folder(tmp_path)) / "soil_classdefinition.txt"
+    definition.write_text("1 sand\n", encoding="utf-8")
+
+    # Execute All recorded the staged locations.
+    update_section(tmp_path, "soil", {
+        "output_path": "Z Temp/Morphology/morph/soil_class.asc",
+        "classdefinition_path": "Z Temp/Morphology/morph/soil_classdefinition.txt",
+    })
+    update_section(tmp_path, "land_cover", {
+        "output_path": "",
+        "scenes": [{"output_path": "Z Temp/Morphology/morph/lc_2015_2015.asc"}],
+    })
+
+    publish_model_inputs(tmp_path, L0_TARGET)
+
+    from pymhm.nml_settings import load_settings
+
+    settings = load_settings(tmp_path)
+    assert settings["soil"]["output_path"] == (
+        "data/master/static/morph/soil_class.asc"
+    )
+    assert settings["soil"]["classdefinition_path"] == (
+        "data/master/static/morph/soil_classdefinition.txt"
+    )
+    assert settings["land_cover"]["scenes"][0]["output_path"] == (
+        "data/master/static/morph/lc_2015_2015.asc"
+    )
+    # Every recorded path now resolves.
+    assert missing_model_inputs(tmp_path) == []
+
+
+def test_missing_model_inputs_reports_paths_that_do_not_resolve(tmp_path):
+    update_section(tmp_path, "soil", {
+        "output_path": "data/master/static/morph/soil_class.asc",
+    })
+    update_section(tmp_path, "lai", {
+        "output_path": "data/master/lai/lai.nc",
+    })
+
+    missing = missing_model_inputs(tmp_path)
+    assert sorted(missing) == [
+        "data/master/lai/lai.nc",
+        "data/master/static/morph/soil_class.asc",
+    ]
+
+
+def test_an_unexpected_staged_file_is_left_alone(tmp_path):
+    folder = Path(morph_staging_folder(tmp_path))
+    folder.mkdir(parents=True, exist_ok=True)
+    stray = folder / "scratch.tmp"
+    stray.write_text("x", encoding="utf-8")
+    _staged_asc(tmp_path, "soil_class.asc")
+
+    published = publish_model_inputs(tmp_path, L0_TARGET)
+
+    assert [path.name for path in published] == ["soil_class.asc"]
+    assert stray.is_file()          # not moved into data/master
+
+
+def test_publishing_an_empty_staging_folder_is_a_no_op(tmp_path):
+    assert publish_model_inputs(tmp_path, L0_TARGET) == []
+    assert staged_files(tmp_path) == []
+
+
+def test_a_path_left_pointing_at_staging_is_repointed_to_master(tmp_path):
+    """A reused stage may record staging while the file is already published."""
+    master = Path(morph_folder(tmp_path))
+    master.mkdir(parents=True, exist_ok=True)
+    (master / "geology_classdefinition.txt").write_text("1 rock\n", encoding="utf-8")
+    update_section(tmp_path, "geology", {
+        "classdefinition_path": "Z Temp/Morphology/morph/geology_classdefinition.txt",
+    })
+    assert missing_model_inputs(tmp_path)          # stale path does not resolve
+
+    publish_model_inputs(tmp_path, L0_TARGET)      # nothing staged to move
+
+    from pymhm.nml_settings import load_settings
+
+    assert load_settings(tmp_path)["geology"]["classdefinition_path"] == (
+        "data/master/static/morph/geology_classdefinition.txt"
+    )
+    assert missing_model_inputs(tmp_path) == []

@@ -9,12 +9,13 @@ from tempfile import TemporaryDirectory
 
 from ...mhm_tools_adapter import prepare_categorical_file
 from ..common import (QgsRasterLayer, QgsVectorLayer, QMessageBox,
-                      morph_folder, project_geometry_folder)
+                      morph_folder, morph_staging_folder,
+                      project_geometry_folder)
 from ..core.layer_preparation import LayerPreparationMixin
 from ..core.predecessors import PredecessorMixin
 from ..core.soil_sources import local_layer_source, materialize_vector_layer
 from ..watershed.dem_fill import DemFillMixin
-from .geology_metadata import write_geology_metadata
+from ...geology_metadata import write_geology_metadata
 
 _SPECS = {
     "lc": {
@@ -51,8 +52,9 @@ class CategoricalProcessingMixin(
     """Prepare categorical morphology inputs with one shared workflow."""
 
     def process_land_use(self) -> bool:
+        uses_advanced = getattr(self.dialog, "uses_advanced_categorical_input", None)
         advanced = getattr(self.dialog, "process_advanced_categorical_input", None)
-        if advanced is not None:
+        if uses_advanced is not None and advanced is not None and uses_advanced("lc"):
             return bool(advanced("lc"))
         return self._process_categorical("lc")
 
@@ -80,7 +82,7 @@ class CategoricalProcessingMixin(
             )
             return False
 
-        layer, source, is_vector = self._categorical_input(spec)
+        layer, source, is_vector = self._categorical_input(kind, spec)
         if not source:
             QMessageBox.warning(
                 self.dialog,
@@ -118,12 +120,12 @@ class CategoricalProcessingMixin(
             return False
 
         geometry = Path(project_geometry_folder(self.dialog.project_folder))
-        morph = Path(morph_folder(self.dialog.project_folder))
+        staging = Path(morph_staging_folder(self.dialog.project_folder))
         geometry.mkdir(parents=True, exist_ok=True)
-        morph.mkdir(parents=True, exist_ok=True)
+        staging.mkdir(parents=True, exist_ok=True)
         output = geometry / spec["geometry"]
         definition = (
-            morph / spec["definition"]
+            staging / spec["definition"]
             if write_classdefinition and spec.get("definition")
             else None
         )
@@ -200,10 +202,11 @@ class CategoricalProcessingMixin(
             record = getattr(self.dialog, "record_standard_soil_output", None)
             if record is not None:
                 record(None, str(definition) if definition else None)
+        self._record_categorical_nml(kind, output, definition)
         self.log_message(f"{spec['label']} data prepared successfully.")
         return True
 
-    def _categorical_input(self, spec):
+    def _categorical_input(self, kind, spec):
         combo = getattr(self.dialog, spec["combo"], None)
         layer = combo.currentLayer() if combo is not None else None
         source = ""
@@ -211,6 +214,12 @@ class CategoricalProcessingMixin(
             source = combo.source_path() or ""
         if not source and layer is not None:
             source = str(layer.source() or "")
+        if not source:
+            source_config = getattr(
+                self.dialog, "categorical_source_config", lambda _kind: None
+            )(kind)
+            if source_config:
+                source = str(source_config.get("input_path", "") or "")
         suffix = Path(source.split("|", 1)[0]).suffix.lower()
         return layer, source, isinstance(layer, QgsVectorLayer) or suffix == ".shp"
 
@@ -274,27 +283,21 @@ class CategoricalProcessingMixin(
         )
         target.parent.mkdir(parents=True, exist_ok=True)
         definition = spec.get("definition")
-        if definition and not (target.parent / definition).is_file():
+        source_config = getattr(
+            self.dialog, "categorical_source_config", lambda _kind: None
+        )(kind) or {}
+        definition_source = Path(
+            str(source_config.get("classdefinition_path", "") or "")
+        )
+        if definition and not definition_source.is_file() and not (
+            target.parent / definition
+        ).is_file():
             QMessageBox.warning(
                 self.dialog,
                 "Missing Class Definition",
-                f"mHM-ready {spec['label']} requires {definition} in "
-                f"{target.parent}.",
+                f"mHM-ready {spec['label']} requires a class-definition file.",
             )
             return False
-        if kind == "geology":
-            metadata = (
-                Path(project_geometry_folder(self.dialog.project_folder))
-                / "geology_class_metadata.json"
-            )
-            if not metadata.is_file():
-                QMessageBox.warning(
-                    self.dialog,
-                    "Missing Geology Metadata",
-                    "mHM-ready geology requires geology_class_metadata.json in "
-                    f"{metadata.parent}.",
-                )
-                return False
 
         with TemporaryDirectory(
             prefix=f"pymhm_{kind}_ready_", dir=target.parent
@@ -303,6 +306,10 @@ class CategoricalProcessingMixin(
             prepared = temporary / target.name
             shutil.copy2(source_path, prepared)
             replacements = [(prepared, target)]
+            if definition and definition_source.is_file():
+                prepared_definition = temporary / definition
+                shutil.copy2(definition_source, prepared_definition)
+                replacements.append((prepared_definition, target.parent / definition))
             removals = self._ready_output_paths(kind)
             removals.extend(self._categorical_intermediate_paths(kind))
             if source_path.suffix.lower() == ".asc":
@@ -337,7 +344,32 @@ class CategoricalProcessingMixin(
                     str(definition_path) if definition_path else None,
                 )
         self.log_message(f"Copied mHM-ready {spec['label']} data to {target}.")
+        self._record_categorical_nml(kind, target, target.parent / definition if definition else None)
         return True
+
+    def _record_categorical_nml(self, kind, output, definition=None):
+        """Record a prepared categorical input for the namelist handoff."""
+        from ...nml_settings import relative_workspace_path, update_section
+
+        section = "land_cover" if kind == "lc" else kind
+        value = {
+            "mode": self._categorical_mode(kind),
+            "output_path": relative_workspace_path(self.dialog.project_folder, output),
+            "variable": {
+                "lc": "land_cover",
+                "soil": "soil_class",
+                "geology": "geology_class",
+            }[kind],
+        }
+        if definition is not None and Path(definition).is_file():
+            value["classdefinition_path"] = relative_workspace_path(
+                self.dialog.project_folder, definition
+            )
+        config = self._categorical_lookup(kind) or {}
+        for key in ("lookup_table", "mapping_field", "class_field"):
+            if config.get(key):
+                value[key] = config[key]
+        update_section(self.dialog.project_folder, section, value)
 
     def _categorical_intermediate_paths(self, kind):
         base = (

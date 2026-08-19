@@ -12,7 +12,7 @@ try:
     from qgis.core import (QgsApplication, QgsMapLayer, QgsProject,
                            QgsRasterLayer, QgsVectorLayer)
     from qgis.PyQt import QtCore
-    from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QMessageBox
+    from qgis.PyQt.QtWidgets import QComboBox, QDialog, QFileDialog, QMessageBox
 except ImportError:
     from .standalone_qgis import install
 
@@ -20,7 +20,7 @@ except ImportError:
     from qgis.core import (QgsApplication, QgsMapLayer, QgsProject,
                            QgsRasterLayer, QgsVectorLayer)
     from qgis.PyQt import QtCore
-    from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QMessageBox
+    from qgis.PyQt.QtWidgets import QComboBox, QDialog, QFileDialog, QMessageBox
 
 # UI class from the compiled .ui file. The generated module imports
 # ``resources_rc`` as a top-level module, so expose the packaged resource module
@@ -35,16 +35,24 @@ from .configuration_processor import ConfigurationProcessor
 from .grid_resolution import (build_meteo_l2_grid, ceil_cellsize,
                               display_precision_for_unit, format_resolution,
                               header_bounds, header_for_existing_bounds,
-                              is_geographic_unit, load_meteo_grid_metadata,
+                              is_geographic_unit, l0_header_from_l2,
+                              load_meteo_grid_metadata,
                               possible_resolutions, raster_resolution_info,
                               read_header_file)
-from .input_selection import (INPUT_EXTENSIONS, InputComboAdapter,
-                              LookupConfigDialog, loaded_qgis_items,
-                              scan_project_folders, scan_project_inputs)
+from .input_selection import (
+    INPUT_EXTENSIONS,
+    InputComboAdapter,
+    LaiNetcdfInputDialog,
+    MhmReadyInputDialog,
+    SingleLayerInputDialog,
+    loaded_qgis_items,
+    scan_project_folders,
+    scan_project_inputs,
+)
 from .Meteorology import MeteorologyProcessor
 from .Meteorology.forcing import (MeteoFolderSpec, TargetGrid,
-                                  inspect_meteo_folder,
                                   inspect_meteo_inputs, resolution_in_crs)
+from .Meteorology.inspection_cache import inspect_meteo_folder_cached
 from .Meteorology.processor import MeteorologyRun
 from .Morphology import MorphologyProcessor
 from .Morphology.hydrology.outlets import (
@@ -62,112 +70,12 @@ from .morphology_display import (
 )
 from .qgis_compat import map_layer_filters
 from .terminal_dialog import ProjectTerminalDialog
+from .task_coordinator import TaskCoordinator
+from .thread_display_dialog import ThreadDisplayDialog
+from .morphology_task_bridge import MorphologyTaskBridge
 from .pyui.ui_pymhm_dialog_base import Ui_pymhmDialog
 # Import utility mixin and processors
 from .utils import DialogUtils
-
-
-class MorphologyWorkflowWorker(QtCore.QObject):
-    """Run a morphology workflow away from the dialog event loop."""
-
-    log_message = QtCore.pyqtSignal(str)
-    finished = QtCore.pyqtSignal(str, bool, str)
-
-    def __init__(
-            self,
-            processor,
-            workflow_key,
-            workflow_label,
-            method_name,
-            project_folder,
-            dem_layer,
-            pour_points_layer):
-        super().__init__()
-        self.processor = processor
-        self.workflow_key = workflow_key
-        self.workflow_label = workflow_label
-        self.method_name = method_name
-        self.project_folder = project_folder
-        self.dem_layer = dem_layer
-        self.pour_points_layer = pour_points_layer
-        self._original_log_message = None
-        self._original_run_processing_algorithm = None
-        self._original_check_prerequisites = None
-
-    @QtCore.pyqtSlot()
-    def run(self):
-        """Execute the workflow and emit the result."""
-        self._install_worker_hooks()
-        try:
-            workflow_method = getattr(self.processor, self.method_name)
-            ok = bool(workflow_method(show_error_dialog=False))
-            self.finished.emit(self.workflow_key, ok, "")
-        except Exception as exc:
-            details = traceback.format_exc()
-            self.log_message.emit(
-                f"\nERROR: {self.workflow_label} worker failed with exception: {exc}"
-            )
-            self.log_message.emit(f"Traceback: {details}")
-            try:
-                self.processor.mark_workflow_status(
-                    self.workflow_key,
-                    "failed",
-                    f"{self.workflow_label} worker failed: {exc}",
-                )
-            except Exception:
-                pass
-            self.finished.emit(self.workflow_key, False, str(exc))
-        finally:
-            self._restore_worker_hooks()
-
-    def _install_worker_hooks(self):
-        self._original_log_message = self.processor.log_message
-        self._original_run_processing_algorithm = (
-            self.processor.run_processing_algorithm
-        )
-        self._original_check_prerequisites = self.processor.check_prerequisites
-        self.processor.log_message = self.log_message.emit
-        self.processor.run_processing_algorithm = self._run_processing_algorithm
-        self.processor.check_prerequisites = self._check_prerequisites
-
-    def _restore_worker_hooks(self):
-        if self._original_log_message is not None:
-            self.processor.log_message = self._original_log_message
-        if self._original_run_processing_algorithm is not None:
-            self.processor.run_processing_algorithm = (
-                self._original_run_processing_algorithm
-            )
-        if self._original_check_prerequisites is not None:
-            self.processor.check_prerequisites = self._original_check_prerequisites
-
-    def _check_prerequisites(self, needs_pour_points=False):
-        if not self.project_folder:
-            self.log_message.emit(
-                "ERROR: Please select a project folder before proceeding."
-            )
-            return False
-        if not self.dem_layer:
-            self.log_message.emit("ERROR: Please select a DEM Raster Layer.")
-            return False
-        if needs_pour_points and not self.pour_points_layer:
-            self.log_message.emit("ERROR: Please select a Pour Points Layer.")
-            return False
-        return True
-
-    def _run_processing_algorithm(self, name, params):
-        import processing
-
-        self.log_message.emit(f"Running algorithm: {name}...")
-        try:
-            result = processing.run(name, params)
-            self.log_message.emit(f"Algorithm '{name}' finished successfully.")
-            self.processor.record_processing_outputs(name, params, result)
-            return result
-        except Exception as exc:
-            self.log_message.emit(
-                f"ERROR: Algorithm '{name}' failed. Details: {exc}"
-            )
-            return None
 
 
 class MeteorologyWorkflowWorker(QtCore.QObject):
@@ -222,6 +130,8 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self._categorical_modes = {}
         self._advanced_inputs = {}
         self._land_cover_ready_source = ""
+        self._categorical_ready_configs = {}
+        self._lai_input_config = {}
         self._domain_definition_mode = ""
         self._input_adapters = {}
         self.configure_widget_aliases()
@@ -263,6 +173,8 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self._meteo_inspections = {}
         self._pending_meteo_run = None
         self._terminal_dialog = None
+        self._thread_display_dialog = None
+        self.task_coordinator = TaskCoordinator(self, max_threads=2)
         self._domain_delineator_dialog = None
         self._morphology_workflow_threads = {}
         self._morphology_workflow_workers = {}
@@ -281,6 +193,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.morphology_processor = MorphologyProcessor(self)
         self.meteorology_processor = MeteorologyProcessor(self)
         self.configuration_processor = ConfigurationProcessor(self)
+        self.morphology_tasks = MorphologyTaskBridge(self)
 
         # --- Connect signals and slots ---
         self.configure_page_aliases()
@@ -312,7 +225,12 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         for kind, (combo_name, legacy_name) in input_widgets.items():
             combo = getattr(self, combo_name, None)
             if combo is None:
-                continue
+                if kind not in {"land_cover", "soil", "geology", "lai"}:
+                    continue
+                combo = QComboBox(self)
+                combo.setObjectName(combo_name)
+                combo.hide()
+                setattr(self, combo_name, combo)
             adapter = InputComboAdapter(combo, kind, self)
             self._input_adapters[kind] = adapter
             setattr(self, legacy_name, adapter)
@@ -691,7 +609,8 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             return None
 
         try:
-            metadata = inspect_meteo_folder(
+            metadata = inspect_meteo_folder_cached(
+                self.project_folder,
                 folder,
                 kind,
                 source,
@@ -699,6 +618,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                     self.selected_meteo_crs()
                     if source == "mhm_ready" else None
                 ),
+                log=self.log_message,
             )
             self._meteo_inspections[kind] = metadata
             if kind == "precipitation":
@@ -837,6 +757,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             ("lc", "comboBox_landCover_inputType"),
             ("soil", "comboBox_soil_inputType"),
             ("geology", "comboBox_geology_inputType"),
+            ("lai", "comboBox_laiInputType"),
         ):
             combo = getattr(self, combo_name, None)
             if combo is not None:
@@ -864,6 +785,8 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.pushButton_BrowseProjectFolder.clicked.connect(self.select_project_folder)
         self.tabWidget.currentChanged.connect(self.on_tab_changed)
         self.connect_input_source_signals()
+        if hasattr(self, "pushButton_threads"):
+            self.pushButton_threads.clicked.connect(self.open_thread_display)
 
         # Morphology/Geometry processing - delegate to processor
         self.connect_optional_processor_button(
@@ -970,6 +893,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 self.pushButton_LAI,
                 "LAI",
                 self.morphology_processor.process_lai,
+                background=True,
             )
         if hasattr(self, "pushButton_morphLayerDisplay"):
             self.pushButton_morphLayerDisplay.clicked.connect(
@@ -1022,6 +946,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 self.pushButton_createLatLon,
                 "Create LatLon",
                 self.morphology_processor.process_lat_lon,
+                background=True,
             )
             self.update_latlon_button_state()
         if hasattr(self, "pushButton_edit_nmls"):
@@ -1066,7 +991,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         """Connect a processing control when it exists in the active UI."""
         button = getattr(self, name, None)
         if button is not None:
-            self.connect_processor_button(button, label, callback)
+            self.connect_processor_button(
+                button, label, callback, background=True
+            )
 
     def connect_grid_resolution_signals(self):
         """Refresh derived grid controls when DEM/L1/L11 selections change."""
@@ -1198,8 +1125,10 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             if not unit and self._grid_l0_info:
                 unit = self._grid_l0_info.get("unit", "")
             if header:
+                # Keep the exact L2 cell size. It is n x the filled DEM cell
+                # size by construction, and re-rounding it here breaks that
+                # relationship for repeating values such as 120 x 1/1200 deg.
                 header = dict(header)
-                header["cellsize"] = ceil_cellsize(header["cellsize"], unit)
                 header["unit"] = unit
                 metadata["l2_header"] = header
                 metadata["l2_resolution"] = header["cellsize"]
@@ -1388,9 +1317,12 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.update_latlon_button_state()
 
     def current_l0_resolution(self):
-        """Return current L0 resolution."""
+        """Return the current L0 cell size, unrounded when it is known."""
         if self._grid_l0_info:
-            return float(self._grid_l0_info["resolution"])
+            return float(
+                self._grid_l0_info.get("exact_resolution")
+                or self._grid_l0_info["resolution"]
+            )
         return None
 
     def current_l2_resolution(self):
@@ -1432,10 +1364,13 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         unit = self.current_grid_unit()
         l2_header = dict(self._grid_l2_header)
-        l2_header["cellsize"] = ceil_cellsize(l2_header["cellsize"], unit)
         l2_header["unit"] = unit
+        ratio = int(
+            (self._grid_l2_metadata or {}).get("l2_ratio_to_l0")
+            or round(float(l2_header["cellsize"]) / float(l0_resolution))
+        )
         return {
-            "L0": header_for_existing_bounds(l2_header, l0_resolution, unit),
+            "L0": l0_header_from_l2(l2_header, l0_resolution, ratio),
             "L1": header_for_existing_bounds(l2_header, l1_resolution, unit),
             "L11": header_for_existing_bounds(l2_header, l11_resolution, unit),
             "L2": l2_header,
@@ -1694,13 +1629,21 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         if not self._suspend_input_state_saves:
             self._preserve_missing_layer_state = False
 
-    def connect_processor_button(self, button, action_name, callback):
+    def connect_processor_button(
+        self, button, action_name, callback, *, background=False
+    ):
         """Connect a button to a processor callback with input path logging."""
-        button.clicked.connect(
-            lambda checked=False, name=action_name, cb=callback: self.run_processor_action(
-                name, cb
+        if background:
+            button.clicked.connect(
+                lambda checked=False, name=action_name, cb=callback, control=button:
+                self.run_background_processor_action(name, cb, control)
             )
-        )
+        else:
+            button.clicked.connect(
+                lambda checked=False, name=action_name, cb=callback: self.run_processor_action(
+                    name, cb
+                )
+            )
 
     def run_processor_action(self, action_name, callback):
         """Log current input selections before running a processor action."""
@@ -1709,6 +1652,85 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         callback()
         if action_name == "Fill DEM":
             self.update_l0_resolution_from_dem()
+
+    def run_background_processor_action(self, action_name, callback, button):
+        """Dispatch supported file jobs without moving QGIS objects off-thread."""
+        self.log_selected_input_paths(action_name)
+        self.save_input_state()
+        controls = (button,)
+        failed = lambda message: self._background_processor_failed(
+            action_name, message
+        )
+        if action_name == "Fill DEM":
+            started = self.morphology_tasks.start_fill(
+                controls=controls, load=True, failed=failed
+            )
+        elif action_name == "Create Channel Network":
+            started = self.morphology_tasks.start_hydrology(
+                key="create-channel-network",
+                controls=controls,
+                load="channel_network",
+                failed=failed,
+            )
+        elif action_name == "Flow Accumulation":
+            started = self.morphology_tasks.start_hydrology(
+                key="flow-accumulation",
+                controls=controls,
+                load="flow_accumulation",
+                direction=False,
+                include_channel=False,
+                failed=failed,
+            )
+        elif action_name == "Flow Direction":
+            started = self.morphology_tasks.start_hydrology(
+                key="flow-direction",
+                controls=controls,
+                load="flow_direction",
+                include_channel=False,
+                failed=failed,
+            )
+        elif action_name in {"Slope", "Aspect"}:
+            started = self.morphology_tasks.start_terrain(
+                key=f"terrain-{action_name.lower()}",
+                controls=controls,
+                load=action_name.lower(),
+                failed=failed,
+            )
+        elif action_name in {"Land Use", "Soil", "Hydrogeology"}:
+            kind = {"Land Use": "lc", "Soil": "soil", "Hydrogeology": "geology"}[
+                action_name
+            ]
+            started = self.morphology_tasks.start_categorical(
+                kind,
+                key=f"categorical-{kind}",
+                controls=controls,
+                load=True,
+                failed=failed,
+            )
+        else:
+            # Legacy callbacks remain on Qt's GUI thread until split into a
+            # path-only worker and a main-thread completion callback.
+            button.setEnabled(False)
+
+            def run_on_main_thread():
+                try:
+                    callback()
+                except Exception as error:
+                    self._background_processor_failed(action_name, error)
+                finally:
+                    button.setEnabled(True)
+
+            QtCore.QTimer.singleShot(0, run_on_main_thread)
+            started = True
+        if not started:
+            QMessageBox.information(
+                self, action_name, f"{action_name} is already running."
+            )
+
+    def _background_processor_failed(self, action_name, message):
+        detail = str(message).split("\n", 1)[0]
+        self.log_message(f"ERROR: {action_name}: {detail}")
+        QMessageBox.critical(self, action_name, detail)
 
     def reset_geometry_processing(self):
         """Reset geometry outputs and refresh workflow UI state."""
@@ -1904,16 +1926,42 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             )
             return
 
-        try:
-            from .domain_delineator_dialog import DomainDelineatorDialog
+        from .domain_delineator_dialog import DomainDelineatorDialog
 
-            self.morphology_processor.load_project_state()
+        self.morphology_processor.load_project_state()
+        layer = self.mMapLayerComboBox_pour_points.currentLayer()
+        field = self.selected_outlet_id_field()
+        controls = (
+            getattr(self, "comboBox_domainDefinitionType", None),
+            getattr(self, "pushButton_delineate", None),
+        )
+        started = self.morphology_tasks.start_domain_preflight(
+            controls,
+            lambda context: self._show_prepared_domain_delineator(
+                context, layer, field, outlet_ids
+            ),
+            self._domain_delineator_preflight_failed,
+        )
+        if not started:
+            QMessageBox.information(
+                self,
+                "Domain Delineator",
+                "Domain Delineator preparation is already running.",
+            )
+
+    def _show_prepared_domain_delineator(
+        self, context, pour_points_layer, outlet_id_field, outlet_ids
+    ):
+        from .domain_delineator_dialog import DomainDelineatorDialog
+
+        try:
             dialog = DomainDelineatorDialog(
                 self,
                 self.morphology_processor,
-                self.mMapLayerComboBox_pour_points.currentLayer(),
-                self.selected_outlet_id_field(),
+                pour_points_layer,
+                outlet_id_field,
                 outlet_ids,
+                prepared_context=context,
             )
             self._domain_delineator_dialog = dialog
             execute = getattr(dialog, "exec", None) or dialog.exec_
@@ -1934,6 +1982,11 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 )
             self.save_input_state()
             self.morphology_processor.update_gauged_outlet_count()
+
+    def _domain_delineator_preflight_failed(self, message):
+        message = str(message).split("\n", 1)[0]
+        self.log_message(f"ERROR: Domain Delineator preparation failed: {message}")
+        QMessageBox.critical(self, "Domain Delineator", message)
 
     def morphology_workflow_specs(self):
         """Return metadata for threaded morphology workflows."""
@@ -1990,14 +2043,16 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
     def running_morphology_workflow_key(self):
         """Return the first running morphology workflow key, if any."""
+        if self.morphology_tasks.execute_all_active:
+            return "execute_all"
         for workflow_key, thread in self._morphology_workflow_threads.items():
             if thread is not None and thread.isRunning():
                 return workflow_key
         return None
 
     def start_execute_all_processing(self):
-        """Run execute-all processing in a background worker thread."""
-        self.start_morphology_workflow("execute_all")
+        """Run Execute All as a sequence of QGIS-managed file tasks."""
+        self.morphology_tasks.start_execute_all()
 
     def start_meteo_morph_setup_processing(self):
         """Validate inputs and run meteo then morphology setup."""
@@ -2049,9 +2104,27 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
     def start_morphology_workflow(self, workflow_key):
         """Start a named morphology workflow in a background worker thread."""
+        if workflow_key == "execute_all":
+            self.morphology_tasks.start_execute_all()
+            return
         spec = self.morphology_workflow_specs().get(workflow_key)
         if spec is None:
             self.log_message(f"ERROR: Unknown morphology workflow: {workflow_key}")
+            return
+
+        if self.task_coordinator.resource_busy("morphology-processor"):
+            QMessageBox.information(
+                self,
+                spec["label"],
+                "Another morphology preprocessing task is currently running.",
+            )
+            return
+        if not self.task_coordinator.has_capacity():
+            QMessageBox.information(
+                self,
+                spec["label"],
+                "All configured worker threads are currently busy.",
+            )
             return
 
         running_key = self.running_morphology_workflow_key()
@@ -2082,31 +2155,16 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         thread = QtCore.QThread(self)
         thread.setObjectName(spec["thread_name"])
-        worker_arguments = (
-            self.morphology_processor,
+        worker = MeteorologyWorkflowWorker(
             workflow_key,
             spec["label"],
-            spec["method"],
-            self.project_folder,
-            self.mMapLayerComboBox_dem.currentLayer(),
-            self.mMapLayerComboBox_pour_points.currentLayer(),
+            meteorology_processor=self.meteorology_processor,
+            meteorology_run=self._pending_meteo_run,
         )
-        if workflow_key == "meteo_morph_setup":
-            worker = MeteorologyWorkflowWorker(
-                workflow_key,
-                spec["label"],
-                meteorology_processor=self.meteorology_processor,
-                meteorology_run=self._pending_meteo_run,
-            )
-        else:
-            worker = MorphologyWorkflowWorker(*worker_arguments)
         worker.moveToThread(thread)
 
         worker.log_message.connect(self.log_message)
-        if workflow_key == "meteo_morph_setup":
-            worker.finished.connect(self.finish_meteo_workflow_stage)
-        else:
-            worker.finished.connect(self.finish_morphology_workflow)
+        worker.finished.connect(self.finish_meteo_workflow_stage)
         worker.finished.connect(
             lambda key, ok, message, workflow_thread=thread: workflow_thread.quit()
         )
@@ -2119,6 +2177,16 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         self._morphology_workflow_threads[workflow_key] = thread
         self._morphology_workflow_workers[workflow_key] = worker
+        self.task_coordinator.start_external(
+            f"workflow-{workflow_key}",
+            spec["label"],
+            resource="morphology-processor",
+        )
+        worker.log_message.connect(
+            lambda message, key=workflow_key: self.task_coordinator.append_log(
+                f"workflow-{key}", message
+            )
+        )
         thread.start()
 
     def finish_meteo_workflow_stage(self, workflow_key, ok, message):
@@ -2161,6 +2229,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             )
             self.set_morphology_workflow_button_state(workflow_key, "completed")
             self.log_message(spec["completed_message"])
+            self.task_coordinator.finish_external(
+                f"workflow-{workflow_key}", True, spec["completed_message"]
+            )
             return
 
         workflow_message = self.morphology_processor.workflow_status(
@@ -2178,6 +2249,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         )
         self.set_morphology_workflow_button_state(workflow_key, "failed")
         self.log_message(message)
+        self.task_coordinator.finish_external(
+            f"workflow-{workflow_key}", False, message
+        )
         QMessageBox.critical(
             self,
             spec["label"],
@@ -2217,7 +2291,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
     def closeEvent(self, event):
         """Prevent closing the dialog while a morphology workflow is running."""
         running_key = self.running_morphology_workflow_key()
-        if running_key is not None:
+        if running_key is not None or self.task_coordinator.is_busy():
             spec = self.morphology_workflow_specs().get(running_key, {})
             QMessageBox.warning(
                 self,
@@ -2316,6 +2390,17 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self._terminal_dialog = ProjectTerminalDialog(self)
         return self._terminal_dialog
 
+    def open_thread_display(self, checked=False):
+        """Show the persistent task monitor for plugin preprocessing."""
+        if self._thread_display_dialog is None:
+            self._thread_display_dialog = ThreadDisplayDialog(
+                self.task_coordinator, self
+            )
+        self._thread_display_dialog.show()
+        self._thread_display_dialog.raise_()
+        self._thread_display_dialog.activateWindow()
+        return self._thread_display_dialog
+
     def open_project_terminal(self):
         """Open the persistent terminal in the plugin-owned workspace."""
         if not self.project_folder:
@@ -2335,6 +2420,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             "lc": "comboBox_landUseInputType",
             "soil": "comboBox_soil_inputType",
             "geology": "comboBox_geology_inputType",
+            "lai": "comboBox_laiInputType",
         }[kind]
         combo = getattr(self, name, None)
         if combo is None and kind == "lc":
@@ -2350,6 +2436,17 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         config = self._categorical_lookup_configs.get(kind)
         return dict(config) if config else None
 
+    def categorical_source_config(self, kind):
+        """Return the dialog-owned source for a categorical workflow."""
+        if self.categorical_input_mode(kind).strip().lower() == "mhm ready":
+            config = self._categorical_ready_configs.get(kind)
+        else:
+            config = self._categorical_lookup_configs.get(kind)
+        return dict(config) if isinstance(config, dict) else None
+
+    def lai_netcdf_config(self):
+        return dict(self._lai_input_config)
+
     def handle_categorical_type(self, kind, text):
         """Open the lookup dialog immediately when lookup mode is selected."""
         text = str(text or "").strip()
@@ -2358,19 +2455,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self._categorical_modes[kind] = text
             return
         normalized = text.lower()
+        if kind == "lai":
+            self.handle_lai_input_type(text, previous)
+            return
         if kind == "lc":
             self.handle_land_use_input_type(text, previous)
             return
         if kind == "soil" and "multi-horizon" in normalized:
             self.handle_multi_horizon_soil_input(text, previous)
-            return
-        if "lookup table" not in normalized:
-            if kind == "soil":
-                self._advanced_inputs.pop("soil", None)
-                self._save_standard_soil_nml_input("mhm_ready")
-            self._categorical_modes[kind] = text
-            self.save_input_state()
-            self.invalidate_meteo_morph_setup()
             return
         if not self.project_folder:
             QMessageBox.warning(
@@ -2381,26 +2473,125 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             self._restore_categorical_mode(kind, previous)
             return
 
-        dialog = LookupConfigDialog(
-            self.project_folder,
-            self,
-            initial=self._categorical_lookup_configs.get(kind),
-        )
+        if normalized == "mhm ready":
+            dialog = MhmReadyInputDialog(
+                self.project_folder,
+                kind,
+                self,
+                initial=self._categorical_ready_configs.get(kind),
+            )
+        elif "lookup table" in normalized:
+            dialog = SingleLayerInputDialog(
+                self.project_folder,
+                kind,
+                self,
+                initial=self._categorical_lookup_configs.get(kind),
+            )
+        else:
+            self._categorical_modes[kind] = text
+            self.save_input_state()
+            self.invalidate_meteo_morph_setup()
+            return
         execute = getattr(dialog, "exec", None) or dialog.exec_
         if execute() != QDialog.Accepted or dialog.selected_config() is None:
             self._restore_categorical_mode(kind, previous)
             return
 
         config = dialog.selected_config()
-        self._categorical_lookup_configs[kind] = {
-            "lookup_table": config.lookup_table,
-            "mapping_field": config.mapping_field,
-            "class_field": config.class_field,
-        }
+        if normalized == "mhm ready":
+            self._categorical_ready_configs[kind] = {
+                "input_path": config.input_path,
+                "classdefinition_path": config.classdefinition_path,
+            }
+            self._categorical_lookup_configs.pop(kind, None)
+        else:
+            self._categorical_lookup_configs[kind] = {
+                "input_path": config.input_path,
+                "lookup_table": config.lookup_table,
+                "mapping_field": config.mapping_field,
+                "class_field": config.class_field,
+            }
+            self._categorical_ready_configs.pop(kind, None)
         self._categorical_modes[kind] = text
         if kind == "soil":
             self._advanced_inputs.pop("soil", None)
-            self._save_standard_soil_nml_input("single_categorical")
+            self._save_standard_soil_nml_input(
+                "mhm_ready" if normalized == "mhm ready" else "single_categorical"
+            )
+        self.save_input_state()
+        self.invalidate_meteo_morph_setup()
+
+    def handle_lai_input_type(self, text, previous=""):
+        """Collect LAI NetCDF or future categorical input configuration."""
+        if not self.project_folder:
+            QMessageBox.warning(
+                self, "Project Folder Required", "Select a project folder first."
+            )
+            self._restore_categorical_mode("lai", previous)
+            return
+        normalized = str(text or "").strip().lower()
+        if "netcdf" in normalized:
+            dialog = LaiNetcdfInputDialog(
+                self.project_folder,
+                self,
+                initial=self._lai_input_config,
+            )
+        else:
+            dialog = SingleLayerInputDialog(
+                self.project_folder,
+                "lai",
+                self,
+                initial=self._categorical_lookup_configs.get("lai"),
+            )
+        execute = getattr(dialog, "exec", None) or dialog.exec_
+        if execute() != QDialog.Accepted or dialog.selected_config() is None:
+            self._restore_categorical_mode("lai", previous)
+            return
+        config = dialog.selected_config()
+        if "netcdf" in normalized:
+            self._lai_input_config = {
+                "input_path": config.input_path,
+                "input_resolution": config.input_resolution,
+                "target_timestep": config.target_timestep,
+            }
+            self._categorical_lookup_configs.pop("lai", None)
+            from .lai_temporal import lai_time_step
+            from .nml_settings import update_section
+
+            update_section(
+                self.project_folder,
+                "lai",
+                {
+                    "mode": "netcdf",
+                    "source_path": config.input_path,
+                    "source_variable": "",
+                    "input_resolution": config.input_resolution,
+                    "target_timestep": config.target_timestep,
+                    "time_step": lai_time_step(config.target_timestep),
+                    "output_path": "data/master/lai/lai.nc",
+                    "variable": "lai",
+                },
+            )
+        else:
+            self._categorical_lookup_configs["lai"] = {
+                "input_path": config.input_path,
+                "lookup_table": config.lookup_table,
+                "mapping_field": config.mapping_field,
+                "class_field": config.class_field,
+            }
+            self._lai_input_config = {}
+            from .nml_settings import update_section
+
+            update_section(
+                self.project_folder,
+                "lai",
+                {
+                    "mode": "single_categorical",
+                    **self._categorical_lookup_configs["lai"],
+                    "processing_status": "not_implemented",
+                },
+            )
+        self._categorical_modes["lai"] = str(text)
         self.save_input_state()
         self.invalidate_meteo_morph_setup()
 
@@ -2414,34 +2605,47 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             )
             self._restore_categorical_mode("lc", previous)
             return
-        if str(text).strip().lower() == "mhm ready":
-            path, _ = QFileDialog.getOpenFileName(
-                self,
-                "Select mHM-ready Land Cover",
+        normalized = str(text).strip().lower()
+        if normalized == "mhm ready":
+            dialog = MhmReadyInputDialog(
                 self.project_folder,
-                "Land-cover rasters (*.asc *.nc *.tif);;All files (*)",
+                "lc",
+                self,
+                initial=self._categorical_ready_configs.get("lc"),
             )
-            if not path:
+            execute = getattr(dialog, "exec", None) or dialog.exec_
+            if execute() != QDialog.Accepted or dialog.selected_config() is None:
                 self._restore_categorical_mode("lc", previous)
                 return
-            try:
-                from .advanced_input_processing import configure_ready_land_cover
-
-                output = configure_ready_land_cover(
-                    self.project_folder,
-                    path,
-                    self.comboBox_mHMversion.currentText(),
-                )
-                self._land_cover_ready_source = str(Path(path).resolve())
-                self._advanced_inputs.pop("land_cover", None)
-                self.morphology_processor.mark_output_prepared(
-                    str(output), name=output.name, loaded=False
-                )
-                self.log_message(f"mHM-ready land cover saved: {output}")
-            except Exception as error:
-                QMessageBox.critical(self, "Land-use Input", str(error))
+            config = dialog.selected_config()
+            self._categorical_ready_configs["lc"] = {
+                "input_path": config.input_path,
+                "classdefinition_path": "",
+            }
+            self._categorical_lookup_configs.pop("lc", None)
+            self._advanced_inputs.pop("land_cover", None)
+            self._land_cover_ready_source = config.input_path
+        elif "single categorical" in normalized:
+            dialog = SingleLayerInputDialog(
+                self.project_folder,
+                "lc",
+                self,
+                initial=self._categorical_lookup_configs.get("lc"),
+            )
+            execute = getattr(dialog, "exec", None) or dialog.exec_
+            if execute() != QDialog.Accepted or dialog.selected_config() is None:
                 self._restore_categorical_mode("lc", previous)
                 return
+            config = dialog.selected_config()
+            self._categorical_lookup_configs["lc"] = {
+                "input_path": config.input_path,
+                "lookup_table": config.lookup_table,
+                "mapping_field": config.mapping_field,
+                "class_field": config.class_field,
+            }
+            self._categorical_ready_configs.pop("lc", None)
+            self._advanced_inputs.pop("land_cover", None)
+            self._land_cover_ready_source = ""
         else:
             from .advanced_input_dialogs import HistoricalLandUseDialog
 
@@ -2496,7 +2700,10 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
     def uses_advanced_categorical_input(self, kind):
         """Return whether processing should use the advanced input pipeline."""
         text = self.categorical_input_mode(kind).lower()
-        return kind == "lc" or (kind == "soil" and "multi-horizon" in text)
+        return (
+            (kind == "lc" and "historical" in text)
+            or (kind == "soil" and "multi-horizon" in text)
+        )
 
     def process_advanced_categorical_input(self, kind):
         """Prepare configured historical land use or multi-horizon soil."""
@@ -2609,12 +2816,12 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         output = (
             relative_workspace_path(self.project_folder, output_path)
             if output_path
-            else "data/static/morph/soil_class.asc"
+            else "data/master/static/morph/soil_class.asc"
         )
         definition = (
             relative_workspace_path(self.project_folder, classdefinition_path)
             if classdefinition_path
-            else "data/static/morph/soil_classdefinition.txt"
+            else "data/master/static/morph/soil_classdefinition.txt"
         )
         update_section(
             self.project_folder,
@@ -2813,7 +3020,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         crs = self.get_crs()
         state = {
-            "version": 3,
+            "version": 4,
             "mhm_version": (
                 self.comboBox_mHMversion.currentText().strip()
                 if hasattr(self, "comboBox_mHMversion") else ""
@@ -2829,9 +3036,14 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             "folder_search": self.checkBox_enableFolderSearch.isChecked(),
             "categorical_types": {
                 kind: self.categorical_input_mode(kind)
-                for kind in ("lc", "soil", "geology")
+                for kind in ("lc", "soil", "geology", "lai")
             },
             "categorical_lookups": self._serialized_categorical_lookups(),
+            "categorical_ready": self._serialized_path_configs(
+                self._categorical_ready_configs
+            ),
+            "lai_netcdf": self._serialized_path_config(self._lai_input_config),
+            "thread_count": self.task_coordinator.max_threads,
             "advanced_inputs": {
                 kind: value.as_dict() if hasattr(value, "as_dict") else value
                 for kind, value in self._advanced_inputs.items()
@@ -2866,16 +3078,37 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         configs = {}
         for kind, config in self._categorical_lookup_configs.items():
             saved = dict(config)
-            path = saved.get("lookup_table")
-            if path and self.project_folder:
-                try:
-                    relative = os.path.relpath(path, self.project_folder)
-                    if relative != ".." and not relative.startswith(f"..{os.sep}"):
-                        saved["lookup_table"] = relative.replace("\\", "/")
-                except ValueError:
-                    pass
+            for key in ("input_path", "lookup_table"):
+                saved[key] = self._portable_input_path(saved.get(key))
             configs[kind] = saved
         return configs
+
+    def _serialized_path_configs(self, configs):
+        return {
+            kind: self._serialized_path_config(config)
+            for kind, config in configs.items()
+            if isinstance(config, dict)
+        }
+
+    def _serialized_path_config(self, config):
+        if not isinstance(config, dict):
+            return {}
+        saved = dict(config)
+        for key in ("input_path", "classdefinition_path"):
+            if key in saved:
+                saved[key] = self._portable_input_path(saved.get(key))
+        return saved
+
+    def _portable_input_path(self, path):
+        if not path or not self.project_folder:
+            return str(path or "")
+        try:
+            relative = os.path.relpath(path, self.project_folder)
+            if relative != ".." and not relative.startswith(f"..{os.sep}"):
+                return relative.replace("\\", "/")
+        except ValueError:
+            pass
+        return str(path)
 
     def serialized_meteo_inputs(self):
         """Return project-portable meteorology folder and source selections."""
@@ -2954,7 +3187,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         """Prevent selections from leaking between project folders."""
         for _, combo in self.input_layer_widgets():
             combo.setCurrentIndex(-1)
-        for kind in ("lc", "soil", "geology"):
+        for kind in ("lc", "soil", "geology", "lai"):
             combo = self.categorical_type_combo(kind)
             combo.blockSignals(True)
             combo.setCurrentIndex(-1)
@@ -2988,12 +3221,15 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.checkBox_enableFolderSearch.setChecked(False)
         self.checkBox_enableFolderSearch.blockSignals(False)
         self._categorical_lookup_configs = {}
+        self._categorical_ready_configs = {}
+        self._lai_input_config = {}
         self._categorical_modes = {}
         self._advanced_inputs = {}
         self._land_cover_ready_source = ""
         self._domain_definition_mode = ""
         self._preferred_l1_resolution = None
         self._preferred_l11_resolution = None
+        self.task_coordinator.set_max_threads(2)
 
     def restore_domain_inputs(self, state):
         """Restore the selected outlet ID field and DEM-domain flag."""
@@ -3052,19 +3288,43 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
         configs = {}
         for kind, config in state.get("categorical_lookups", {}).items():
-            if kind not in {"lc", "soil", "geology"} or not isinstance(config, dict):
+            if kind not in {"lc", "soil", "geology", "lai"} or not isinstance(config, dict):
                 continue
             restored = dict(config)
-            path = restored.get("lookup_table")
-            if path and not os.path.isabs(path):
-                restored["lookup_table"] = os.path.abspath(
-                    os.path.join(self.project_folder, path)
-                )
+            for key in ("input_path", "lookup_table"):
+                path = restored.get(key)
+                if path and not os.path.isabs(path):
+                    restored[key] = os.path.abspath(
+                        os.path.join(self.project_folder, path)
+                    )
             configs[kind] = restored
         self._categorical_lookup_configs = configs
 
+        ready = {}
+        for kind, config in state.get("categorical_ready", {}).items():
+            if kind not in {"lc", "soil", "geology"} or not isinstance(config, dict):
+                continue
+            restored = dict(config)
+            for key in ("input_path", "classdefinition_path"):
+                path = restored.get(key)
+                if path and not os.path.isabs(path):
+                    restored[key] = os.path.abspath(
+                        os.path.join(self.project_folder, path)
+                    )
+            ready[kind] = restored
+        self._categorical_ready_configs = ready
+
+        lai = state.get("lai_netcdf", {})
+        self._lai_input_config = dict(lai) if isinstance(lai, dict) else {}
+        path = self._lai_input_config.get("input_path")
+        if path and not os.path.isabs(path):
+            self._lai_input_config["input_path"] = os.path.abspath(
+                os.path.join(self.project_folder, path)
+            )
+        self.task_coordinator.set_max_threads(state.get("thread_count", 2))
+
         for kind, text in state.get("categorical_types", {}).items():
-            if kind not in {"lc", "soil", "geology"}:
+            if kind not in {"lc", "soil", "geology", "lai"}:
                 continue
             combo = self.categorical_type_combo(kind)
             index = combo.findText(str(text))

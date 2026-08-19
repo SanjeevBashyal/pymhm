@@ -47,7 +47,9 @@ def test_domain_gauges_project_to_v5_namelist_values(tmp_path):
                     "is_gauged": True,
                     "gauge_id": 1,
                     "gauge_filename": "001.txt",
-                    "gauge_path": "data/observation/streamflow/001.txt",
+                    "gauge_path": "data/master/observation/streamflow/001.txt",
+                    "domain_directory": "data/001",
+                    "dem_path": "data/001/dem.asc",
                     "domain_ids": [1],
                 }
             },
@@ -57,7 +59,16 @@ def test_domain_gauges_project_to_v5_namelist_values(tmp_path):
 
     state = load_settings(tmp_path)
     assert state["domains"] == [
-        {"domain_id": 1, "is_dem_domain": False, "outlet_id": "001"}
+        {
+            "data_path": "data/master/",
+            "dem_path": "data/001/dem.asc",
+            "directory": "data/001",
+            "domain_id": 1,
+            "gauge_ids": [1],
+            "is_dem_domain": False,
+            "name": "001",
+            "outlet_id": "001",
+        }
     ]
     assert state["gauges"][0]["gauge_filename"] == "001.txt"
 
@@ -68,3 +79,82 @@ def test_domain_gauges_project_to_v5_namelist_values(tmp_path):
     assert gauges["NoGauges_domain"] == [1]
     assert gauges["Gauge_id"][0][0] == 1
     assert gauges["gauge_filename"][0][0] == "001.txt"
+    directories = build_initial_values("5.13", Dialog(tmp_path))["main"][
+        "directories_general"
+    ]
+    assert directories["dir_Morpho"] == ["data/001/"]
+    assert directories["dirCommonFiles"] == "data/master/static/morph/"
+
+
+def test_sole_dem_domain_projects_with_its_gauges(tmp_path):
+    save_state(
+        tmp_path,
+        {
+            "definition_mode": "dem_extent",
+            "pour_points_source": "pour_points.shp",
+            "outlet_id_field": "station_id",
+            "outlet_order": ["001"],
+            "dem_domain": True,
+            "dem_domain_directory": "data/dem_extent",
+            "dem_domain_path": "data/dem_extent/dem.asc",
+            "outlets": {
+                "001": {
+                    "is_domain": False,
+                    "is_gauged": True,
+                    "gauge_id": 1,
+                    "gauge_filename": "001.txt",
+                    "gauge_path": "data/master/observation/streamflow/001.txt",
+                    "domain_ids": [1],
+                }
+            },
+        },
+    )
+    sync_domain_settings(tmp_path)
+
+    state = load_settings(tmp_path)
+    assert state["domain_definition"] == {
+        "mode": "dem_extent",
+        "dem_domain": True,
+    }
+    # The valid-DEM domain is the only merged domain and owns domain_id 1.
+    assert state["domains"] == [
+        {
+            "data_path": "data/master/",
+            "dem_path": "data/dem_extent/dem.asc",
+            "directory": "data/dem_extent",
+            "domain_id": 1,
+            "gauge_ids": [1],
+            "is_dem_domain": True,
+            "name": "dem_extent",
+            "outlet_id": "__dem__",
+        }
+    ]
+
+    directories = build_initial_values("5.13", Dialog(tmp_path))["main"][
+        "directories_general"
+    ]
+    assert directories["dir_Morpho"] == ["data/dem_extent/"]
+    assert directories["dirCommonFiles"] == "data/master/static/morph/"
+
+
+def test_lai_settings_project_to_both_namelist_versions(tmp_path):
+    update_section(
+        tmp_path,
+        "lai",
+        {
+            "time_step": -2,
+            "output_path": "data/lai/lai.nc",
+            "variable": "lai",
+        },
+    )
+
+    v5 = build_initial_values("5.13", Dialog(tmp_path))["main"]
+    v6 = build_initial_values("6.0", Dialog(tmp_path))["main"]
+
+    assert v5["LAI_data_information"] == {
+        "timeStep_LAI_input": -2,
+        "inputFormat_gridded_LAI": "nc",
+    }
+    assert v6["config_mpr"]["lai_time_step"] == [-2]
+    assert v6["config_mpr"]["lai_path"] == ["data/lai/lai.nc"]
+    assert v6["config_mpr"]["lai_var"] == ["lai"]

@@ -20,7 +20,11 @@ except ImportError:
     from qgis.PyQt import QtCore, QtWidgets
 
 from .project_layout import WORKSPACE_FOLDER_NAME
-from .pyui.ui_lookup_config_dialog import Ui_LookupConfigDialog
+from .pyui.ui_lai_netcdf_input_dialog import Ui_SingleLayerInputDialog as Ui_LaiNetcdfInputDialog
+from .pyui.ui_mhm_ready_dialog import Ui_SingleLayerInputDialog as Ui_MhmReadyInputDialog
+from .pyui.ui_single_layer_input_with_lookup_config_dialog import (
+    Ui_SingleLayerInputDialog as Ui_SingleLayerLookupDialog,
+)
 
 EXCLUDED_PROJECT_FOLDERS = {WORKSPACE_FOLDER_NAME}
 INPUT_EXTENSIONS = {
@@ -54,6 +58,33 @@ class LookupConfig:
     lookup_table: str
     mapping_field: str
     class_field: str
+
+
+@dataclass(frozen=True)
+class ReadyInputConfig:
+    """An already model-ready raster and optional class definition."""
+
+    input_path: str
+    classdefinition_path: str = ""
+
+
+@dataclass(frozen=True)
+class SingleLayerLookupConfig:
+    """A categorical source and its lookup-table configuration."""
+
+    input_path: str
+    lookup_table: str
+    mapping_field: str
+    class_field: str
+
+
+@dataclass(frozen=True)
+class LaiNetcdfConfig:
+    """LAI NetCDF source and temporal conversion choices."""
+
+    input_path: str
+    input_resolution: str
+    target_timestep: str
 
 
 def _kind(value: str) -> str:
@@ -385,16 +416,64 @@ def read_lookup_fields(lookup_table) -> list[str]:
     from .mhm_tools_adapter import read_categorical_lookup_table
 
     table = read_categorical_lookup_table(lookup_table)
-    return [str(column) for column in table.columns if str(column) != "geometry"]
+    return [
+        str(column)
+        for column in table.columns
+        if str(column) != "geometry" and not str(column).strip().startswith("*")
+    ]
 
 
-class LookupConfigDialog(QtWidgets.QDialog, Ui_LookupConfigDialog):
+def _combo_path(combo_box) -> str:
+    value = combo_box.currentData()
+    if isinstance(value, dict):
+        value = value.get("path") or value.get("source")
+    return str(value or combo_box.currentText().strip())
+
+
+def _populate_file_combo(combo_box, project_folder, kind, initial=""):
+    combo_box.clear()
+    combo_box.addItem("", "")
+    selected = 0
+    normalized = os.path.normcase(os.path.abspath(str(initial))) if initial else ""
+    for item in scan_project_inputs(project_folder, kind):
+        path = item.data["path"]
+        combo_box.addItem(item.label, path)
+        if normalized and os.path.normcase(os.path.abspath(path)) == normalized:
+            selected = combo_box.count() - 1
+    if initial and selected == 0 and Path(initial).is_file():
+        combo_box.addItem(str(Path(initial).resolve()), str(Path(initial).resolve()))
+        selected = combo_box.count() - 1
+    combo_box.setCurrentIndex(selected)
+
+
+def _browse_into_combo(parent, combo_box, title, file_filter):
+    path, _ = QtWidgets.QFileDialog.getOpenFileName(parent, title, "", file_filter)
+    if not path:
+        return
+    path = str(Path(path).resolve())
+    for index in range(combo_box.count()):
+        if _combo_path_at(combo_box, index) == path:
+            combo_box.setCurrentIndex(index)
+            return
+    combo_box.addItem(path, path)
+    combo_box.setCurrentIndex(combo_box.count() - 1)
+
+
+def _combo_path_at(combo_box, index):
+    value = combo_box.itemData(index)
+    if isinstance(value, dict):
+        value = value.get("path") or value.get("source")
+    return str(value or "")
+
+
+class LookupConfigDialog(QtWidgets.QDialog, Ui_SingleLayerLookupDialog):
     """Select a project lookup table, mapping field, and class field."""
 
     def __init__(self, project_folder, parent=None, initial=None):
         super().__init__(parent)
         self.setupUi(self)
         self._initial = initial
+        self.groupBox_inputLayerType.hide()
 
         for item in scan_project_inputs(project_folder, "lookup"):
             self.lookup_table_combo.addItem(item.label, item.data["path"])
@@ -418,7 +497,9 @@ class LookupConfigDialog(QtWidgets.QDialog, Ui_LookupConfigDialog):
     def _refresh_fields(self, _index=None):
         self.mapping_field_combo.clear()
         self.class_field_combo.clear()
-        self.error_label.clear()
+        error_label = getattr(self, "error_label", None)
+        if error_label is not None:
+            error_label.clear()
         path = self.lookup_table_combo.currentData()
         if not path:
             self._update_ok()
@@ -426,7 +507,8 @@ class LookupConfigDialog(QtWidgets.QDialog, Ui_LookupConfigDialog):
         try:
             fields = read_lookup_fields(path)
         except Exception as error:
-            self.error_label.setText(str(error))
+            if error_label is not None:
+                error_label.setText(str(error))
             self._update_ok()
             return
 
@@ -459,6 +541,203 @@ class LookupConfigDialog(QtWidgets.QDialog, Ui_LookupConfigDialog):
             super().accept()
 
 
+class MhmReadyInputDialog(QtWidgets.QDialog, Ui_MhmReadyInputDialog):
+    """Select an mHM-ready raster and its required support file."""
+
+    def __init__(self, project_folder, kind, parent=None, initial=None):
+        super().__init__(parent)
+        self.setupUi(self)
+        self.kind = str(kind)
+        title = {"lc": "Land Use", "soil": "Soil", "geology": "Geology"}[self.kind]
+        self.groupBox_inputType.setTitle(title)
+        initial = initial or {}
+        _populate_file_combo(
+            self.comboBox_inputLayer,
+            project_folder,
+            "land_cover" if self.kind == "lc" else self.kind,
+            initial.get("input_path", "") if isinstance(initial, dict) else "",
+        )
+        needs_definition = self.kind in {"soil", "geology"}
+        for widget in (
+            self.label_classDefinition,
+            self.comboBox_classDefinitionInput,
+            self.pushButton_browseClassDefinition,
+        ):
+            widget.setEnabled(needs_definition)
+        if needs_definition:
+            _populate_file_combo(
+                self.comboBox_classDefinitionInput,
+                project_folder,
+                "lookup",
+                initial.get("classdefinition_path", "") if isinstance(initial, dict) else "",
+            )
+        self.pushButton_browseInputLayer.clicked.connect(
+            lambda: _browse_into_combo(
+                self,
+                self.comboBox_inputLayer,
+                f"Select mHM-ready {title}",
+                "Raster files (*.asc *.nc *.tif *.tiff);;All files (*)",
+            )
+        )
+        self.pushButton_browseClassDefinition.clicked.connect(
+            lambda: _browse_into_combo(
+                self,
+                self.comboBox_classDefinitionInput,
+                "Select class definition",
+                "Class definition (*.txt *.csv);;All files (*)",
+            )
+        )
+
+    def selected_config(self) -> ReadyInputConfig | None:
+        source = _combo_path(self.comboBox_inputLayer)
+        definition = _combo_path(self.comboBox_classDefinitionInput)
+        if not source or not Path(source).is_file():
+            return None
+        if self.kind in {"soil", "geology"} and (
+            not definition or not Path(definition).is_file()
+        ):
+            return None
+        return ReadyInputConfig(source, definition)
+
+    def accept(self):
+        if self.selected_config() is None:
+            QtWidgets.QMessageBox.warning(self, "Missing Input", "Select all required input files.")
+            return
+        super().accept()
+
+
+class SingleLayerInputDialog(QtWidgets.QDialog, Ui_SingleLayerLookupDialog):
+    """Select one categorical layer and its lookup configuration."""
+
+    def __init__(self, project_folder, kind, parent=None, initial=None):
+        super().__init__(parent)
+        self.setupUi(self)
+        self.kind = str(kind)
+        title = {
+            "lc": "Land Use",
+            "soil": "Soil",
+            "geology": "Geology",
+            "lai": "LAI",
+        }[self.kind]
+        self.groupBox_inputLayerType.setTitle(title)
+        initial = initial or {}
+        source_kind = "land_cover" if self.kind == "lc" else self.kind
+        _populate_file_combo(
+            self.comboBox_inputLayer,
+            project_folder,
+            source_kind,
+            initial.get("input_path", "") if isinstance(initial, dict) else "",
+        )
+        _populate_file_combo(
+            self.lookup_table_combo,
+            project_folder,
+            "lookup",
+            initial.get("lookup_table", "") if isinstance(initial, dict) else "",
+        )
+        self._initial = initial
+        self.lookup_table_combo.currentIndexChanged.connect(self._refresh_fields)
+        self.pushButton_browseInputLayer.clicked.connect(
+            lambda: _browse_into_combo(
+                self,
+                self.comboBox_inputLayer,
+                f"Select {title} input",
+                "Input layers (*.asc *.nc *.shp *.tif *.tiff);;All files (*)",
+            )
+        )
+        self.pushButton_browseLookupTable.clicked.connect(self._browse_lookup)
+        self._refresh_fields()
+
+    def _browse_lookup(self):
+        _browse_into_combo(
+            self,
+            self.lookup_table_combo,
+            "Select lookup table",
+            "Lookup tables (*.csv *.txt);;All files (*)",
+        )
+        self._refresh_fields()
+
+    def _refresh_fields(self, _index=None):
+        self.mapping_field_combo.clear()
+        self.class_field_combo.clear()
+        path = _combo_path(self.lookup_table_combo)
+        if not path:
+            return
+        try:
+            fields = read_lookup_fields(path)
+        except Exception:
+            return
+        self.mapping_field_combo.addItems(fields)
+        self.class_field_combo.addItems(fields)
+        for combo, key in (
+            (self.mapping_field_combo, "mapping_field"),
+            (self.class_field_combo, "class_field"),
+        ):
+            index = combo.findText(str(self._initial.get(key, "")))
+            combo.setCurrentIndex(index)
+
+    def selected_config(self) -> SingleLayerLookupConfig | None:
+        source = _combo_path(self.comboBox_inputLayer)
+        lookup = _combo_path(self.lookup_table_combo)
+        mapping = self.mapping_field_combo.currentText().strip()
+        class_field = self.class_field_combo.currentText().strip()
+        if not source or not lookup or not mapping or not class_field:
+            return None
+        if not Path(source).is_file() or not Path(lookup).is_file():
+            return None
+        return SingleLayerLookupConfig(source, lookup, mapping, class_field)
+
+    def accept(self):
+        if self.selected_config() is None:
+            QtWidgets.QMessageBox.warning(self, "Missing Input", "Select an input layer and lookup fields.")
+            return
+        super().accept()
+
+
+class LaiNetcdfInputDialog(QtWidgets.QDialog, Ui_LaiNetcdfInputDialog):
+    """Select a NetCDF LAI source and temporal conversion."""
+
+    def __init__(self, project_folder, parent=None, initial=None):
+        super().__init__(parent)
+        self.setupUi(self)
+        initial = initial or {}
+        _populate_file_combo(
+            self.comboBox_laiNetCDFInput,
+            project_folder,
+            "lai",
+            initial.get("input_path", "") if isinstance(initial, dict) else "",
+        )
+        for combo, key in (
+            (self.comboBox_inputTemporalResolution, "input_resolution"),
+            (self.comboBox_timestepLAIInput, "target_timestep"),
+        ):
+            index = combo.findText(str(initial.get(key, "")))
+            combo.setCurrentIndex(index)
+        self.pushButton_browseLAINetCDFInput.clicked.connect(
+            lambda: _browse_into_combo(
+                self,
+                self.comboBox_laiNetCDFInput,
+                "Select LAI NetCDF",
+                "NetCDF (*.nc);;All files (*)",
+            )
+        )
+
+    def selected_config(self) -> LaiNetcdfConfig | None:
+        source = _combo_path(self.comboBox_laiNetCDFInput)
+        input_resolution = self.comboBox_inputTemporalResolution.currentText().strip()
+        target = self.comboBox_timestepLAIInput.currentText().strip()
+        if not source or Path(source).suffix.lower() != ".nc" or not Path(source).is_file():
+            return None
+        if not input_resolution or not target:
+            return None
+        return LaiNetcdfConfig(source, input_resolution, target)
+
+    def accept(self):
+        if self.selected_config() is None:
+            QtWidgets.QMessageBox.warning(self, "Missing Input", "Select a NetCDF file and both temporal resolutions.")
+            return
+        super().accept()
+
+
 __all__ = [
     "EXCLUDED_PROJECT_FOLDERS",
     "INPUT_EXTENSIONS",
@@ -466,6 +745,12 @@ __all__ = [
     "InputItem",
     "LookupConfig",
     "LookupConfigDialog",
+    "LaiNetcdfConfig",
+    "LaiNetcdfInputDialog",
+    "MhmReadyInputDialog",
+    "ReadyInputConfig",
+    "SingleLayerInputDialog",
+    "SingleLayerLookupConfig",
     "loaded_qgis_items",
     "qgis_layer_item",
     "read_lookup_fields",

@@ -9,14 +9,21 @@ from pathlib import Path
 from typing import Iterable
 
 from qgis.core import (
+    QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
     QgsGeometry,
+    QgsPointXY,
     QgsProject,
     QgsRasterLayer,
     QgsVectorLayer,
 )
 
-from ...project_layout import geometry_folder
+from ...project_layout import (
+    domain_data_folder,
+    domain_dem_path,
+    geometry_folder,
+)
+from ..file_tasks import materialize_domain_dem_file
 from ..hydrology.discharge_dialog import OutletAssignment
 from ..hydrology.discharge_writer import (
     local_source_path,
@@ -212,6 +219,15 @@ class DomainWorkflow:
                     "vector_path": result["vector_path"],
                 }
             )
+            dem_path = materialize_domain_dem_file(
+                self.processor.filled_dem_path,
+                result["vector_path"],
+                domain_dem_path(self.project_folder, assignment.outlet_id),
+            )
+            record["domain_directory"] = domain_data_folder(
+                self.project_folder, assignment.outlet_id
+            )
+            record["dem_path"] = dem_path
 
         if state.get("dem_domain"):
             self.prepare_dem_domain(state)
@@ -281,7 +297,18 @@ class DomainWorkflow:
         """Store IDs of every active domain intersecting each gauge point."""
         assign_domain_ids(state)
         point_layer = point_layer or self.membership_point_layer(state)
-        features = self._features_by_outlet(point_layer, require_exact=False)
+        missing_points = [
+            outlet_id
+            for outlet_id in gauged_outlet_ids(state)
+            if not isinstance(
+                state["outlets"].get(outlet_id, {}).get("gauge_point"), dict
+            )
+        ]
+        features = (
+            self._features_by_outlet(point_layer, require_exact=False)
+            if missing_points
+            else {}
+        )
         domain_geometries = []
         for domain in active_domain_records(state):
             if domain.get("is_dem_domain"):
@@ -315,13 +342,14 @@ class DomainWorkflow:
             )
 
         for outlet_id in gauged_outlet_ids(state):
-            feature = features.get(outlet_id)
-            if feature is None or feature.geometry().isEmpty():
-                raise ValueError(f"Gauge outlet {outlet_id} has no point geometry.")
+            point_geometry, source_crs = self._effective_gauge_geometry(
+                state["outlets"][outlet_id],
+                features.get(outlet_id),
+                point_layer,
+            )
             memberships = []
             for domain_id, target_crs, domain_geometry in domain_geometries:
-                point_geometry = QgsGeometry(feature.geometry())
-                source_crs = point_layer.crs()
+                candidate = QgsGeometry(point_geometry)
                 if (
                     source_crs.isValid()
                     and target_crs.isValid()
@@ -333,14 +361,33 @@ class DomainWorkflow:
                         QgsProject.instance(),
                     )
                     transform.setBallparkTransformsAreAppropriate(True)
-                    point_geometry.transform(transform)
-                if domain_geometry.intersects(point_geometry):
+                    candidate.transform(transform)
+                if domain_geometry.intersects(candidate):
                     memberships.append(domain_id)
             if not memberships:
                 raise ValueError(
                     f"Gauge outlet {outlet_id} is not inside an active domain."
                 )
             state["outlets"][outlet_id]["domain_ids"] = memberships
+
+    @staticmethod
+    def _effective_gauge_geometry(record, feature, point_layer):
+        point = record.get("gauge_point") if isinstance(record, dict) else None
+        if isinstance(point, dict):
+            try:
+                geometry = QgsGeometry.fromPointXY(
+                    QgsPointXY(float(point["x"]), float(point["y"]))
+                )
+            except (KeyError, TypeError, ValueError):
+                geometry = None
+            if geometry is not None and not geometry.isEmpty():
+                source_crs = QgsCoordinateReferenceSystem(
+                    str(point.get("crs", "") or "")
+                )
+                return geometry, source_crs
+        if feature is None or feature.geometry().isEmpty():
+            raise ValueError("A gauged outlet has no point geometry.")
+        return QgsGeometry(feature.geometry()), point_layer.crs()
 
     def membership_point_layer(self, state: dict):
         """Return snapped gauge points when the saved mode requires them."""
@@ -430,6 +477,15 @@ class DomainWorkflow:
             raise RuntimeError("Could not write the DEM-domain mask.")
         if not self._polygonize_mask(output_raster, output_vector):
             raise RuntimeError("Could not write the DEM-domain polygon.")
+        output_dem = materialize_domain_dem_file(
+            self.processor.filled_dem_path,
+            output_vector,
+            domain_dem_path(self.project_folder, "dem_extent"),
+        )
+        state["dem_domain_directory"] = domain_data_folder(
+            self.project_folder, "dem_extent"
+        )
+        state["dem_domain_path"] = output_dem
 
     @staticmethod
     def require_active_domain(state: dict) -> None:

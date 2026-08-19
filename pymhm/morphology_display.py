@@ -92,8 +92,8 @@ def resolve_display_output(
             *_raster_variants(geometry / "3_geology_processed.tif"),
         ],
         "lai": [
-            workspace / "data" / "lai" / "lai_masked.nc",
-            workspace / "data" / "lai" / "lai.nc",
+            workspace / "data" / "master" / "lai" / "lai_masked.nc",
+            workspace / "data" / "master" / "lai" / "lai.nc",
         ],
     }.get(key, [])
     return _first(
@@ -148,7 +148,14 @@ def _configured_path(value, workspace):
     if not raw:
         return None
     path = Path(str(raw))
-    return path if path.is_absolute() else workspace / path
+    if path.is_absolute():
+        return path
+    resolved = workspace / path
+    if resolved.exists() or not path.parts or path.parts[0] != "data":
+        return resolved
+    if len(path.parts) > 1 and path.parts[1] == "master":
+        return resolved
+    return workspace / "data" / "master" / Path(*path.parts[1:])
 
 
 def _raster_variants(path: Path) -> tuple[Path, Path, Path]:

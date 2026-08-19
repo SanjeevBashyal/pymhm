@@ -57,7 +57,7 @@ Reusable computation should move toward QGIS-free file/path/data APIs.
 
 ## mHM-Tools Integration Snapshot
 
-- `mhm-tools>=0.2.2` is an external runtime dependency. There is no bundled
+- `mhm-tools>=0.3.0` is an external runtime dependency. There is no bundled
   `pymhm/mhm_tools` source tree in the current project.
 - The plugin calls exports from `mhm_tools.pre` through
   `pymhm/mhm_tools_adapter.py`; it does not shell out to the `mhm-tools` CLI.
@@ -74,6 +74,27 @@ Reusable computation should move toward QGIS-free file/path/data APIs.
 - QGIS-specific layer selection, materialization, logging, output placement,
   and geology parameter metadata remain in `pymhm`. See `pymhm/AGENTS.md` for
   the detailed contract and current caveats.
+
+## Domain And Worker Contracts
+
+- Shared model inputs are published below `mhm-plugin/data/master/`. Static
+  morphology, meteorology, LAI, lat/lon, and streamflow observations must not
+  be written back to the former direct `data/*` folders.
+- Each selected domain outlet owns exactly one physical DEM at
+  `mhm-plugin/data/<outlet-id>/dem.asc`. Outlet IDs used as directory names
+  must reject path separators and traversal components.
+- `pymhm_domain_delineation_state.json` is the canonical detailed state;
+  `nml-settings.json` is the normalized handoff containing domain directories,
+  DEM paths, contained gauge IDs, and shared `data/master/` paths.
+- Qt and QGIS objects remain on the main thread. `QgsTask` jobs receive only
+  copied primitive values and filesystem paths. Large advanced land-cover and
+  soil formatting runs through `pymhm.native_worker` in a child process so a
+  GDAL/NumPy native failure cannot terminate QGIS.
+- Historical v5.13 land-cover formatting is windowed and period-by-period in
+  `mhm-tools`; never restore an eager list of full aligned period arrays.
+- One common L0/L2 extent covers every active domain. Prepared L0 rasters and
+  published advanced categorical inputs are placed on it by integer window copy
+  and nodata padding, never resampled. See `pymhm/AGENTS.md`.
 
 ## Packaging Rules
 

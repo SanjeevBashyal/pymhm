@@ -129,6 +129,69 @@ def read_categorical_lookup_table(lookup_table):
     return table
 
 
+def _category_key(value):
+    """Normalize a vector/lookup category like mHM-tools rasterization."""
+    import pandas as pd
+
+    if pd.isna(value):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        number = float(text)
+    except ValueError:
+        return text
+    return str(int(number)) if number.is_integer() else text
+
+
+def _field_key(value):
+    text = str(value).strip().lstrip("*").split("[", 1)[0]
+    return "".join(character.lower() for character in text if character.isalnum())
+
+
+def resolve_vector_mapping_field(input_file, lookup_table, mapping_field):
+    """Resolve a vector field by name or unambiguous lookup-value coverage."""
+    import geopandas as gpd
+
+    frame = gpd.read_file(input_file, ignore_geometry=True)
+    normalized = _field_key(mapping_field)
+    matches = [
+        column
+        for column in frame.columns
+        if _field_key(column) == normalized
+    ]
+    if len(matches) == 1:
+        return str(matches[0])
+
+    lookup = read_categorical_lookup_table(lookup_table)
+    lookup_column = next(
+        (
+            column
+            for column in lookup.columns
+            if _field_key(column) == normalized
+        ),
+        None,
+    )
+    if lookup_column is None:
+        raise ValueError(f"Lookup mapping field {mapping_field!r} was not found.")
+    lookup_values = {
+        key for key in map(_category_key, lookup[lookup_column]) if key is not None
+    }
+    candidates = []
+    for column in frame.columns:
+        values = {key for key in map(_category_key, frame[column]) if key is not None}
+        if values and values.issubset(lookup_values):
+            candidates.append(str(column))
+    if len(candidates) == 1:
+        return candidates[0]
+    available = ", ".join(str(column) for column in frame.columns)
+    raise ValueError(
+        f"Could not identify the vector field corresponding to lookup field "
+        f"{mapping_field!r}. Available vector fields: {available or '<none>'}."
+    )
+
+
 def prepare_categorical_file(
     kind: str,
     input_file: str | Path,
@@ -184,11 +247,14 @@ def prepare_categorical_file(
 
             if is_vector:
                 formatted_input = temporary_path / f"{kind}_rasterized.tif"
+                vector_mapping_field = resolve_vector_mapping_field(
+                    input_path, lookup_for_tools, mapping_field
+                )
                 rasterize_kwargs = {
                     "input_file": input_path,
                     "dem_file": dem_path,
                     "output_file": formatted_input,
-                    "mapping_field": mapping_field,
+                    "mapping_field": vector_mapping_field,
                     "lookup_table": lookup_for_tools,
                     "lookup_mapping_field": mapping_field,
                     "lookup_value_field": class_field,
@@ -386,4 +452,5 @@ __all__ = [
     "prepare_land_cover_periods",
     "prepare_soil_horizons",
     "read_categorical_lookup_table",
+    "resolve_vector_mapping_field",
 ]

@@ -27,6 +27,7 @@ def build_dimensions(dialog: Any) -> dict[str, int]:
 def build_initial_values(dialog: Any) -> dict[str, Any]:
     count = domain_count(dialog)
     settings = namelist_settings(dialog)
+    domain_directories = _domain_directories(settings, count)
     l1 = resolution(dialog, "current_l1_resolution")
     l11 = resolution(dialog, "current_l11_resolution")
     mainconfig: dict[str, Any] = {
@@ -52,38 +53,38 @@ def build_initial_values(dialog: Any) -> dict[str, Any]:
             "mainconfig_mhm_mrm": shared,
             "directories_general": {
                 "dirConfigOut": "output/",
-                "dirCommonFiles": "data/static/morph/",
-                "dir_Morpho": repeat("data/static/morph/", count),
-                "dir_LCover": repeat("data/static/morph/", count),
+                "dirCommonFiles": "data/master/static/morph/",
+                "dir_Morpho": domain_directories,
+                "dir_LCover": repeat("data/master/static/morph/", count),
                 "mhm_file_RestartOut": repeat("restart/mhm_restart_out.nc", count),
                 "mrm_file_RestartOut": repeat("restart/mrm_restart_out.nc", count),
                 "dir_Out": repeat("output/", count),
-                "file_LatLon": repeat("data/latlon.nc", count),
+                "file_LatLon": repeat("data/master/latlon.nc", count),
             },
             "directories_mHM": {
                 "inputFormat_meteo_forcings": "nc",
-                "dir_Precipitation": repeat("data/meteo/pre/", count),
-                "dir_Temperature": repeat("data/meteo/tavg/", count),
-                "dir_ReferenceET": repeat("data/meteo/pet/", count),
-                "dir_MinTemperature": repeat("data/meteo/tmin/", count),
-                "dir_MaxTemperature": repeat("data/meteo/tmax/", count),
-                "dir_NetRadiation": repeat("data/meteo/netrad/", count),
-                "dir_absVapPressure": repeat("data/meteo/eabs/", count),
-                "dir_windspeed": repeat("data/meteo/windspeed/", count),
-                "dir_Radiation": repeat("data/meteo/ssrd/", count),
+                "dir_Precipitation": repeat("data/master/meteo/pre/", count),
+                "dir_Temperature": repeat("data/master/meteo/tavg/", count),
+                "dir_ReferenceET": repeat("data/master/meteo/pet/", count),
+                "dir_MinTemperature": repeat("data/master/meteo/tmin/", count),
+                "dir_MaxTemperature": repeat("data/master/meteo/tmax/", count),
+                "dir_NetRadiation": repeat("data/master/meteo/netrad/", count),
+                "dir_absVapPressure": repeat("data/master/meteo/eabs/", count),
+                "dir_windspeed": repeat("data/master/meteo/windspeed/", count),
+                "dir_Radiation": repeat("data/master/meteo/ssrd/", count),
                 "time_step_model_inputs": repeat(0, count),
             },
             "directories_mRM": {
-                "dir_Gauges": repeat("data/observation/streamflow/", count),
+                "dir_Gauges": repeat("data/master/observation/streamflow/", count),
                 "dir_Total_Runoff": repeat("output/", count),
-                "dir_Bankfull_Runoff": repeat("data/static/morph/", count),
+                "dir_Bankfull_Runoff": repeat("data/master/static/morph/", count),
             },
             "processSelection": {
                 "processCase": [1, 1, 1, 1, 0, 1, 1, 3, 1, 0, 0],
             },
             "LCover": _land_cover_values(settings),
             "directories_MPR": {
-                "dir_gridded_LAI": repeat("data/lai/", count),
+                "dir_gridded_LAI": repeat("data/master/lai/", count),
             },
         }
     }
@@ -97,7 +98,27 @@ def build_initial_values(dialog: Any) -> dict[str, Any]:
     gauges = _gauge_values(settings, count)
     if gauges:
         values["main"]["evaluation_gauges"] = gauges
+    lai = _lai_values(settings)
+    if lai:
+        values["main"]["LAI_data_information"] = lai
     return values
+
+
+def _domain_directories(settings: dict[str, Any], count: int) -> list[str]:
+    domains = settings.get("domains", [])
+    if not isinstance(domains, list):
+        domains = []
+    ordered = sorted(
+        (item for item in domains if isinstance(item, dict)),
+        key=lambda item: int(item.get("domain_id", 0) or 0),
+    )
+    values = []
+    for item in ordered[:count]:
+        directory = str(item.get("directory", "") or "").rstrip("/")
+        values.append(f"{directory}/" if directory else "data/master/static/morph/")
+    return values + [
+        "data/master/static/morph/" for _ in range(max(0, count - len(values)))
+    ]
 
 
 def _land_cover_values(settings: dict[str, Any]) -> dict[str, Any]:
@@ -181,6 +202,20 @@ def _gauge_values(settings: dict[str, Any], count: int) -> dict[str, Any]:
         "NoGauges_domain": [len(row) for row in rows],
         "Gauge_id": identifiers,
         "gauge_filename": filenames,
+    }
+
+
+def _lai_values(settings: dict[str, Any]) -> dict[str, Any]:
+    lai = settings.get("lai", {})
+    if not isinstance(lai, dict):
+        return {}
+    try:
+        time_step = int(lai.get("time_step"))
+    except (TypeError, ValueError):
+        return {}
+    return {
+        "timeStep_LAI_input": time_step,
+        "inputFormat_gridded_LAI": "nc",
     }
 
 

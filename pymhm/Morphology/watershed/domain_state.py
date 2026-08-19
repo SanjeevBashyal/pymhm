@@ -35,6 +35,8 @@ def default_state() -> Dict[str, Any]:
         "outlet_order": [],
         "dem_domain": False,
         "dem_domain_id": None,
+        "dem_domain_directory": "",
+        "dem_domain_path": "",
         "outlets": {},
     }
 
@@ -49,7 +51,12 @@ def _normalized_state(value: object) -> Dict[str, Any]:
     if not isinstance(value, Mapping):
         return state
 
-    for key in ("pour_points_source", "outlet_id_field"):
+    for key in (
+        "pour_points_source",
+        "outlet_id_field",
+        "dem_domain_directory",
+        "dem_domain_path",
+    ):
         item = value.get(key)
         if isinstance(item, str):
             state[key] = item
@@ -190,13 +197,16 @@ def _serialized_state(
             record["discharge_file"] = serialize_input_path(
                 project_folder, record["discharge_file"]
             )
-        for key in ("mask_path", "vector_path"):
+        for key in ("mask_path", "vector_path", "domain_directory", "dem_path"):
             if record.get(key):
                 record[key] = serialize_output_path(project_folder, record[key])
         if record.get("gauge_path"):
             record["gauge_path"] = serialize_output_path(
                 project_folder, record["gauge_path"]
             )
+    for key in ("dem_domain_directory", "dem_domain_path"):
+        if state.get(key):
+            state[key] = serialize_output_path(project_folder, state[key])
     return state
 
 
@@ -266,6 +276,8 @@ def active_domain_records(state: Mapping[str, Any]) -> List[Dict[str, Any]]:
                 "is_domain": True,
                 "is_dem_domain": True,
                 "gauged_outlet_ids": gauged_outlet_ids(state),
+                "domain_directory": state.get("dem_domain_directory", ""),
+                "dem_path": state.get("dem_domain_path", ""),
             }
         )
     return records

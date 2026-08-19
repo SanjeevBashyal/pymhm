@@ -276,7 +276,7 @@ def test_initial_values_render_version_specific_main_groups(tmp_path: Path) -> N
     assert "&mainconfig\n" in rendered_v5
     assert "&directories_mHM\n" in rendered_v5
     assert "resolution_Hydrology(1) = 1000.0" in rendered_v5
-    assert 'dir_Morpho(1) = "data/static/morph/"' in rendered_v5
+    assert 'dir_Morpho(1) = "data/master/static/morph/"' in rendered_v5
     assert "&config_input" not in rendered_v5
 
     v6, v6_dimensions, v6_document = _document("6.0", dialog)
@@ -290,7 +290,7 @@ def test_initial_values_render_version_specific_main_groups(tmp_path: Path) -> N
     assert "&config_input\n" in rendered_v6
     assert "&config_resolution\n" in rendered_v6
     assert "hydro(1) = 1000.0" in rendered_v6
-    assert 'dem_path(1) = "data/static/morph/dem.asc"' in rendered_v6
+    assert 'dem_path(1) = "data/master/static/morph/dem.asc"' in rendered_v6
 
 
 def test_domain_dimensions_and_paths_follow_plugin_domains(tmp_path: Path) -> None:

@@ -77,16 +77,34 @@ def sync_domain_settings(project_folder: str | Path) -> Path:
         "mode": str(domain_state.get("definition_mode", "") or ""),
         "dem_domain": bool(domain_state.get("dem_domain", False)),
     }
-    state["domains"] = [
-        {
-            "domain_id": int(record["domain_id"]),
-            "outlet_id": str(record.get("outlet_id", "")),
-            "is_dem_domain": bool(record.get("is_dem_domain", False)),
-        }
-        for record in active_domain_records(domain_state)
-        if record.get("domain_id") is not None
-    ]
-    state["gauges"] = gauge_records(domain_state)
+    gauges = gauge_records(domain_state)
+    domains = []
+    for record in active_domain_records(domain_state):
+        if record.get("domain_id") is None:
+            continue
+        domain_id = int(record["domain_id"])
+        outlet_id = str(record.get("outlet_id", ""))
+        directory = str(record.get("domain_directory", "") or "")
+        dem_path = str(record.get("dem_path", "") or "")
+        domains.append(
+            {
+                "domain_id": domain_id,
+                "name": "dem_extent" if record.get("is_dem_domain") else outlet_id,
+                "outlet_id": outlet_id,
+                "is_dem_domain": bool(record.get("is_dem_domain", False)),
+                "directory": directory,
+                "dem_path": dem_path,
+                "data_path": "data/master/",
+                "gauge_ids": [
+                    int(gauge["gauge_id"])
+                    for gauge in gauges
+                    if gauge.get("gauge_id") is not None
+                    and domain_id in gauge.get("domain_ids", [])
+                ],
+            }
+        )
+    state["domains"] = domains
+    state["gauges"] = gauges
     return save_settings(project_folder, state)
 
 

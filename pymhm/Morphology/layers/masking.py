@@ -8,7 +8,12 @@ from ..common import (
     QMessageBox,
 )
 from ..watershed.watershed_delineation import WatershedDelineationMixin
-from ...grid_resolution import header_bounds, header_for_existing_bounds
+from ...grid_resolution import (
+    header_bounds,
+    l0_header_from_l2,
+    validate_l0_l2_alignment,
+)
+from ..file_tasks import crop_aligned_l0_raster, mask_aligned_l0_raster
 
 
 class MaskingMixin(WatershedDelineationMixin):
@@ -71,33 +76,23 @@ class MaskingMixin(WatershedDelineationMixin):
             self.log_message(f"Cropping {layer_name}...")
             self._remove_existing_raster(output_path)
             self._remove_existing_raster(masked_path)
-            params_crop = {
-                "INPUT": input_path,
-                "SOURCE_CRS": None,
-                "TARGET_CRS": input_crs,
-                "RESAMPLING": 0,
-                "NODATA": -9999,
-                "TARGET_RESOLUTION": resolution,
-                "OPTIONS": None,
-                "DATA_TYPE": 0,
-                "TARGET_EXTENT": extent_str,
-                "TARGET_EXTENT_CRS": input_crs,
-                "MULTITHREADING": False,
-                "EXTRA": "",
-                "OUTPUT": output_path,
-            }
-
-            result = self.run_processing_algorithm(
-                "gdal:warpreproject",
-                params_crop,
-            )
+            try:
+                result = crop_aligned_l0_raster(
+                    input_path,
+                    output_path,
+                    l0_header,
+                    reference_path=self.filled_dem_path,
+                )
+            except Exception as error:
+                self.log_message(f"ERROR: Failed to crop {layer_name}: {error}")
+                result = None
 
             if result and os.path.exists(output_path):
                 self.mark_output_prepared(
                     output_path,
                     name=os.path.basename(output_path),
                     loaded=False,
-                    algorithm="gdal:warpreproject",
+                    algorithm="aligned L0 window copy",
                 )
                 self.log_message(f"{layer_name} cropped successfully.")
             else:
@@ -188,38 +183,24 @@ class MaskingMixin(WatershedDelineationMixin):
 
             self.log_message(f"Masking {layer_name}...")
             self._remove_existing_raster(output_path)
-            params_mask = {
-                "INPUT": input_path,
-                "MASK": merged_watershed_path,
-                "SOURCE_CRS": input_crs,
-                "TARGET_CRS": input_crs,
-                "NODATA": -9999,
-                "ALPHA_BAND": False,
-                "CROP_TO_CUTLINE": False,
-                "KEEP_RESOLUTION": False,
-                "SET_RESOLUTION": True,
-                "X_RESOLUTION": resolution,
-                "Y_RESOLUTION": resolution,
-                "MULTITHREADING": False,
-                "OPTIONS": None,
-                "DATA_TYPE": 0,
-                "EXTRA": "",
-                "OUTPUT": output_path,
-            }
-            if extent_str:
-                params_mask["TARGET_EXTENT"] = extent_str
-
-            result = self.run_processing_algorithm(
-                "gdal:cliprasterbymasklayer",
-                params_mask,
-            )
+            try:
+                result = mask_aligned_l0_raster(
+                    input_path,
+                    output_path,
+                    l0_header,
+                    merged_watershed_path,
+                    reference_path=self.filled_dem_path,
+                )
+            except Exception as error:
+                self.log_message(f"ERROR: Failed to mask {layer_name}: {error}")
+                result = None
 
             if result and os.path.exists(output_path):
                 self.mark_output_prepared(
                     output_path,
                     name=os.path.basename(output_path),
                     loaded=False,
-                    algorithm="gdal:cliprasterbymasklayer",
+                    algorithm="aligned L0 window mask",
                 )
                 self.log_message(f"{layer_name} masked successfully.")
             else:
@@ -239,6 +220,44 @@ class MaskingMixin(WatershedDelineationMixin):
         self.log_message("Masking process completed.")
         return all_success
 
+    def align_advanced_inputs_to_l0(self, show_error_dialog=True) -> bool:
+        """Publish the staged morphology inputs into data/master on the L0 grid."""
+        from .advanced_l0 import missing_model_inputs, publish_model_inputs
+
+        try:
+            l0_header = self._target_l0_header()
+            published = publish_model_inputs(
+                self.dialog.project_folder,
+                l0_header,
+                log=self.log_message,
+            )
+        except Exception as error:
+            self.log_message(f"ERROR: Cannot publish model inputs: {error}")
+            if show_error_dialog:
+                QMessageBox.warning(self.dialog, "Publish Error", str(error))
+            return False
+
+        for path in published:
+            self.mark_output_prepared(
+                str(path), name=os.path.basename(str(path)), loaded=False)
+        if not published:
+            self.log_message("No staged morphology inputs were waiting to publish.")
+
+        # Everything the namelist handoff names must now exist under data/master.
+        missing = missing_model_inputs(self.dialog.project_folder)
+        if missing:
+            message = (
+                "These model inputs are recorded in nml-settings.json but are "
+                "missing on disk: " + ", ".join(sorted(missing))
+            )
+            self.log_message(f"ERROR: {message}")
+            if show_error_dialog:
+                QMessageBox.warning(self.dialog, "Missing Model Inputs", message)
+            return False
+        self.log_message(
+            "All model inputs recorded in nml-settings.json are present.")
+        return True
+
     def _target_l0_header(self):
         """Return the L0 grid header derived from the configured model extent."""
         l2_header = getattr(self.dialog, "_grid_l2_header", None)
@@ -246,6 +265,9 @@ class MaskingMixin(WatershedDelineationMixin):
             self.dialog.update_l2_resolution_from_metadata()
             l2_header = getattr(self.dialog, "_grid_l2_header", None)
         if not l2_header:
+            saved = self.saved_grid_contract()
+            if saved:
+                return dict(saved["l0_header"])
             raise ValueError("L2 grid is not available. Run and save meteorology data first.")
 
         l0_resolution = None
@@ -260,7 +282,28 @@ class MaskingMixin(WatershedDelineationMixin):
         if not l0_resolution:
             raise ValueError("L0 resolution is not available. Select or prepare the filled DEM first.")
 
-        return header_for_existing_bounds(l2_header, float(l0_resolution))
+        metadata = getattr(self.dialog, "_grid_l2_metadata", None) or {}
+        ratio = int(
+            metadata.get("l2_ratio_to_l0")
+            or round(float(l2_header["cellsize"]) / float(l0_resolution))
+        )
+        # The saved L0 header carries the filled DEM's unrounded cell size.
+        # Rebuilding it from the rounded UI resolution would drift off the
+        # source grid, so prefer the saved header whenever it still validates.
+        saved_l0_header = metadata.get("l0_header")
+        l0_header = None
+        if isinstance(saved_l0_header, dict):
+            try:
+                validate_l0_l2_alignment(saved_l0_header, l2_header, ratio)
+                l0_header = dict(saved_l0_header)
+            except (TypeError, ValueError) as error:
+                self.log_message(
+                    f"WARNING: Saved L0 header does not match the L2 grid: {error}"
+                )
+        if l0_header is None:
+            l0_header = l0_header_from_l2(l2_header, float(l0_resolution), ratio)
+        self.save_grid_contract(l0_header, l2_header, ratio)
+        return l0_header
 
     def _extent_from_header(self, header, input_crs):
         """Return a QGIS Processing extent string from a grid header."""

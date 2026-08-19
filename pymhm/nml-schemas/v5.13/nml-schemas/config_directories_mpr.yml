@@ -9,4 +9,4 @@ properties:
       x-fortran-len: buf
       format: directory-path
     x-fortran-shape: max_domains
-    examples: [[data/lai/]]
+    examples: [[data/master/lai/]]

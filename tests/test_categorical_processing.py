@@ -14,7 +14,11 @@ from qgis.core import (  # noqa: E402
 )
 
 from pymhm.Morphology.layers import categorical  # noqa: E402
-from pymhm.project_layout import geometry_folder, morph_folder  # noqa: E402
+from pymhm.project_layout import (
+    geometry_folder,
+    morph_folder,
+    morph_staging_folder,
+)  # noqa: E402
 # isort: on
 
 
@@ -157,9 +161,12 @@ def test_ready_soil_copies_raster_and_removes_stale_intermediates(
     project = tmp_path / "project"
     source = _touch(tmp_path / "input" / "soil.asc", b"ready")
     geometry = Path(geometry_folder(project))
+    staging = Path(morph_staging_folder(project))
     morph = Path(morph_folder(project))
     dem = _touch(geometry / "1_dem_filled.tif")
     stale = _touch(geometry / "3_soil.tif", b"stale")
+    # mHM-ready bypasses crop/mask/write, so its definition is already final and
+    # lives next to the published raster rather than in staging.
     definition = _touch(
         morph / "soil_classdefinition.txt",
         b"definition",
@@ -238,6 +245,7 @@ def test_lookup_replaces_ready_state_and_files(tmp_path, monkeypatch):
         ),
         dem,
     )
+    staging = Path(morph_staging_folder(project))
     morph = Path(morph_folder(project))
     stale = [_touch(morph / f"lc{suffix}", b"stale") for suffix in (".asc", ".nc")]
     processor.categorical_ready_outputs["lc"] = str(stale[0])
@@ -257,7 +265,7 @@ def test_failed_geology_publish_restores_previous_outputs(tmp_path, monkeypatch)
     project = tmp_path / "project"
     source = _touch(tmp_path / "input" / "geology.tif")
     geometry = Path(geometry_folder(project))
-    morph = Path(morph_folder(project))
+    staging = Path(morph_staging_folder(project))
     dem = _touch(geometry / "1_dem_filled.tif")
     config = _lookup(tmp_path / "input" / "lookup.csv")
     processor = _Processor(
@@ -274,7 +282,7 @@ def test_failed_geology_publish_restores_previous_outputs(tmp_path, monkeypatch)
         geometry / "3_geology_processed.tif", b"old raster"
     )
     definition = _touch(
-        morph / "geology_classdefinition.txt",
+        staging / "geology_classdefinition.txt",
         b"old definition",
     )
     metadata = _touch(

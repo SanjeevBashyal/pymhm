@@ -15,3 +15,4 @@ pyuic5 -x pymhm/ui/discharge_table_assignment_dialog.ui -o pymhm/pyui/ui_dischar
 pyuic5 -x pymhm/ui/elevation_band_dialog.ui -o pymhm/pyui/ui_elevation_band_dialog.py
 
 pyuic5 -x pymhm/ui/project_terminal_dialog.ui -o pymhm/pyui/ui_project_terminal_dialog.py
+pyuic5 -x pymhm/ui/thread_display_dialog.ui -o pymhm/pyui/ui_thread_display_dialog.py
