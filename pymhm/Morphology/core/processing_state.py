@@ -46,7 +46,7 @@ class ProcessingStateMixin:
                 "version": 1, "outputs": {}, "workflows": {}, "grid": {},
             }
 
-    OWNED_SECTIONS = ("version", "outputs", "workflows", "grid")
+    OWNED_SECTIONS = ("version", "outputs", "workflows", "grid", "domains")
 
     def save_processing_state(self):
         """Write the sections this registry owns, preserving the others.
@@ -196,6 +196,27 @@ class ProcessingStateMixin:
 
         workflows[workflow] = entry
         self.save_processing_state()
+
+    def save_domain_plan(self, plan):
+        """Record each domain's polygon and target DEM for Morphology Setup."""
+        self.processing_state["domains"] = [
+            {
+                "domain_id": entry["domain_id"],
+                "outlet_id": entry["outlet_id"],
+                "name": entry["name"],
+                "polygon": entry["polygon"],
+                "directory": entry["directory"],
+                "dem_path": entry["dem_path"],
+            }
+            for entry in plan
+        ]
+        self.save_processing_state()
+        return self.processing_state["domains"]
+
+    def saved_domain_plan(self):
+        """Return the recorded domain plan."""
+        plan = self.processing_state.get("domains")
+        return list(plan) if isinstance(plan, list) else []
 
     def workflow_status(self, workflow):
         """Return a saved workflow status entry."""

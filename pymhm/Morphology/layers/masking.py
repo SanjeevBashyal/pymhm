@@ -258,6 +258,35 @@ class MaskingMixin(WatershedDelineationMixin):
             "All model inputs recorded in nml-settings.json are present.")
         return True
 
+    def write_domain_dems_to_l0(self, show_error_dialog=True) -> bool:
+        """Write every domain DEM by masking the cropped L0 DEM."""
+        from .domain_dem import domain_dem_plan, write_domain_dems
+
+        try:
+            l0_header = self._target_l0_header()
+            cropped = self._raster_variant_path(self.filled_dem_path, "_crop")
+            plan = domain_dem_plan(self.dialog.project_folder)
+            self.save_domain_plan(plan)
+            written = write_domain_dems(
+                self.dialog.project_folder,
+                cropped,
+                l0_header,
+                reference_path=self.filled_dem_path,
+                log=self.log_message,
+            )
+        except Exception as error:
+            self.log_message(f"ERROR: Cannot write the domain DEMs: {error}")
+            if show_error_dialog:
+                QMessageBox.warning(self.dialog, "Domain DEM Error", str(error))
+            return False
+
+        for entry in written:
+            self.mark_output_prepared(
+                entry["dem_path"], name="dem.asc", loaded=False)
+        if not written:
+            self.log_message("No active domains needed a DEM.")
+        return True
+
     def _target_l0_header(self):
         """Return the L0 grid header derived from the configured model extent."""
         l2_header = getattr(self.dialog, "_grid_l2_header", None)

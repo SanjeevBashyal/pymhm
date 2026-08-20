@@ -316,6 +316,94 @@ def mask_aligned_l0_raster(
     )
 
 
+def write_domain_dem_ascii(
+        source_path,
+        output_path,
+        target_header,
+        mask_vector,
+        *,
+        reference_path=None,
+        nodata=-9999,
+        task=None):
+    """Write one domain DEM as Arc/Info ASCII on the common L0 grid.
+
+    The source is the cropped L0 DEM, so every domain shares the model extent and
+    matches the other inputs cell for cell; only the cells inside the domain
+    polygon keep their value. Rows stream straight to text, so memory stays flat
+    whatever the grid size.
+    """
+    np, _pfd, _affine, gdal, _ogr, _osr = _dependencies()
+    source = gdal.Open(str(source_path), gdal.GA_ReadOnly)
+    if source is None:
+        raise RuntimeError(f"Could not open the cropped L0 DEM: {source_path}")
+    projection = source.GetProjection()
+    window = _aligned_l0_window(source, source_path, target_header, reference_path)
+    band = source.GetRasterBand(1)
+    keep = _rasterize_target_mask(mask_vector, target_header, projection)
+
+    cellsize = float(target_header["cellsize"])
+    rows = int(target_header["nrows"])
+    columns = int(target_header["ncols"])
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_name(f".{output.name}.tmp")
+    temporary.unlink(missing_ok=True)
+
+    blank = np.full(columns, float(nodata), dtype="float64")
+    source_nodata = band.GetNoDataValue()
+    try:
+        with open(temporary, "w", encoding="utf-8") as stream:
+            stream.write(
+                f"ncols         {columns}\n"
+                f"nrows         {rows}\n"
+                f"xllcorner     {float(target_header['xllcorner'])}\n"
+                f"yllcorner     {float(target_header['yllcorner'])}\n"
+                f"cellsize      {cellsize}\n"
+                f"NODATA_value  {nodata}\n"
+            )
+            for row in range(rows):
+                _cancelled(task)
+                values = blank
+                source_row = row - window["target_y"] + window["source_y"]
+                if (
+                        window["copy_rows"] > 0
+                        and window["target_y"] <= row
+                        < window["target_y"] + window["copy_rows"]):
+                    read = band.ReadAsArray(
+                        window["source_x"], source_row, window["copy_cols"], 1)
+                    if read is None:
+                        raise RuntimeError(
+                            f"Could not read the L0 DEM row {row}: {source_path}")
+                    values = blank.copy()
+                    values[
+                        window["target_x"]:
+                        window["target_x"] + window["copy_cols"]
+                    ] = read[0]
+                    if source_nodata is not None:
+                        values = np.where(
+                            values == source_nodata, float(nodata), values)
+                values = np.where(keep[row], values, float(nodata))
+                stream.write(" ".join(_ascii_value(value) for value in values))
+                stream.write("\n")
+                if task is not None and rows:
+                    _progress(task, 100.0 * (row + 1) / rows)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    finally:
+        band = None
+        source = None
+    os.replace(temporary, output)
+    return str(output)
+
+
+def _ascii_value(value) -> str:
+    """Format one ASCII grid cell, keeping integers integral."""
+    if value == int(value):
+        return str(int(value))
+    return repr(float(value))
+
+
 def _prepared_dem_source(source, source_crs, target_crs, reprojected_path):
     _np, _pfd, _affine, gdal, _ogr, osr = _dependencies()
     source = str(source)
@@ -764,10 +852,9 @@ def delineate_domains_file(
         _cancelled(task)
         outlet_id, x, y, raster, vector, domain_id, *domain_dem = item
         result = _delineate(context, x, y, raster, vector, domain_id)
+        # Domain DEMs are written during Morphology Setup on the common L0 grid.
         if domain_dem:
-            result["dem_path"] = materialize_domain_dem_file(
-                filled_dem, result["vector_path"], domain_dem[0]
-            )
+            result["dem_path"] = str(domain_dem[0])
         results[str(outlet_id)] = result
         vectors.append(result["vector_path"])
         _progress(task, 80 * (index + 1) / total)
@@ -776,11 +863,7 @@ def delineate_domains_file(
         _raster, saved_vector = _dem_domain(
             context, domain_id, raster, vector
         )
-        dem_result = None
-        if domain_dem:
-            dem_result = materialize_domain_dem_file(
-                filled_dem, saved_vector, domain_dem[0]
-            )
+        dem_result = str(domain_dem[0]) if domain_dem else None
         vectors.append(saved_vector)
     if not vectors:
         raise ValueError("Select at least one domain outlet.")
@@ -801,5 +884,6 @@ __all__ = [
     "hydrology_files",
     "mask_aligned_l0_raster",
     "materialize_domain_dem_file",
+    "write_domain_dem_ascii",
     "terrain_files",
 ]

@@ -117,9 +117,21 @@ Important packages:
   `data/master/static/morph`, forcing in `data/master/meteo`, LAI in
   `data/master/lai`, lat/lon at `data/master/latlon.nc`, and observations in
   `data/master/observation/streamflow`.
-- A checked domain outlet creates a watershed-masked and bounding-box-cropped
-  L0 DEM at `data/<outlet-id>/dem.asc`. Domain directories are created from
-  saved outlet IDs, not from literal template placeholders.
+- **Domain DEMs are written during Morphology Setup, not at delineation.**
+  Delineation records each domain's polygon and its target `data/<name>/dem.asc`
+  in `pymhm_processing_state.json` under `domains`; step 5/6
+  (`write_domain_dems_to_l0` -> `layers/domain_dem.py`) then masks the *cropped*
+  L0 DEM with each polygon and writes the ASCII. Every domain therefore shares
+  the common L0 extent and matches the other inputs cell for cell, which is what
+  mHM needs. Cropping each domain to its own bounding box produced mismatched
+  matrices -- measured on one project: 3748x2824, 974x895 and 13202x6002 against
+  a common grid of 13320x6120.
+- `file_tasks.write_domain_dem_ascii()` streams rows straight to text, so a
+  domain DEM costs flat memory whatever the grid size. Do not reintroduce
+  `materialize_domain_dem_file` into the delineation path; it crops to the
+  cutline and is kept only for callers that genuinely want a tight extent.
+- Domain directories are created from saved outlet IDs, not from literal
+  template placeholders.
 - Keep the Domain Outlet label and checkbox enabled regardless of their current
   value. An unchanged outlet location is a valid domain/gauge location; a map
   pick overrides it.

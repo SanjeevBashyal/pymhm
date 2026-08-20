@@ -240,8 +240,12 @@ def test_file_jobs_create_hydrology_and_watershed_outputs(tmp_path):
     )
     assert os.path.isfile(domains["merged_path"])
     assert domains["outlets"]["outlet"]["catchment_area_m2"] > 0
-    assert os.path.isfile(domains["outlets"]["outlet"]["dem_path"])
-    assert os.path.isfile(domains["dem_domain_path"])
+    # Delineation only records where the domain DEM will go; Morphology Setup
+    # writes it later on the common L0 grid so every domain shares the extent.
+    assert domains["outlets"]["outlet"]["dem_path"].endswith("outlet-2/dem.asc")
+    assert not os.path.exists(domains["outlets"]["outlet"]["dem_path"])
+    assert domains["dem_domain_path"].endswith("dem_extent/dem.asc")
+    assert not os.path.exists(domains["dem_domain_path"])
 
 
 def _degree_dem(path, cellsize, cols=24, rows=12):

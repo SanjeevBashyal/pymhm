@@ -23,7 +23,6 @@ from ...project_layout import (
     domain_dem_path,
     geometry_folder,
 )
-from ..file_tasks import materialize_domain_dem_file
 from ..hydrology.discharge_dialog import OutletAssignment
 from ..hydrology.discharge_writer import (
     local_source_path,
@@ -219,15 +218,14 @@ class DomainWorkflow:
                     "vector_path": result["vector_path"],
                 }
             )
-            dem_path = materialize_domain_dem_file(
-                self.processor.filled_dem_path,
-                result["vector_path"],
-                domain_dem_path(self.project_folder, assignment.outlet_id),
-            )
+            # The domain DEM is written during Morphology Setup, once the common
+            # L0 extent is known, so every domain shares the model grid.
             record["domain_directory"] = domain_data_folder(
                 self.project_folder, assignment.outlet_id
             )
-            record["dem_path"] = dem_path
+            record["dem_path"] = domain_dem_path(
+                self.project_folder, assignment.outlet_id
+            )
 
         if state.get("dem_domain"):
             self.prepare_dem_domain(state)
@@ -477,15 +475,12 @@ class DomainWorkflow:
             raise RuntimeError("Could not write the DEM-domain mask.")
         if not self._polygonize_mask(output_raster, output_vector):
             raise RuntimeError("Could not write the DEM-domain polygon.")
-        output_dem = materialize_domain_dem_file(
-            self.processor.filled_dem_path,
-            output_vector,
-            domain_dem_path(self.project_folder, "dem_extent"),
-        )
         state["dem_domain_directory"] = domain_data_folder(
             self.project_folder, "dem_extent"
         )
-        state["dem_domain_path"] = output_dem
+        state["dem_domain_path"] = domain_dem_path(
+            self.project_folder, "dem_extent"
+        )
 
     @staticmethod
     def require_active_domain(state: dict) -> None:

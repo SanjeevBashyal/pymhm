@@ -344,6 +344,10 @@ class ExecuteAllMixin(
                         show_error_dialog=show_error_dialog),
                 ),
                 (
+                    "domain_dems", "Write Domain DEMs",
+                    self.write_domain_dems_to_l0,
+                ),
+                (
                     "publish", "Publish Model Inputs",
                     self.align_advanced_inputs_to_l0,
                 ),

@@ -142,6 +142,10 @@ class _WorkflowHarness:
         self.calls.append("write")
         return True
 
+    def write_domain_dems_to_l0(self, show_error_dialog=True):
+        self.calls.append("domain_dems")
+        return True
+
     def align_advanced_inputs_to_l0(self, show_error_dialog=True):
         self.calls.append("align_advanced")
         return True
@@ -184,6 +188,7 @@ def test_combined_setup_runs_finalization_in_order(tmp_path):
         "mask",
         "latlon",
         "write",
+        "domain_dems",
         "align_advanced",
     ]
     assert workflow.statuses[-1][:2] == (
@@ -223,6 +228,7 @@ def test_each_morph_setup_step_records_its_status(tmp_path):
         "meteo_morph_setup_mask",
         "meteo_morph_setup_latlon",
         "meteo_morph_setup_write",
+        "meteo_morph_setup_domain_dems",
         "meteo_morph_setup_publish",
     ]
     # Every step is marked running before it is marked completed.
