@@ -13,6 +13,7 @@ from typing import NamedTuple
 
 from ...lai_temporal import prepare_lai_temporal
 from .lai_l0 import (
+    PAD_VALUE,
     ResampleSampler,
     WindowSampler,
     lai_window_offsets,
@@ -317,6 +318,7 @@ def resample_lai_file_to_grid(
         target_timestep="Long Term Mean Monthly Gridded Data",
         description="Monthly LAI resampled to the target grid",
         method="bilinear",
+        blank_fill=None,
         task=None,
         log=None) -> str:
     """Aggregate LAI in time, then stream it onto ``target_grid``.
@@ -399,6 +401,7 @@ def resample_lai_file_to_grid(
                 np.asarray(lai_data[lat_coord].values, dtype=np.float64),
                 np.asarray(lai_data[lon_coord].values, dtype=np.float64),
                 method=method,
+                blank_fill=blank_fill,
             ),
             x_centers=x_centers,
             y_centers=y_centers,
@@ -418,13 +421,16 @@ def window_copy_lai_file(
         crs_string,
         description,
         mask=None,
+        pad_value=PAD_VALUE,
         task=None,
         log=None) -> str:
     """Copy an aligned LAI file onto ``target_header`` without resampling.
 
     The staged LAI already sits on the filled DEM cell grid, so the common
-    extent is reached by an integer window copy padded with nodata, exactly like
-    the raster layers. One time step of one row block is held at a time.
+    extent is reached by an integer window copy, exactly like the raster
+    layers. Cells beyond the staged extent take ``pad_value`` rather than
+    nodata, so widening the grid leaves no holes inside the model domain. One
+    time step of one row block is held at a time.
     """
     import numpy as np
     import xarray as xr
@@ -448,7 +454,11 @@ def window_copy_lai_file(
     handle = Dataset(str(source_path), "r")
     try:
         sampler = WindowSampler(
-            handle.variables["lai"], row_offset, column_offset)
+            handle.variables["lai"],
+            row_offset,
+            column_offset,
+            pad_value=pad_value,
+        )
         # The expanded extent makes this output no smaller than the staged one,
         # so the disk guard applies here too.
         required = assert_lai_output_fits(
@@ -503,6 +513,7 @@ def run_lai_resample(options, task=None, log=None) -> str:
         ),
         description="Monthly LAI resampled to the filled DEM grid",
         method=options.get("method") or "bilinear",
+        blank_fill=options.get("blank_fill", 0.0),
         task=task,
         log=log,
     )

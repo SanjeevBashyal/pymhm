@@ -15,6 +15,9 @@ from pathlib import Path
 
 
 NODATA = -9999.0
+# Cells the source cube does not reach are padded with a valid LAI instead of
+# nodata, so widening the grid to the model extent leaves no holes for mHM.
+PAD_VALUE = 0.0
 DEFAULT_BLOCK_BYTES = 32 * 1024 ** 2
 CHUNK_ROWS = 128
 CHUNK_COLS = 1024
@@ -149,7 +152,9 @@ def lai_window_offsets(source_x, source_y, target_header):
 class ResampleSampler:
     """Sample an in-memory source cube onto target rows by lon/lat lookup."""
 
-    def __init__(self, source_values, source_lat, source_lon, method="bilinear"):
+    def __init__(self, source_values, source_lat, source_lon,
+                 method="bilinear", blank_fill=None):
+        """``blank_fill`` replaces cells the source cannot supply, if given."""
         method = str(method or "bilinear").strip().lower()
         if method not in {"bilinear", "nearest"}:
             raise ValueError(f"Unsupported LAI resampling method: {method}")
@@ -157,6 +162,7 @@ class ResampleSampler:
         self.lat = source_lat
         self.lon = source_lon
         self.method = method
+        self.blank_fill = None if blank_fill is None else float(blank_fill)
         self._plan = None
 
     @property
@@ -210,7 +216,7 @@ class ResampleSampler:
 
         values = np.asarray(self.values[step], dtype="float64")
         if self._plan[0] == "nearest":
-            return values[self._plan[1]]
+            return self._filled(values[self._plan[1]])
 
         _kind, corners, weights = self._plan
         total = None
@@ -224,21 +230,34 @@ class ResampleSampler:
             weight_sum = share if weight_sum is None else weight_sum + share
         # Renormalise so a cell next to missing source data stays usable
         # instead of being poisoned by a single NaN corner.
-        return np.divide(
+        return self._filled(np.divide(
             total, weight_sum,
             out=np.full(total.shape, np.nan),
             where=weight_sum > 0,
-        )
+        ))
+
+    def _filled(self, block):
+        """Replace cells the source could not supply with ``blank_fill``."""
+        import numpy as np
+
+        if self.blank_fill is None:
+            return block
+        return np.where(np.isfinite(block), block, self.blank_fill)
 
 
 class WindowSampler:
-    """Copy an aligned source variable by integer window, padding with nodata."""
+    """Copy an aligned source variable by integer window, padding the rest.
 
-    def __init__(self, variable, row_offset, column_offset, nodata=NODATA):
+    ``pad_value`` fills the cells the source window does not cover; it is a
+    valid LAI rather than nodata so that expanding the extent never creates
+    holes inside the model domain.
+    """
+
+    def __init__(self, variable, row_offset, column_offset, pad_value=PAD_VALUE):
         self.variable = variable
         self.row_offset = int(row_offset)
         self.column_offset = int(column_offset)
-        self.nodata = float(nodata)
+        self.pad_value = float(pad_value)
         self._source_rows = int(variable.shape[1])
         self._source_columns = int(variable.shape[2])
         self._window = None
@@ -273,7 +292,7 @@ class WindowSampler:
 
         (rows, read_start, read_stop, target_row,
          column_start, column_stop, target_column) = self._window
-        block = np.full((rows, self._columns), self.nodata, dtype="float64")
+        block = np.full((rows, self._columns), self.pad_value, dtype="float64")
         if read_stop > read_start and column_stop > column_start:
             values = np.asarray(
                 self.variable[step, read_start:read_stop, column_start:column_stop],
@@ -386,6 +405,7 @@ def stream_lai_grid(
 __all__ = [
     "DEFAULT_BLOCK_BYTES",
     "NODATA",
+    "PAD_VALUE",
     "ResampleSampler",
     "WindowSampler",
     "block_row_count",

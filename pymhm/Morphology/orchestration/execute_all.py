@@ -343,13 +343,16 @@ class ExecuteAllMixin(
                     lambda: self.write_all_layers(
                         show_error_dialog=show_error_dialog),
                 ),
-                (
-                    "domain_dems", "Write Domain DEMs",
-                    self.write_domain_dems_to_l0,
-                ),
+                # Publish first: it moves the staged advanced/mHM-ready
+                # rasters into data/master on the L0 grid, and Write Domain
+                # DEMs copies that shared set into every domain folder.
                 (
                     "publish", "Publish Model Inputs",
                     self.align_advanced_inputs_to_l0,
+                ),
+                (
+                    "domain_dems", "Write Domain DEMs",
+                    self.write_domain_dems_to_l0,
                 ),
             )
             total = len(steps)

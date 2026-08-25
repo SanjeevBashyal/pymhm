@@ -207,7 +207,13 @@ class LaiProcessingMixin(
             l0_header: dict,
             input_crs,
             merged_watershed_path: str) -> bool:
-        """Apply the merged watershed mask to every monthly LAI slice."""
+        """Publish the cropped LAI cube on the L0 grid without masking it.
+
+        LAI is not cut to the merged watershed: masking would write nodata
+        into cells mHM still reads, so the whole model extent keeps a usable
+        leaf area. ``merged_watershed_path`` is accepted so this stage matches
+        the other mask hooks, but it is deliberately unused.
+        """
         if not self._is_lai_long_term_monthly_netcdf_selected():
             return False
 
@@ -221,29 +227,23 @@ class LaiProcessingMixin(
             if not self.crop_lai_netcdf_to_l0(l0_header, input_crs):
                 return False
 
-        self.log_message("\n--- Masking LAI NetCDF by merged watershed ---")
+        self.log_message("\n--- Writing LAI NetCDF on the L0 grid (unmasked) ---")
         try:
-            mask = self._lai_watershed_mask_array(
-                l0_header,
-                input_crs,
-                merged_watershed_path,
-            )
             window_copy_lai_file(
                 crop_path,
                 final_path,
                 l0_header,
                 self._qgis_crs_to_pyproj(input_crs) or "",
-                "Monthly LAI cropped to L0 and masked by merged watershed",
-                mask=mask,
+                "Monthly LAI on the common L0 model extent",
                 log=self.log_message,
             )
-            # The masked cube is the published file; a separate intermediate
-            # copy would double the disk cost for no benefit.
+            # The published cube is written straight from the crop; a separate
+            # intermediate copy would double the disk cost for no benefit.
             if os.path.exists(masked_path):
                 os.remove(masked_path)
             self._write_lai_l0_header(l0_header)
         except ImportError as e:
-            self.log_message(f"ERROR: Required library not available for LAI mask: {e}")
+            self.log_message(f"ERROR: Required library not available for LAI: {e}")
             QMessageBox.warning(
                 self.dialog,
                 "Missing Dependency",
@@ -252,18 +252,18 @@ class LaiProcessingMixin(
             return False
         except Exception as e:
             import traceback
-            self.log_message(f"ERROR: LAI mask failed: {e}\n{traceback.format_exc()}")
+            self.log_message(f"ERROR: LAI write failed: {e}\n{traceback.format_exc()}")
             QMessageBox.warning(
                 self.dialog,
-                "LAI Mask Error",
-                f"LAI NetCDF mask failed:\n{e}")
+                "LAI Write Error",
+                f"Writing the LAI NetCDF on the L0 grid failed:\n{e}")
             return False
 
         self.mark_output_prepared(final_path, name="lai.nc", loaded=False)
         source = self._selected_lai_netcdf_source()
         if source is not None:
             self._record_lai_nml(final_path, source[0], source[1])
-        self.log_message(f"LAI NetCDF masked for all months: {final_path}")
+        self.log_message(f"LAI NetCDF written for all months: {final_path}")
         return True
 
     def _selected_lai_input_type(self) -> str:

@@ -9,6 +9,7 @@ has the same matrix size as the shared morphology and meteorology inputs.
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -18,7 +19,105 @@ from ..watershed.domain_state import (
     load_state as load_domain_state,
     resolve_output_path,
 )
-from ...project_layout import domain_data_folder, domain_dem_path
+from ...project_layout import (
+    domain_data_folder,
+    domain_dem_path,
+    morph_folder,
+)
+
+
+# mHM reads its morphology per domain from `dir_Morpho`, so each domain needs
+# the shared rasters beside its own dem.asc. Files are listed rather than
+# globbed so an unrelated file in data/master never leaks into a domain, and
+# they are grouped so that a group with several spellings -- v5 writes a soil
+# class raster where v6 writes a horizon cube -- only counts as missing when
+# none of them is there. Land cover, LAI, and idgauges are absent on purpose:
+# the namelist points every domain at the shared copy under data/master.
+DOMAIN_INPUT_GROUPS = (
+    ("slope", ("slope.asc",)),
+    ("aspect", ("aspect.asc",)),
+    ("flow accumulation", ("facc.asc",)),
+    ("flow direction", ("fdir.asc",)),
+    ("soil class", ("soil_class.asc", "soil_horizon_class.nc")),
+    (
+        "soil class definition",
+        ("soil_classdefinition.txt", "soil_classdefinition_iFlag_soilDB_1.txt"),
+    ),
+    ("geology class", ("geology_class.asc",)),
+    ("geology class definition", ("geology_classdefinition.txt",)),
+)
+DOMAIN_INPUT_NAMES = tuple(
+    name for _label, names in DOMAIN_INPUT_GROUPS for name in names
+)
+SIDECAR_SUFFIXES = (".prj",)
+
+
+def copy_master_inputs(project_folder, directory, log=None) -> list[Path]:
+    """Copy the shared morphology inputs from data/master into one domain.
+
+    Run this after `advanced_l0.publish_model_inputs`: an advanced or
+    mHM-ready soil, geology, or land-cover raster only reaches data/master at
+    publication, so copying earlier would silently find nothing. An unchanged
+    destination is left alone, so re-running Morphology Setup does not recopy
+    gigabytes.
+    """
+    master = Path(morph_folder(project_folder))
+    destination = Path(directory)
+    destination.mkdir(parents=True, exist_ok=True)
+    copied: list[Path] = []
+    absent: list[str] = []
+
+    for label, names in DOMAIN_INPUT_GROUPS:
+        present = [master / name for name in names if (master / name).is_file()]
+        if not present:
+            absent.append(label)
+            continue
+        candidates = list(present)
+        candidates.extend(
+            source.with_suffix(suffix)
+            for source in present
+            for suffix in SIDECAR_SUFFIXES
+        )
+        for source in candidates:
+            if not source.is_file():
+                continue
+            target = destination / source.name
+            if _already_copied(source, target):
+                continue
+            temporary = target.with_name(f".{target.name}.tmp")
+            temporary.unlink(missing_ok=True)
+            try:
+                shutil.copyfile(source, temporary)
+                os.replace(temporary, target)
+            except BaseException:
+                temporary.unlink(missing_ok=True)
+                raise
+            copied.append(target)
+    if log:
+        log(
+            f"Copied {len(copied)} shared morphology file(s) into "
+            f"{destination}."
+        )
+        if absent:
+            # A silent skip once left every domain with only its dem.asc, so
+            # name what data/master could not supply.
+            log(
+                f"WARNING: {master} has no "
+                + ", ".join(absent)
+                + f"; {destination.name} will run without it."
+            )
+    return copied
+
+
+def _already_copied(source: Path, target: Path) -> bool:
+    """Return True when the destination already holds this exact content."""
+    if not target.is_file():
+        return False
+    source_stat, target_stat = source.stat(), target.stat()
+    return (
+        source_stat.st_size == target_stat.st_size
+        and target_stat.st_mtime_ns >= source_stat.st_mtime_ns
+    )
 
 
 def domain_dem_plan(project_folder) -> list[dict[str, Any]]:
@@ -96,10 +195,21 @@ def write_domain_dems(
             polygon,
             reference_path=reference_path,
         )
+        entry["copied"] = [
+            str(path)
+            for path in copy_master_inputs(
+                project_folder, entry["directory"], log=log)
+        ]
         written.append(entry)
         if log:
             log(f"Domain {entry['name']} DEM written: {entry['dem_path']}")
     return written
 
 
-__all__ = ["domain_dem_plan", "write_domain_dems"]
+__all__ = [
+    "DOMAIN_INPUT_GROUPS",
+    "DOMAIN_INPUT_NAMES",
+    "copy_master_inputs",
+    "domain_dem_plan",
+    "write_domain_dems",
+]

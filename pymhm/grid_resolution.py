@@ -13,6 +13,12 @@ from .project_layout import geometry_folder, meteo_folder
 
 METEO_GRID_METADATA = "meteo_grid_metadata.json"
 NODATA_VALUE = -9999.0
+# Expanding a layer onto the common L0 extent must not punch nodata holes into
+# the model domain: mHM needs a usable value in every cell it reads inside the
+# watershed. The geometric pad therefore uses a valid value instead of
+# NODATA_VALUE. Masking still writes NODATA_VALUE outside the watershed.
+CATEGORICAL_PAD_VALUE = 1
+LAI_PAD_VALUE = 0.0
 PROJECTED_CELLSIZE_PRECISION = 8
 GEOGRAPHIC_CELLSIZE_PRECISION = 8
 

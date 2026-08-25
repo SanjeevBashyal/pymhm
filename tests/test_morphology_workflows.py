@@ -183,13 +183,15 @@ def test_combined_setup_runs_finalization_in_order(tmp_path):
         show_error_dialog=False,
         workflow_key="meteo_morph_setup",
     )
+    # Publish runs before the domain DEMs so the staged advanced inputs are
+    # already in data/master when each domain folder is filled.
     assert workflow.calls == [
         "crop",
         "mask",
         "latlon",
         "write",
-        "domain_dems",
         "align_advanced",
+        "domain_dems",
     ]
     assert workflow.statuses[-1][:2] == (
         "meteo_morph_setup",
@@ -228,8 +230,8 @@ def test_each_morph_setup_step_records_its_status(tmp_path):
         "meteo_morph_setup_mask",
         "meteo_morph_setup_latlon",
         "meteo_morph_setup_write",
-        "meteo_morph_setup_domain_dems",
         "meteo_morph_setup_publish",
+        "meteo_morph_setup_domain_dems",
     ]
     # Every step is marked running before it is marked completed.
     for step in steps:

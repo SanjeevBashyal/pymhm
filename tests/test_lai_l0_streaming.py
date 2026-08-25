@@ -15,6 +15,7 @@ standalone_qgis.install(force=True)
 from pymhm.Morphology.layers.lai_l0 import (  # noqa: E402
     CHUNK_ROWS,
     NODATA,
+    PAD_VALUE,
     ResampleSampler,
     WindowSampler,
     block_row_count,
@@ -300,7 +301,7 @@ def test_window_offsets_reject_a_grid_that_would_need_resampling():
 
 
 def test_window_copy_pads_outside_the_source_and_keeps_values(tmp_path):
-    """The crop stage copies cells verbatim and pads the expansion with nodata."""
+    """The crop stage copies cells verbatim and pads the expansion with 0 LAI."""
     from netCDF4 import Dataset
 
     staged = tmp_path / "lai_dem.nc"
@@ -344,10 +345,12 @@ def test_window_copy_pads_outside_the_source_and_keeps_values(tmp_path):
         placed = result["lai"].values
     assert placed.shape == (2, 5, 6)
     np.testing.assert_array_equal(placed[:, 1:4, 1:5], values)
-    assert np.all(placed[:, 0, :] == NODATA)
-    assert np.all(placed[:, 4, :] == NODATA)
-    assert np.all(placed[:, :, 0] == NODATA)
-    assert np.all(placed[:, :, 5] == NODATA)
+    # Widening the extent must not create nodata holes inside the domain.
+    assert PAD_VALUE != NODATA
+    assert np.all(placed[:, 0, :] == PAD_VALUE)
+    assert np.all(placed[:, 4, :] == PAD_VALUE)
+    assert np.all(placed[:, :, 0] == PAD_VALUE)
+    assert np.all(placed[:, :, 5] == PAD_VALUE)
 
 
 def _dem_raster(path, ncols=6, nrows=4, cell=0.5, xmin=99.0, ymax=31.0):
@@ -444,3 +447,76 @@ def test_a_cancelled_task_stops_the_stream_and_leaves_no_output(tmp_path):
             "target_timestep": "Long Term Mean Monthly Gridded Data",
         }, task=_Cancelled())
     assert not output.exists()
+
+
+def test_blank_cells_are_filled_with_zero_when_asked(tmp_path):
+    """Execute All fills gaps with 0: no leaf area is zero, not missing."""
+    values = _source_values()
+    values[:, 0, 0] = np.nan          # lat 10 / lon 100 missing in every step
+    x_centers = np.array([100.0])     # exactly on the missing source cell
+    y_centers = np.array([10.0])
+
+    def row_lonlat(start, stop):
+        rows = y_centers[start:stop]
+        return (
+            np.broadcast_to(x_centers, (rows.size, 1)),
+            np.repeat(rows[:, None], 1, axis=1),
+        )
+
+    def write(blank_fill):
+        return stream_lai_grid(
+            tmp_path / f"lai_{blank_fill}.nc",
+            coordinate_dataset=_coordinates(x_centers, y_centers),
+            sampler=ResampleSampler(
+                values, SOURCE_LAT, SOURCE_LON,
+                method="bilinear", blank_fill=blank_fill,
+            ),
+            x_centers=x_centers,
+            y_centers=y_centers,
+            row_lonlat=row_lonlat,
+        )
+
+    with xr.open_dataset(write(0.0)) as result:
+        assert np.all(result["lai"].values == 0.0)
+    # Without the fill the same cell stays missing, so the fill is what changed it.
+    with xr.open_dataset(write(None), mask_and_scale=False) as result:
+        assert np.all(np.isnan(result["lai"].values))
+
+
+def test_the_fill_leaves_real_values_untouched(tmp_path):
+    values = _source_values()
+    values[0, 0, 0] = np.nan
+    x_centers = np.array([100.0, 110.0])
+    y_centers = np.array([10.0])
+
+    def row_lonlat(start, stop):
+        rows = y_centers[start:stop]
+        return (
+            np.broadcast_to(x_centers, (rows.size, 2)),
+            np.repeat(rows[:, None], 2, axis=1),
+        )
+
+    path = stream_lai_grid(
+        tmp_path / "lai.nc",
+        coordinate_dataset=_coordinates(x_centers, y_centers),
+        sampler=ResampleSampler(
+            values, SOURCE_LAT, SOURCE_LON, method="nearest", blank_fill=0.0),
+        x_centers=x_centers,
+        y_centers=y_centers,
+        row_lonlat=row_lonlat,
+    )
+    with xr.open_dataset(path) as result:
+        first = result["lai"].values[0, 0]
+    # Only the missing cell became 0; its neighbour kept its value.
+    assert first[0] == 0.0
+    assert first[1] == 12.0
+
+
+def test_the_resample_stage_fills_blanks_with_zero_by_default():
+    """`run_lai_resample` is the Execute All entry point, so 0 is its default."""
+    import inspect
+
+    from pymhm.Morphology.layers import lai_source
+
+    source = inspect.getsource(lai_source.run_lai_resample)
+    assert 'blank_fill=options.get("blank_fill", 0.0)' in source

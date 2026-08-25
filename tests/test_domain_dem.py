@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -225,3 +226,159 @@ def test_the_state_records_the_domain_plan(tmp_path):
 
     assert state.saved_domain_plan() == plan
     assert load_state(tmp_path)["domains"] == plan
+
+
+def _master_inputs(project, names):
+    from pymhm.project_layout import morph_folder
+
+    master = Path(morph_folder(project))
+    master.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        (master / name).write_text(f"content of {name}\n", encoding="utf-8")
+    return master
+
+
+def test_the_shared_morphology_inputs_are_copied_into_the_domain(tmp_path):
+    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+
+    _master_inputs(tmp_path, (
+        "slope.asc", "slope.prj", "aspect.asc", "facc.asc", "fdir.asc",
+        "soil_class.asc", "soil_classdefinition.txt",
+        "geology_class.asc", "geology_classdefinition.txt",
+        # Not requested for domains, so it must stay behind.
+        "lc_2015_2015.asc", "idgauges.asc", "dem.asc",
+    ))
+    domain = tmp_path / "data" / "280"
+
+    copied = copy_master_inputs(tmp_path, domain)
+
+    names = sorted(path.name for path in copied)
+    assert names == [
+        "aspect.asc", "facc.asc", "fdir.asc", "geology_class.asc",
+        "geology_classdefinition.txt", "slope.asc", "slope.prj",
+        "soil_class.asc", "soil_classdefinition.txt",
+    ]
+    # Class definitions travel with their raster.
+    assert (domain / "soil_classdefinition.txt").read_text(
+        encoding="utf-8") == "content of soil_classdefinition.txt\n"
+    # The domain keeps its own dem.asc; master's is not copied over it.
+    assert not (domain / "dem.asc").exists()
+    assert not (domain / "lc_2015_2015.asc").exists()
+    assert not (domain / "idgauges.asc").exists()
+
+
+def test_recopying_is_skipped_when_the_destination_is_current(tmp_path):
+    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+
+    _master_inputs(tmp_path, ("slope.asc",))
+    domain = tmp_path / "data" / "280"
+
+    assert [p.name for p in copy_master_inputs(tmp_path, domain)] == ["slope.asc"]
+    # Nothing changed, so a rerun copies nothing -- these files are gigabytes.
+    assert copy_master_inputs(tmp_path, domain) == []
+
+
+def test_an_updated_master_file_is_recopied(tmp_path):
+    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+
+    master = _master_inputs(tmp_path, ("slope.asc",))
+    domain = tmp_path / "data" / "280"
+    copy_master_inputs(tmp_path, domain)
+
+    source = master / "slope.asc"
+    source.write_text("regenerated slope\n", encoding="utf-8")
+    stamp = (domain / "slope.asc").stat().st_mtime + 10
+    os.utime(source, (stamp, stamp))
+
+    assert [p.name for p in copy_master_inputs(tmp_path, domain)] == ["slope.asc"]
+    assert (domain / "slope.asc").read_text(encoding="utf-8") == "regenerated slope\n"
+
+
+def test_v6_soil_names_are_copied_when_present(tmp_path):
+    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+
+    _master_inputs(tmp_path, (
+        "soil_horizon_class.nc", "soil_classdefinition_iFlag_soilDB_1.txt",
+    ))
+    copied = copy_master_inputs(tmp_path, tmp_path / "data" / "280")
+
+    assert sorted(path.name for path in copied) == [
+        "soil_classdefinition_iFlag_soilDB_1.txt", "soil_horizon_class.nc",
+    ]
+
+
+def test_missing_master_files_are_simply_skipped(tmp_path):
+    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+
+    assert copy_master_inputs(tmp_path, tmp_path / "data" / "280") == []
+
+
+def test_what_master_could_not_supply_is_logged(tmp_path):
+    """A silent skip once left every domain holding only its dem.asc."""
+    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+
+    _master_inputs(tmp_path, ("slope.asc",))
+    messages = []
+
+    copy_master_inputs(tmp_path, tmp_path / "data" / "280", log=messages.append)
+
+    reported = "\n".join(messages)
+    assert "soil class" in reported
+    assert "geology class" in reported
+
+
+def test_one_spelling_of_a_group_is_enough_to_stay_quiet(tmp_path):
+    """v5 soil files must not be reported as missing just because v6's are."""
+    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+
+    _master_inputs(tmp_path, (
+        "slope.asc", "aspect.asc", "facc.asc", "fdir.asc",
+        "soil_class.asc", "soil_classdefinition.txt",
+        "geology_class.asc", "geology_classdefinition.txt",
+    ))
+    messages = []
+
+    copy_master_inputs(tmp_path, tmp_path / "data" / "280", log=messages.append)
+
+    assert not [line for line in messages if line.startswith("WARNING")]
+
+
+def test_a_published_advanced_soil_raster_reaches_the_domain(tmp_path):
+    """Publish runs first, so its output is in data/master by the copy step.
+
+    An advanced or mHM-ready soil raster sits in the staging folder until
+    `publish_model_inputs` moves it, so copying before that step silently gave
+    every domain a bare dem.asc.
+    """
+    from pymhm.Morphology.layers.advanced_l0 import publish_model_inputs
+    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+    from pymhm.project_layout import morph_staging_folder
+
+    staging = Path(morph_staging_folder(tmp_path))
+    staging.mkdir(parents=True, exist_ok=True)
+    (staging / "soil_class.asc").write_text(
+        "ncols         2\nnrows         2\nxllcorner     100.0\n"
+        "yllcorner     100.0\ncellsize      100.0\nNODATA_value  -9999\n"
+        "1 2\n3 4\n",
+        encoding="utf-8",
+    )
+    (staging / "soil_classdefinition.txt").write_text("1 sand\n", encoding="utf-8")
+    domain = tmp_path / "data" / "280"
+    target = {
+        "ncols": 4, "nrows": 4, "xllcorner": 0.0, "yllcorner": 0.0,
+        "cellsize": 100.0, "unit": "m", "nodata_value": -9999.0,
+    }
+
+    # Nothing has been published yet, so nothing can be copied.
+    assert copy_master_inputs(tmp_path, domain) == []
+
+    publish_model_inputs(tmp_path, target)
+    copied = copy_master_inputs(tmp_path, domain)
+
+    assert sorted(path.name for path in copied) == [
+        "soil_class.asc", "soil_classdefinition.txt",
+    ]
+    # The domain gets the copy that was padded onto the common L0 grid.
+    assert read_ascii_header(domain / "soil_class.asc")["ncols"] == 4
+    assert (domain / "soil_classdefinition.txt").read_text(
+        encoding="utf-8") == "1 sand\n"

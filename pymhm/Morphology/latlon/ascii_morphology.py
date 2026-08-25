@@ -165,7 +165,6 @@ def align_dataset_to_header(
         nodata_value: float | int = -9999,
         integer: bool = False):
     """Return a dataset sampled on the exact grid described by ``header``."""
-    import numpy as np
     import xarray as xr
     from mhm_tools.common.xarray_utils import get_coord_key, get_single_data_var
 
@@ -184,10 +183,21 @@ def align_dataset_to_header(
     target_x, target_y = _target_coordinates(header)
     da = source[var_name]
     da = _drop_singleton_non_spatial_dims(da, x_key, y_key)
-    aligned = da.interp(
+    # Sample by nearest label, not by interpolation. The source y-centres come
+    # from the GDAL geotransform (top-down) while _target_coordinates builds
+    # them bottom-up: algebraically equal, ~3.6e-15 apart in float64. interp()
+    # has no extrapolation domain, so that one ulp put the bottom row outside it
+    # and _apply_nodata turned the resulting NaN into nodata -- an all-nodata
+    # last row in every written layer. interp() also framed a genuinely coarser
+    # source in nodata. sel() snaps to the nearest label and has no domain.
+    # float64 is the input contract _apply_nodata already gets from
+    # pad_dataset_to_header; interp() used to provide it by upcasting.
+    aligned = da.sel(
         {x_key: target_x, y_key: target_y},
         method="nearest",
-    )
+    ).astype("float64")
+    # sel() returns the source labels, so this restores the exact header
+    # coordinates that the written ASCII header is derived from. Load-bearing.
     aligned = aligned.assign_coords({
         x_key: xr.DataArray(
             target_x,
@@ -215,12 +225,14 @@ def pad_dataset_to_header(
         header: Mapping[str, Any],
         data_var: str | None = None,
         nodata_value: float | int = -9999,
-        integer: bool = False):
-    """Return a dataset placed on ``header`` by exact cell lookup, padded with nodata.
+        integer: bool = False,
+        pad_value: float | int | None = None):
+    """Return a dataset placed on ``header`` by exact cell lookup, padded out.
 
     Unlike :func:`align_dataset_to_header` this never resamples. The source must
-    already sit on the header cell grid; cells outside it receive ``nodata_value``.
-    Non-spatial dimensions such as time or soil horizon are preserved.
+    already sit on the header cell grid; cells outside it receive ``pad_value``,
+    or ``nodata_value`` when no pad value is given. Non-spatial dimensions such
+    as time or soil horizon are preserved.
     """
     from mhm_tools.common.xarray_utils import get_coord_key, get_single_data_var
 
@@ -241,7 +253,7 @@ def pad_dataset_to_header(
         x_key,
         y_key,
         header,
-        fill_value=float(nodata_value),
+        fill_value=float(nodata_value if pad_value is None else pad_value),
     )
     padded = _apply_nodata(padded, nodata_value, integer)
     if (
@@ -261,8 +273,13 @@ def pad_l0_file_to_header(
         *,
         data_var: str | None = None,
         nodata_value: float | int = -9999,
-        integer: bool = False) -> Path:
-    """Rewrite a model-ready raster onto the exact L0 header without resampling."""
+        integer: bool = False,
+        pad_value: float | int | None = None) -> Path:
+    """Rewrite a model-ready raster onto the exact L0 header without resampling.
+
+    Cells the source does not cover take ``pad_value``; the declared nodata
+    stays ``nodata_value`` regardless.
+    """
     path = Path(path)
     header = _standardize_header(header)
     if path.suffix.lower() == ".asc":
@@ -270,7 +287,7 @@ def pad_l0_file_to_header(
         # Loading one costs gigabytes: 3.2 GiB for a 13201 x 6001 soil raster.
         from .ascii_pad import pad_ascii_grid
 
-        return pad_ascii_grid(path, header, nodata=nodata_value)
+        return pad_ascii_grid(path, header, nodata=nodata_value, pad=pad_value)
     dataset = _read_raster(path, data_var)
     if _grid_matches_header(dataset, header):
         return path
@@ -281,6 +298,7 @@ def pad_l0_file_to_header(
         data_var=data_var,
         nodata_value=nodata_value,
         integer=integer,
+        pad_value=pad_value,
     )
     temporary = path.with_name(f".{path.name}.tmp{path.suffix or '.nc'}")
     temporary.unlink(missing_ok=True)

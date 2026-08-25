@@ -86,11 +86,13 @@ def _format_header(target: Mapping[str, Any], nodata) -> str:
     )
 
 
-def pad_ascii_grid(path, target: Mapping[str, Any], nodata=-9999) -> Path:
+def pad_ascii_grid(path, target: Mapping[str, Any], nodata=-9999, pad=None) -> Path:
     """Pad an ASCII grid onto ``target`` in place, streaming row by row.
 
     Returns the path unchanged when the grid already matches the target. Cells
-    outside the source extent become ``nodata``.
+    outside the source extent become ``pad``, or ``nodata`` when no pad value
+    is given. ``nodata`` stays the declared NODATA_value either way, so a class
+    layer can be padded with a valid class without redefining its nodata.
     """
     path = Path(path)
     source = read_ascii_header(path)
@@ -114,7 +116,7 @@ def pad_ascii_grid(path, target: Mapping[str, Any], nodata=-9999) -> Path:
             "expands, it never crops."
         )
 
-    text = str(nodata)
+    text = str(nodata if pad is None else pad)
     left = f"{text} " * column_offset
     right = f" {text}" * (target_columns - column_offset - source_columns)
     blank = " ".join([text] * target_columns)

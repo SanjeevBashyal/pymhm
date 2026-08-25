@@ -80,13 +80,27 @@ Important packages:
 - Never shift or shrink a misaligned boundary; expand it outward only.
 - Prepared L0 rasters are never resampled. `file_tasks.crop_aligned_l0_raster()`
   and `file_tasks.mask_aligned_l0_raster()` copy integer windows, pad outside
-  the source with nodata, and raise on a misaligned or wrong-CRS input. Do not
-  reintroduce `gdal:warpreproject` or `gdal:cliprasterbymasklayer` here.
+  the source, and raise on a misaligned or wrong-CRS input. Do not reintroduce
+  `gdal:warpreproject` or `gdal:cliprasterbymasklayer` here.
+- **A class layer must never carry nodata.** Two rules follow from that, both
+  declared per layer in `masking._collect_layers_to_crop`:
+  - The geometric pad is separate from the declared nodata. `pad_value` fills
+    the cells the source does not reach; the band nodata stays `-9999`. Land
+    cover, soil, and geology pad with `grid_resolution.CATEGORICAL_PAD_VALUE`
+    (`1`) and LAI with `LAI_PAD_VALUE` (`0.0`). The DEM derivatives (dem,
+    slope, aspect, facc, fdir, idgauges) still pad with nodata. The publish
+    path takes the same values from `advanced_l0.pad_spec_for`.
+  - **Only the DEM derivatives are watershed-masked.** Land cover, soil,
+    geology, and LAI keep the full model extent: `mask_all_layers` writes their
+    `_masked.tif` as a straight `crop_aligned_l0_raster` copy of the crop, and
+    `mask_lai_netcdf_to_l0` copies `lai_crop.nc` to `lai.nc` with no mask. The
+    `_masked` name is kept because `write_all_layers` keys on it. Masking them
+    would carve nodata into cells mHM reads, which is a hole, not a boundary.
 - Advanced historical land cover and multi-horizon soil are formatted on the
   filled-DEM grid and then placed on the common L0 header by
   `Morphology/layers/advanced_l0.py`, which uses
-  `ascii_morphology.pad_l0_file_to_header()` (cell lookup plus nodata padding,
-  never interpolation). This is Morphology Setup step 5/5.
+  `ascii_morphology.pad_l0_file_to_header()` (cell lookup plus padding, never
+  interpolation). This is Morphology Setup step 5/6.
 - **ASCII grids are padded by streaming text**, in
   `Morphology/latlon/ascii_pad.py`. Loading one to pad it costs gigabytes:
   measured at 3238 MiB for a 13201 x 6001 soil class raster, which is why soil
@@ -119,13 +133,27 @@ Important packages:
   `data/master/observation/streamflow`.
 - **Domain DEMs are written during Morphology Setup, not at delineation.**
   Delineation records each domain's polygon and its target `data/<name>/dem.asc`
-  in `pymhm_processing_state.json` under `domains`; step 5/6
+  in `pymhm_processing_state.json` under `domains`; step 6/6
   (`write_domain_dems_to_l0` -> `layers/domain_dem.py`) then masks the *cropped*
   L0 DEM with each polygon and writes the ASCII. Every domain therefore shares
   the common L0 extent and matches the other inputs cell for cell, which is what
   mHM needs. Cropping each domain to its own bounding box produced mismatched
   matrices -- measured on one project: 3748x2824, 974x895 and 13202x6002 against
   a common grid of 13320x6120.
+- Each domain folder also receives the shared morphology inputs listed in
+  `DOMAIN_INPUT_NAMES` (slope, aspect, facc, fdir, soil class, geology class and
+  their class-definition files, plus `.prj` sidecars), because mHM reads
+  morphology per domain from `dir_Morpho`. Unchanged destinations are skipped so
+  a rerun does not recopy. The list is explicit rather than a glob so nothing
+  unrelated leaks out of `data/master`; `dem.asc` is excluded because each domain
+  writes its own, and land cover, LAI, and `idgauges.asc` are excluded because
+  the namelist points every domain at the shared copy instead.
+- **This is why Publish runs before Write Domain DEMs.** An advanced or
+  mHM-ready soil, geology, or land-cover raster stays in `Z Temp/Morphology/morph`
+  until `publish_model_inputs` moves it into `data/master`, so copying first
+  found nothing and left every domain with a bare `dem.asc` -- and found it
+  silently. `copy_master_inputs` now logs what `data/master` could not supply.
+  Do not move `domain_dems` back ahead of `publish`.
 - `file_tasks.write_domain_dem_ascii()` streams rows straight to text, so a
   domain DEM costs flat memory whatever the grid size. Do not reintroduce
   `materialize_domain_dem_file` into the delineation path; it crops to the
@@ -142,7 +170,7 @@ Important packages:
   `Z Temp/Morphology/morph` (`morph_staging_folder`), never straight into
   `data/master`. Nothing is model-ready until the common L0 extent is known, and
   that only happens once meteorology has fixed the L2 grid.
-- Morphology Setup step 5/5 (`align_advanced_inputs_to_l0` ->
+- Morphology Setup step 5/6 (`align_advanced_inputs_to_l0` ->
   `advanced_l0.publish_model_inputs`) pads each staged raster onto the L0 header,
   moves the whole staged set into `data/master/static/morph` (class definitions
   and `.prj` sidecars included), and rewrites the `output_path` /
@@ -230,6 +258,11 @@ Important packages:
   `ExecuteAllMixin.execute_all_processing()` is the synchronous twin and is not
   reachable from the UI. A stage added only to the mixin silently never runs --
   that is exactly how the LAI stage was missed. Add stages to both.
+- The Execute All resample fills cells the source cannot supply with **0** via
+  `ResampleSampler(blank_fill=...)`: a missing leaf area is none, not a gap.
+  `WindowSampler(pad_value=...)` pads beyond the staged extent with the same
+  **0** for the same reason. LAI is not watershed-masked at all, so `-9999`
+  should not appear in a published LAI cube.
 - LAI follows the same two-stage path as every other layer:
   - **Execute All step 7/15** (`resample_lai_to_dem_grid`, bridge stage
     `start_lai`) resamples the source
@@ -237,8 +270,9 @@ Important packages:
     `Z Temp/Morphology/lai/lai_dem.nc`. The result has exactly the DEM's size
     and extent.
   - **Morphology Setup** then reaches the common L0 extent by integer **window
-    copy** with nodata padding (`crop_lai_netcdf_to_l0`), and masks the same way
-    (`mask_lai_netcdf_to_l0`). Neither stage resamples.
+    copy** padded with `0` (`crop_lai_netcdf_to_l0`); the mask hook
+    (`mask_lai_netcdf_to_l0`) publishes that crop as `lai.nc` unmasked. Neither
+    stage resamples.
   Keep the resampling in Execute All: changing the L2 multiplier must not force
   a re-resample, only a re-crop.
 - `Morphology/layers/lai_source.py` is the QGIS-free LAI pipeline over paths and
@@ -252,8 +286,8 @@ Important packages:
   13320 x 6120 grid is 284 GiB, and the two 2-D coordinate arrays alone are
   652 MiB each. Measured on that grid: ~370 MiB peak, about 70:1 compression.
 - The stages differ only in their sampler: `ResampleSampler` (bilinear or
-  nearest, by lon/lat lookup) and `WindowSampler` (integer window, nodata
-  padding). `lai_window_offsets()` validates the cell size and alignment first
+  nearest, by lon/lat lookup) and `WindowSampler` (integer window, padded with
+  `PAD_VALUE`). `lai_window_offsets()` validates the cell size and alignment first
   and raises rather than silently shifting the data.
 - Bilinear renormalises over the finite corners, so one missing source cell
   does not poison its neighbours.
@@ -271,12 +305,12 @@ Important packages:
   on a 13320 x 6120 grid is ~158 GiB per file, and the pipeline writes three
   (`lai_dem.nc`, `lai_crop.nc`, `lai.nc`). Check the numbers before assuming a
   long record is feasible; the 12-step long-term-mean option is ~4 GiB per file.
-- `lai.nc` is the published masked file; `lai_masked.nc` is not written, because
-  a second full-size copy costs disk for no benefit.
+- `lai.nc` is the published file; `lai_masked.nc` is not written, because a
+  second full-size copy costs disk for no benefit.
 - `assert_lai_output_fits()` is a disk check, not a memory check: memory is
   bounded by the writer. `PYMHM_LAI_MAX_BYTES` overrides it.
 - LAI is a 3D monthly array: 12 months plus spatial dimensions.
-- Crop/mask operations must apply to all months.
+- Crop operations must apply to all months.
 - LAI output NetCDF data must be double precision (`float64`).
 - Write the L0 header for LAI to `data/lai/header.txt`.
 

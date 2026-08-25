@@ -12,6 +12,7 @@ from pymhm import standalone_qgis
 
 standalone_qgis.install(force=True)
 
+from pymhm.grid_resolution import CATEGORICAL_PAD_VALUE  # noqa: E402
 from pymhm.Morphology.file_tasks import (  # noqa: E402
     crop_aligned_l0_raster,
     delineate_domains_file,
@@ -66,6 +67,39 @@ def test_aligned_l0_crop_preserves_values_and_pads_with_nodata(tmp_path):
     np.testing.assert_array_equal(values[1:11, 1:11], source_values)
     assert np.all(values[0] == -9999)
     assert np.all(values[:, 0] == -9999)
+
+
+def test_aligned_l0_crop_pads_class_layers_with_a_valid_class(tmp_path):
+    """A pad value fills the expansion while the band nodata stays -9999."""
+    source = tmp_path / "land_use.tif"
+    output = tmp_path / "crop.tif"
+    _dem(source)
+
+    crop_aligned_l0_raster(
+        source,
+        output,
+        {
+            "ncols": 12,
+            "nrows": 12,
+            "xllcorner": -100.0,
+            "yllcorner": -100.0,
+            "cellsize": 100.0,
+            "nodata_value": -9999.0,
+        },
+        reference_path=source,
+        pad_value=CATEGORICAL_PAD_VALUE,
+    )
+
+    source_values = gdal.Open(str(source)).ReadAsArray()
+    result = gdal.Open(str(output))
+    values = result.ReadAsArray()
+    np.testing.assert_array_equal(values[1:11, 1:11], source_values)
+    assert np.all(values[0] == CATEGORICAL_PAD_VALUE)
+    assert np.all(values[11] == CATEGORICAL_PAD_VALUE)
+    assert np.all(values[:, 0] == CATEGORICAL_PAD_VALUE)
+    assert np.all(values[:, 11] == CATEGORICAL_PAD_VALUE)
+    # The declared nodata is untouched; only the geometric pad changed.
+    assert result.GetRasterBand(1).GetNoDataValue() == -9999
 
 
 def _polygon(path, xmin, xmax, ymin, ymax):

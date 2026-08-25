@@ -15,6 +15,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Mapping
 
+from ...grid_resolution import CATEGORICAL_PAD_VALUE, LAI_PAD_VALUE
 from ...nml_settings import load_settings, relative_workspace_path, save_settings
 from ...project_layout import morph_folder, morph_staging_folder, workspace_folder
 from ..latlon.ascii_morphology import pad_l0_file_to_header
@@ -26,6 +27,30 @@ RASTER_SUFFIXES = {".asc", ".nc"}
 CARRIED_SUFFIXES = {".txt", ".prj", ".xml", ".cpg", ".csv"}
 PATH_KEYS = ("output_path", "classdefinition_path")
 SECTIONS = ("land_cover", "soil", "geology")
+# Staged rasters are named after their model input, so the file name is what
+# tells us how to pad them: (name prefixes, pad value, integer output).
+PAD_SPECS = (
+    (
+        ("lc", "land_cover", "land_use", "landuse", "soil", "geology"),
+        CATEGORICAL_PAD_VALUE,
+        True,
+    ),
+    (("lai",), LAI_PAD_VALUE, False),
+)
+
+
+def pad_spec_for(path: Path) -> tuple[float | int | None, bool]:
+    """Return the pad value and integer flag for one staged raster.
+
+    Class layers pad with a valid class and LAI with a valid leaf area index;
+    padding them with nodata would leave cells mHM cannot read inside the
+    model domain. Anything unrecognised keeps the historical nodata padding.
+    """
+    stem = path.stem.lower()
+    for prefixes, pad_value, integer in PAD_SPECS:
+        if stem.startswith(prefixes):
+            return pad_value, integer
+    return None, True
 
 
 def staged_files(project_folder) -> list[Path]:
@@ -53,9 +78,20 @@ def publish_model_inputs(
     for path in staged_files(project_folder):
         suffix = path.suffix.lower()
         if suffix in RASTER_SUFFIXES:
-            pad_l0_file_to_header(path, l0_header, nodata_value=-9999, integer=True)
+            pad_value, integer = pad_spec_for(path)
+            pad_l0_file_to_header(
+                path,
+                l0_header,
+                nodata_value=-9999,
+                integer=integer,
+                pad_value=pad_value,
+            )
             if log:
-                log(f"{path.name} placed on the common L0 grid.")
+                padding = "nodata" if pad_value is None else str(pad_value)
+                log(
+                    f"{path.name} placed on the common L0 grid "
+                    f"(padded with {padding})."
+                )
         elif suffix not in CARRIED_SUFFIXES:
             if log:
                 log(f"Skipping unexpected staged file: {path.name}")
@@ -153,6 +189,7 @@ def missing_model_inputs(project_folder) -> list[str]:
 
 __all__ = [
     "missing_model_inputs",
+    "pad_spec_for",
     "publish_model_inputs",
     "staged_files",
 ]

@@ -198,7 +198,10 @@ def _gauge_values(settings: dict[str, Any], count: int) -> dict[str, Any]:
         [item[1] for item in row] + [""] * (200 - len(row)) for row in rows
     ]
     return {
-        "nGaugesTotal": len({item[0] for row in rows for item in row}),
+        # mHM reads nGaugesTotal as the "sum of all gauges in all subbains", so a
+        # gauge shared by several domains counts once per domain. Counting distinct
+        # gauge ids instead undersizes the gauge arrays mHM allocates from it.
+        "nGaugesTotal": sum(len(row) for row in rows),
         "NoGauges_domain": [len(row) for row in rows],
         "Gauge_id": identifiers,
         "gauge_filename": filenames,

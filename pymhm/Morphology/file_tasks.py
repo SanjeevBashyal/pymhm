@@ -167,8 +167,15 @@ def _copy_aligned_l0_raster(
         target_header,
         reference_path=None,
         mask=None,
+        pad_value=None,
         task=None):
-    """Window-copy an aligned L0 raster, padding and optionally masking with nodata."""
+    """Window-copy an aligned L0 raster, padding it and optionally masking it.
+
+    ``pad_value`` is written to the cells the source window does not reach and
+    defaults to the band nodata. Categorical layers pass a valid class instead,
+    so expanding a layer to the common extent never leaves nodata inside the
+    model domain. Masked cells always keep the band nodata.
+    """
     np, _pfd, _affine, gdal, _ogr, _osr = _dependencies()
     source = gdal.Open(str(source_path), gdal.GA_ReadOnly)
     if source is None:
@@ -215,7 +222,7 @@ def _copy_aligned_l0_raster(
             if nodata is None:
                 nodata = float(target_header.get("nodata_value", -9999.0))
             target_band.SetNoDataValue(float(nodata))
-            target_band.Fill(float(nodata))
+            target_band.Fill(float(nodata if pad_value is None else pad_value))
             if copy_cols > 0 and copy_rows > 0:
                 block_rows = min(512, copy_rows)
                 for row in range(0, copy_rows, block_rows):
@@ -253,13 +260,19 @@ def crop_aligned_l0_raster(
         target_header,
         *,
         reference_path=None,
+        pad_value=None,
         task=None):
-    """Window-copy an aligned L0 raster and pad outside its extent with nodata."""
+    """Window-copy an aligned L0 raster and pad outside its extent.
+
+    Cells beyond the source extent take ``pad_value``, or the band nodata when
+    no pad value is given.
+    """
     return _copy_aligned_l0_raster(
         source_path,
         output_path,
         target_header,
         reference_path=reference_path,
+        pad_value=pad_value,
         task=task,
     )
 
@@ -298,8 +311,13 @@ def mask_aligned_l0_raster(
         mask_vector,
         *,
         reference_path=None,
+        pad_value=None,
         task=None):
-    """Apply a polygon mask to an aligned L0 raster without resampling it."""
+    """Apply a polygon mask to an aligned L0 raster without resampling it.
+
+    Cells outside the polygon become nodata; cells beyond the source extent
+    take ``pad_value`` as in :func:`crop_aligned_l0_raster`.
+    """
     _np, _pfd, _affine, gdal, _ogr, _osr = _dependencies()
     source = gdal.Open(str(source_path), gdal.GA_ReadOnly)
     if source is None:
@@ -312,6 +330,7 @@ def mask_aligned_l0_raster(
         target_header,
         reference_path=reference_path,
         mask=_rasterize_target_mask(mask_vector, target_header, projection),
+        pad_value=pad_value,
         task=task,
     )
 

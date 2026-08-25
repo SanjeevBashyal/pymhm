@@ -19,8 +19,13 @@ from pymhm.Morphology.latlon.ascii_morphology import (  # noqa: E402
 )
 from pymhm.Morphology.layers.advanced_l0 import (  # noqa: E402
     missing_model_inputs,
+    pad_spec_for,
     publish_model_inputs,
     staged_files,
+)
+from pymhm.grid_resolution import (  # noqa: E402
+    CATEGORICAL_PAD_VALUE,
+    LAI_PAD_VALUE,
 )
 from pymhm.nml_settings import update_section  # noqa: E402
 from pymhm.project_layout import (  # noqa: E402
@@ -69,6 +74,19 @@ def test_source_is_placed_on_the_expanded_extent_and_padded_with_nodata():
     outside = np.ones(values.shape, dtype=bool)
     outside[1:3, 1:3] = False
     assert np.all(values[outside] == -9999)
+
+
+def test_a_pad_value_fills_the_expansion_without_changing_the_nodata():
+    padded = pad_dataset_to_header(
+        _dataset(), L0_HEADER, integer=True, pad_value=CATEGORICAL_PAD_VALUE
+    )
+    values = padded["soil_class"].sortby("y", ascending=False).sortby("x").values
+
+    np.testing.assert_array_equal(values[1:3, 1:3], SOURCE_VALUES)
+    outside = np.ones(values.shape, dtype=bool)
+    outside[1:3, 1:3] = False
+    assert np.all(values[outside] == CATEGORICAL_PAD_VALUE)
+    assert padded["soil_class"].attrs["nodata_value"] == -9999
 
 
 def test_extra_dimensions_such_as_soil_horizons_are_preserved():
@@ -151,6 +169,33 @@ def test_rasters_are_padded_then_moved_and_definitions_carried(tmp_path):
     assert (master / "soil_classdefinition.txt").read_text(encoding="utf-8") == "1 sand\n"
     header = (master / "soil_class.asc").read_text(encoding="utf-8").splitlines()
     assert header[0].split()[1] == "4" and header[1].split()[1] == "4"
+
+
+def test_class_layers_are_padded_with_a_class_and_lai_with_zero(tmp_path):
+    """Padding onto L0 must never leave nodata inside the model domain."""
+    assert pad_spec_for(Path("lc_2015_2015.asc")) == (CATEGORICAL_PAD_VALUE, True)
+    assert pad_spec_for(Path("soil_class.asc")) == (CATEGORICAL_PAD_VALUE, True)
+    assert pad_spec_for(Path("soil_horizon_class.nc")) == (CATEGORICAL_PAD_VALUE, True)
+    assert pad_spec_for(Path("geology_class.asc")) == (CATEGORICAL_PAD_VALUE, True)
+    assert pad_spec_for(Path("lai.nc")) == (LAI_PAD_VALUE, False)
+    # An unrecognised raster keeps the historical nodata padding.
+    assert pad_spec_for(Path("dem.asc")) == (None, True)
+
+    _staged_asc(tmp_path, "soil_class.asc")
+    publish_model_inputs(tmp_path, L0_TARGET)
+
+    lines = (
+        (Path(morph_folder(tmp_path)) / "soil_class.asc")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    )
+    # The source occupies the two centre cells of the 4x4 target.
+    assert lines[5].split() == ["NODATA_value", "-9999"]
+    rows = [line.split() for line in lines[6:] if line.strip()]
+    assert rows[0] == [str(CATEGORICAL_PAD_VALUE)] * 4
+    assert rows[3] == [str(CATEGORICAL_PAD_VALUE)] * 4
+    assert rows[1] == [str(CATEGORICAL_PAD_VALUE), "1", "2", str(CATEGORICAL_PAD_VALUE)]
+    assert rows[2] == [str(CATEGORICAL_PAD_VALUE), "3", "4", str(CATEGORICAL_PAD_VALUE)]
 
 
 def test_publishing_repoints_the_namelist_handoff_at_data_master(tmp_path):

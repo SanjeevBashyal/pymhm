@@ -9,6 +9,7 @@ from ..common import (
 )
 from ..watershed.watershed_delineation import WatershedDelineationMixin
 from ...grid_resolution import (
+    CATEGORICAL_PAD_VALUE,
     header_bounds,
     l0_header_from_l2,
     validate_l0_l2_alignment,
@@ -82,6 +83,7 @@ class MaskingMixin(WatershedDelineationMixin):
                     output_path,
                     l0_header,
                     reference_path=self.filled_dem_path,
+                    pad_value=layer_info.get("pad"),
                 )
             except Exception as error:
                 self.log_message(f"ERROR: Failed to crop {layer_name}: {error}")
@@ -109,7 +111,12 @@ class MaskingMixin(WatershedDelineationMixin):
         return all_success
 
     def mask_all_layers(self, show_error_dialog=True) -> bool:
-        """Mask cropped morphology rasters by merged watershed, leaving -9999 outside."""
+        """Mask the cropped DEM derivatives by merged watershed, -9999 outside.
+
+        Land cover, soil, geology, and LAI are not masked: they are written to
+        their `_masked` output as a straight copy of the crop, so they keep a
+        usable value across the whole model extent.
+        """
         if not self.check_prerequisites():
             return False
 
@@ -180,19 +187,33 @@ class MaskingMixin(WatershedDelineationMixin):
             input_path = layer_info["input"]
             output_path = layer_info["output"]
             layer_name = layer_info["name"]
+            watershed_masked = layer_info.get("watershed_masked", True)
+            verb = "Masking" if watershed_masked else "Copying unmasked"
 
-            self.log_message(f"Masking {layer_name}...")
+            self.log_message(f"{verb} {layer_name}...")
             self._remove_existing_raster(output_path)
             try:
-                result = mask_aligned_l0_raster(
-                    input_path,
-                    output_path,
-                    l0_header,
-                    merged_watershed_path,
-                    reference_path=self.filled_dem_path,
-                )
+                if watershed_masked:
+                    result = mask_aligned_l0_raster(
+                        input_path,
+                        output_path,
+                        l0_header,
+                        merged_watershed_path,
+                        reference_path=self.filled_dem_path,
+                        pad_value=layer_info.get("pad"),
+                    )
+                else:
+                    # Class layers keep the full model extent: the watershed
+                    # boundary would only carve nodata into cells mHM reads.
+                    result = crop_aligned_l0_raster(
+                        input_path,
+                        output_path,
+                        l0_header,
+                        reference_path=self.filled_dem_path,
+                        pad_value=layer_info.get("pad"),
+                    )
             except Exception as error:
-                self.log_message(f"ERROR: Failed to mask {layer_name}: {error}")
+                self.log_message(f"ERROR: Failed to write {layer_name}: {error}")
                 result = None
 
             if result and os.path.exists(output_path):
@@ -200,11 +221,18 @@ class MaskingMixin(WatershedDelineationMixin):
                     output_path,
                     name=os.path.basename(output_path),
                     loaded=False,
-                    algorithm="aligned L0 window mask",
+                    algorithm=(
+                        "aligned L0 window mask" if watershed_masked
+                        else "aligned L0 window copy"
+                    ),
                 )
-                self.log_message(f"{layer_name} masked successfully.")
+                self.log_message(
+                    f"{layer_name} "
+                    f"{'masked' if watershed_masked else 'written unmasked'} "
+                    "successfully."
+                )
             else:
-                self.log_message(f"ERROR: Failed to mask {layer_name}.")
+                self.log_message(f"ERROR: Failed to write {layer_name}.")
                 all_success = False
 
         lai_selected = bool(
@@ -283,6 +311,9 @@ class MaskingMixin(WatershedDelineationMixin):
         for entry in written:
             self.mark_output_prepared(
                 entry["dem_path"], name="dem.asc", loaded=False)
+            for path in entry.get("copied", ()):
+                self.mark_output_prepared(
+                    path, name=os.path.basename(path), loaded=False)
         if not written:
             self.log_message("No active domains needed a DEM.")
         return True
@@ -359,21 +390,26 @@ class MaskingMixin(WatershedDelineationMixin):
 
     def _collect_layers_to_crop(self, geometry_folder):
         """Return prepared base morphology rasters that should be cropped."""
+        # The last two fields are the value written where the layer does not
+        # reach the model extent, and whether the watershed mask applies.
+        # Only the DEM derivatives are masked. Class layers pad with a valid
+        # class and keep the full extent, because mHM needs a class in every
+        # cell it reads and nodata there would be a hole, not a boundary.
         layer_specs = [
-            ("filled_dem_path", "1_dem_filled.tif", "1_DEM_Filled"),
-            ("aspect_path", "1_dem_aspect.tif", "1_DEM_Aspect"),
-            ("slope_path", "1_dem_slope.tif", "1_DEM_Slope"),
-            ("flow_accumulation_path", "2_flow_accumulation.tif", "2_Flow_Accumulation"),
-            ("flow_direction_path", "2_flow_direction.tif", "2_Flow_Direction"),
-            ("gauge_position_path", "2_gauge_position.tif", "2_Gauge_Position"),
-            ("land_use_layer", "3_land_use.tif", "3_Land_Use"),
-            (None, "3_soil.tif", "3_Soil"),
-            ("geology_path", "3_geology_processed.tif", "3_Geology"),
+            ("filled_dem_path", "1_dem_filled.tif", "1_DEM_Filled", None, True),
+            ("aspect_path", "1_dem_aspect.tif", "1_DEM_Aspect", None, True),
+            ("slope_path", "1_dem_slope.tif", "1_DEM_Slope", None, True),
+            ("flow_accumulation_path", "2_flow_accumulation.tif", "2_Flow_Accumulation", None, True),
+            ("flow_direction_path", "2_flow_direction.tif", "2_Flow_Direction", None, True),
+            ("gauge_position_path", "2_gauge_position.tif", "2_Gauge_Position", None, True),
+            ("land_use_layer", "3_land_use.tif", "3_Land_Use", CATEGORICAL_PAD_VALUE, False),
+            (None, "3_soil.tif", "3_Soil", CATEGORICAL_PAD_VALUE, False),
+            ("geology_path", "3_geology_processed.tif", "3_Geology", CATEGORICAL_PAD_VALUE, False),
         ]
 
         layers_to_crop = []
         seen = set()
-        for attr_name, filename, layer_name in layer_specs:
+        for attr_name, filename, layer_name, pad_value, watershed_masked in layer_specs:
             expected_path = os.path.join(geometry_folder, filename)
             layer_path = getattr(self, attr_name, None) if attr_name else None
             if not layer_path or not os.path.exists(layer_path):
@@ -391,6 +427,8 @@ class MaskingMixin(WatershedDelineationMixin):
                 "crop": self._raster_variant_path(layer_path, "_crop"),
                 "masked": self._raster_variant_path(layer_path, "_masked"),
                 "name": layer_name,
+                "pad": pad_value,
+                "watershed_masked": watershed_masked,
             })
         return layers_to_crop
 
@@ -405,6 +443,8 @@ class MaskingMixin(WatershedDelineationMixin):
                 "input": crop_path,
                 "output": layer_info["masked"],
                 "name": f"{layer_info['name']}_Masked",
+                "pad": layer_info.get("pad"),
+                "watershed_masked": layer_info.get("watershed_masked", True),
             })
         return layers_to_mask
 

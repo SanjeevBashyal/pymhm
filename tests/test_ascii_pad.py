@@ -150,3 +150,22 @@ def test_the_a26_geometry_pads_to_the_common_extent(tmp_path):
     assert rows[0] == ["-9999"] * 5
     assert rows[1][:3] == ["1", "2", "3"] and rows[1][3:] == ["-9999", "-9999"]
     assert rows[3] == ["-9999"] * 5
+
+
+def test_a_pad_value_fills_the_expansion_and_leaves_the_nodata_declared(tmp_path):
+    """Class grids pad with a valid class while NODATA_value stays -9999."""
+    path = _grid(tmp_path / "lc.asc")
+    target = {
+        "ncols": 4, "nrows": 4, "xllcorner": 90.0, "yllcorner": 190.0,
+        "cellsize": 10.0,
+    }
+
+    pad_ascii_grid(path, target, nodata=-9999, pad=1)
+
+    header = path.read_text(encoding="utf-8").splitlines()[:6]
+    assert header[5].split() == ["NODATA_value", "-9999"]
+    rows = _rows(path)
+    assert rows[0] == ["1", "1", "1", "1"]
+    assert rows[3] == ["1", "1", "1", "1"]
+    assert rows[1] == ["1", "1", "2", "1"]
+    assert rows[2] == ["1", "3", "4", "1"]
