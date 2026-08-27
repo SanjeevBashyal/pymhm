@@ -1,8 +1,10 @@
 title: Shared mHM and mRM configuration
+description: Shared mHM/mRM restart, routing-resolution, time-step, and optimization settings.
 x-fortran-namelist: mainconfig_mhm_mrm
 type: object
 properties:
   mhm_file_RestartIn:
+    description: Path of the mHM restart input file for each domain.
     type: array
     items:
       type: string
@@ -11,6 +13,7 @@ properties:
     x-fortran-shape: max_domains
     examples: [[restart/mhm_restart_in.nc]]
   mrm_file_RestartIn:
+    description: Path of the mRM restart input file for each domain.
     type: array
     items:
       type: string
@@ -19,6 +22,9 @@ properties:
     x-fortran-shape: max_domains
     examples: [[restart/mrm_restart_in.nc]]
   resolution_Routing:
+    description: |-
+      Level-11 discharge-routing resolution for each domain, in meters or decimal degrees according to the coordinate system.
+      It must be greater than or equal to, and an integer multiple of, the Level-1 hydrological resolution.
     type: array
     items:
       type: number
@@ -26,30 +32,45 @@ properties:
     x-fortran-shape: max_domains
     examples: [[1.0]]
   timestep:
+    description: Model simulation time step in hours; supported values are 1 and 24.
     type: integer
     enum: [1, 24]
     default: 1
   read_restart:
+    description: Read mHM and mRM state from restart files; enabling this also forces river-network restart input.
     type: boolean
     default: false
   mrm_read_river_network:
+    description: Read the previously generated mRM river network from restart input.
     type: boolean
     default: false
   read_old_style_restart_bounds:
+    description: Read old-style restart bounds produced by mHM version 5.11 or earlier.
     type: boolean
     default: false
   restart_reset_fluxes_states:
+    description: Reset fluxes and states read from restart files to their default values.
     type: boolean
     default: false
   optimize:
+    description: Run parameter optimization instead of a normal model simulation.
     type: boolean
     default: false
   optimize_restart:
+    description: Restart optimization from the mo_<opti_method>.restart file beside the mHM executable.
     type: boolean
     default: false
   opti_method:
+    description: |-
+      Optimization method.
+      0: MCMC; 1: Dynamically Dimensioned Search (DDS);
+      2: Simulated Annealing; 3: Shuffled Complex Evolution (SCE).
     type: integer
     default: 1
   opti_function:
+    description: |-
+      Objective-function identifier used for optimization. Version 5.13 provides discharge,
+      soil-moisture, neutron, evapotranspiration, total-water-storage, snow-presence,
+      and multi-variable objectives numbered 1 through 49; some reserved identifiers are retained for compatibility.
     type: integer
     default: 10

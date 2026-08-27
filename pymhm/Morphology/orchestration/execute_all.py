@@ -27,6 +27,10 @@ class ExecuteAllMixin(
         stages as background `QgsTask` jobs. Keep the two stage lists in step --
         a stage added only here will silently never run from the UI.
 
+        The bridge covers steps 1-3, 8 and 9 with a single mHM-tools
+        `create-dem-derivatives` pass; the steps below reach the same files one
+        at a time.
+
         Steps, in order:
         1. filled dem
         2. slope

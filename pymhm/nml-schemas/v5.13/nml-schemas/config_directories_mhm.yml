@@ -1,16 +1,20 @@
 title: mHM forcing directories
+description: Configuration of meteorological forcing formats, validation behavior, input directories, and read frequency for each domain.
 x-fortran-namelist: directories_mHM
 type: object
 properties:
   inputFormat_meteo_forcings:
+    description: Input format for meteorological forcings, shared by all modeled domains. Version 5.13 supports NetCDF only.
     type: string
     x-fortran-len: buf
     enum: [nc]
     default: nc
   bound_error:
+    description: Raise an error when meteorological values violate valid boundaries; when false, emit a warning instead.
     type: boolean
     default: true
   dir_Precipitation: &domain_directory
+    description: Directory containing precipitation forcing data for each domain.
     type: array
     items:
       type: string
@@ -20,29 +24,41 @@ properties:
     examples: [[data/master/meteo/pre/]]
   dir_Temperature:
     <<: *domain_directory
+    description: Directory containing mean-temperature forcing data for each domain.
     examples: [[data/master/meteo/tavg/]]
   dir_ReferenceET:
     <<: *domain_directory
+    description: Directory containing reference evapotranspiration input when the selected PET process reads PET forcing.
     examples: [[data/master/meteo/pet/]]
   dir_MinTemperature:
     <<: *domain_directory
+    description: Directory containing minimum-temperature forcing required by the Hargreaves-Samani PET method.
     examples: [[data/master/meteo/tmin/]]
   dir_MaxTemperature:
     <<: *domain_directory
+    description: Directory containing maximum-temperature forcing required by the Hargreaves-Samani PET method.
     examples: [[data/master/meteo/tmax/]]
   dir_NetRadiation:
     <<: *domain_directory
+    description: Directory containing net-radiation forcing required by the Priestley-Taylor PET method.
     examples: [[data/master/meteo/netrad/]]
   dir_absVapPressure:
     <<: *domain_directory
+    description: Directory containing absolute-vapor-pressure forcing required by the Penman-Monteith PET method.
     examples: [[data/master/meteo/eabs/]]
   dir_windspeed:
     <<: *domain_directory
+    description: Directory containing wind-speed forcing required by the Penman-Monteith PET method.
     examples: [[data/master/meteo/windspeed/]]
   dir_Radiation:
     <<: *domain_directory
+    description: Directory containing shortwave and longwave radiation forcing used by river-temperature routing.
     examples: [[data/master/meteo/ssrd/]]
   time_step_model_inputs:
+    description: |-
+      Read frequency for gridded meteorological input in each domain.
+      Positive values read after that many days; 0 reads only at initialization;
+      -1 reads daily, -2 monthly, and -3 yearly.
     type: array
     items:
       type: integer

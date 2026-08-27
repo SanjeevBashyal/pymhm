@@ -164,6 +164,30 @@ Important packages:
   value. An unchanged outlet location is a valid domain/gauge location; a map
   pick overrides it.
 
+## v6 Input Layout
+
+- `project_layout.project_version()` reads `mhm_version` from
+  `pymhm_input_state.json`, so the path helpers branch on version internally and
+  the ~24 callers of `morph_folder` / `lai_folder` never thread it through.
+  Unknown or missing version falls back to v5.13, which every existing project
+  already uses. **v5.13 output is unchanged**; tests assert that.
+- v6 differences, all matching `project-template/v6` and the mHM examples:
+  - `data/master/morph/` instead of `data/master/static/morph/`
+  - one `input.nc` instead of separate `.asc` -- `Morphology/layers/morph_input_nc.py`
+    bundles the masked L0 rasters with `x`/`y`/`x_bnds`/`y_bnds` and 2-D
+    `lon`/`lat`, so v6 needs no separate `latlon.nc`
+  - `data/master/meteo/<var>.nc`, flat, with no `header.txt`, plus `mask.nc`
+    from `Meteorology/mask.py`
+  - `data/<domain>/dem.nc` from `layers/domain_dem_nc.py`, and no shared-file
+    copying into domain folders because everything else lives in `input.nc`
+  - `data/master/gauge/streamflow/` instead of `observation/streamflow/`
+- `input.nc` carries seven variables: `dem, fdir, slope, aspect, geology_class,
+  soil_class, facc`. **`LAI_class` is deliberately absent** -- pymhm has no LAI
+  class product, so `lai_class_path` is rendered empty rather than naming a file
+  that is never written. Add both together if LAI classes are introduced.
+- The meteorology reuse check has no header file to compare under v6, so it
+  validates the written NetCDF grid against the saved L2 header instead.
+
 ## Staging And Publication
 
 - Execute All writes land cover, soil, and geology outputs into

@@ -1,30 +1,41 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    // Debug the plugin dialog with Ubuntu's system QGIS/Python installation.
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Current File",
+            "name": "pymhm: Debug plugin dialog (Linux/QGIS)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/test_pymhm.py",
-            // "module": "pymhm.test.test_pymhm_dialog",
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
-            "python": "c:/Program Files/QGIS 3.40.6/apps/Python312/python.exe",
+            "python": "/usr/bin/python3",
+            "justMyCode": false,
+            "subProcess": true,
             "env": {
-                "PYTHONPATH": "C:/Users/Ripple/AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins/OpenTopography-DEM-Downloader;C:/Program Files/QGIS 3.40.6/apps/qgis-ltr/python;C:/Users/Ripple/AppData/Roaming/QGIS/QGIS3/profiles/default/python;C:/Users/Ripple/AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins;C:/Program Files/QGIS 3.40.6/apps/qgis-ltr/python/plugins;C:/Program Files/QGIS 3.40.6/apps/grass/grass84/etc/python;C:/Users/Ripple/Documents;C:/Program Files/QGIS 3.40.6/bin/python312.zip;C:/Program Files/QGIS 3.40.6/apps/Python312/DLLs;C:/Program Files/QGIS 3.40.6/apps/Python312/Lib;C:/Program Files/QGIS 3.40.6/bin;C:/Users/Ripple/AppData/Roaming/Python/Python312/site-packages;C:/Program Files/QGIS 3.40.6/apps/Python312;C:/Program Files/QGIS 3.40.6/apps/Python312/Lib/site-packages;C:/Program Files/QGIS 3.40.6/apps/Python312/Lib/site-packages/win32;C:/Program Files/QGIS 3.40.6/apps/Python312/Lib/site-packages/win32/lib;C:/Program Files/QGIS 3.40.6/apps/Python312/Lib/site-packages/Pythonwin;C:/Users/Ripple/AppData/Roaming/QGIS/QGIS3/profiles/default/python;C:/Users/Ripple/AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins/HCMGIS/forms;C:/Users/Ripple/AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins/qfieldsync/libqfieldsync.whl;C:/Program Files/QGIS 3.40.6/apps/Python312/Lib/site-packages/setuptools/_vendor;C:/Program Files/QGIS 3.40.6/apps/qgis-ltr/python/plugins/QSWATPlus/QSWATPlus;C:/Users/Ripple/Downloads/mHM workshop",
-                "PATH": "C:/Program Files/QGIS 3.40.6/apps/qgis-ltr/bin;C:/Program Files/QGIS 3.40.6/apps/grass/grass84/lib;C:/Program Files/QGIS 3.40.6/apps/grass/grass84/bin;C:/Program Files/QGIS 3.40.6/apps/qt5/bin;C:/Program Files/QGIS 3.40.6/apps/Python312/Scripts;C:/Program Files/QGIS 3.40.6/bin;C:/WINDOWS/system32;C:/WINDOWS;C:/WINDOWS/system32/WBem;${env:PATH}",
-                "QGIS_PREFIX_PATH": "C:/Program Files/QGIS 3.40.6/apps/qgis-ltr",
-                "QT_PLUGIN_PATH": "C:/Program Files/QGIS 3.40.6/apps/qgis-ltr/qtplugins;C:/Program Files/QGIS 3.40.6/apps/qt5/plugins",
-                "GDAL_DATA": "C:/Program Files/QGIS 3.40.6/apps/gdal/share/gdal",
-                "PROJ_LIB": "C:/Program Files/QGIS 3.40.6/share/proj",
-                "PROJ_DATA": "C:/Program Files/QGIS 3.40.6/share/proj",
-                "GDAL_DRIVER_PATH": "C:/Program Files/QGIS 3.40.6/apps/gdal/lib/gdalplugins",
-                "GDAL_FILENAME_IS_UTF8": "YES",
-                "VSI_CACHE": "TRUE",
-                "VSI_CACHE_SIZE": "1000000"
+                "QGIS_PREFIX_PATH": "/usr",
+                "QGIS_PLUGINPATH": "${workspaceFolder}",
+                "PYTHONPATH": "${workspaceFolder}:/usr/share/qgis/python:/usr/share/qgis/python/plugins",
+                "PYTHONUNBUFFERED": "1",
+
+                // Force the host Qt/GTK libraries instead of paths inherited
+                // from the Snap-packaged VS Code process.
+                "QT_QPA_PLATFORM": "xcb",
+                "QT_PLUGIN_PATH": "/usr/lib/x86_64-linux-gnu/qt5/plugins",
+                "QT_QPA_PLATFORM_PLUGIN_PATH": "/usr/lib/x86_64-linux-gnu/qt5/plugins/platforms",
+                "GIO_MODULE_DIR": "/usr/lib/x86_64-linux-gnu/gio/modules",
+                "GDK_PIXBUF_MODULEDIR": "/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders",
+                "GDK_PIXBUF_MODULE_FILE": "/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders.cache",
+                "GTK_EXE_PREFIX": "/usr",
+                "GTK_PATH": "/usr/lib/x86_64-linux-gnu/gtk-3.0",
+                "GTK_IM_MODULE_FILE": "/usr/lib/x86_64-linux-gnu/gtk-3.0/3.0.0/immodules.cache",
+                "GTK_MODULES": "",
+                "XDG_DATA_HOME": "${env:HOME}/.local/share",
+                "XDG_DATA_DIRS": "/usr/local/share:/usr/share:/var/lib/snapd/desktop",
+
+                "GDAL_DATA": "/usr/share/gdal",
+                "PROJ_DATA": "/usr/share/proj",
+                "PROJ_LIB": "/usr/share/proj"
             }
         }
     ]

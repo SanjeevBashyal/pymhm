@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from ..file_tasks import write_domain_dem_ascii
+from .domain_dem_nc import write_domain_dem_netcdf
 from ..watershed.domain_state import (
     active_domain_records,
     load_state as load_domain_state,
@@ -22,6 +23,7 @@ from ..watershed.domain_state import (
 from ...project_layout import (
     domain_data_folder,
     domain_dem_path,
+    is_v6,
     morph_folder,
 )
 
@@ -188,14 +190,21 @@ def write_domain_dems(
                 f"Writing domain {entry['name']} DEM on the common L0 grid "
                 f"({int(l0_header['ncols'])} x {int(l0_header['nrows'])} cells)."
             )
-        write_domain_dem_ascii(
+        writer = (
+            write_domain_dem_netcdf
+            if str(entry["dem_path"]).endswith(".nc")
+            else write_domain_dem_ascii
+        )
+        writer(
             cropped_dem,
             entry["dem_path"],
             l0_header,
             polygon,
             reference_path=reference_path,
         )
-        entry["copied"] = [
+        # v6 reads every shared layer from master's input.nc, so a domain folder
+        # holds only its own DEM.
+        entry["copied"] = [] if is_v6(project_folder) else [
             str(path)
             for path in copy_master_inputs(
                 project_folder, entry["directory"], log=log)

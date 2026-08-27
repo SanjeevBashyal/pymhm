@@ -1,8 +1,10 @@
 title: Land-cover MPR configuration
+description: Land-cover setting used by multiscale parameter regionalization.
 x-fortran-namelist: LCover_MPR
 type: object
 properties:
   fracSealed_cityArea:
+    description: Fraction of an urban area assumed to be fully sealed, from 0 to 1.
     type: number
     minimum: 0
     maximum: 1

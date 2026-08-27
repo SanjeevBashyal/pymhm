@@ -134,7 +134,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self._lai_input_config = {}
         self._domain_definition_mode = ""
         self._input_adapters = {}
-        self.configure_widget_aliases()
+        self.configure_input_adapters()
         self.configure_morphology_display()
 
         # --- Filter map layer combo boxes to show only relevant layer types ---
@@ -196,14 +196,13 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.morphology_tasks = MorphologyTaskBridge(self)
 
         # --- Connect signals and slots ---
-        self.configure_page_aliases()
         self.connect_signals()
         self.refresh_input_sources()
         self.refresh_meteo_folder_sources()
         self.refresh_grid_resolution_controls()
 
-    def configure_widget_aliases(self):
-        """Keep renamed widgets compatible with older dialog code."""
+    def configure_input_adapters(self):
+        """Wrap each plain input combo in the layer-combo interface the code uses."""
 
         input_widgets = {
             "dem": ("comboBox_demInput", "mMapLayerComboBox_dem"),
@@ -222,7 +221,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             ),
             "lai": ("comboBox_laiInput", "mMapLayerComboBox_LAI_Class"),
         }
-        for kind, (combo_name, legacy_name) in input_widgets.items():
+        for kind, (combo_name, adapter_name) in input_widgets.items():
             combo = getattr(self, combo_name, None)
             if combo is None:
                 if kind not in {"land_cover", "soil", "geology", "lai"}:
@@ -233,45 +232,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 setattr(self, combo_name, combo)
             adapter = InputComboAdapter(combo, kind, self)
             self._input_adapters[kind] = adapter
-            setattr(self, legacy_name, adapter)
-
-        if hasattr(self, "comboBox_lai_inputType"):
-            self.comboBox_laiInputType = self.comboBox_lai_inputType
-        if (
-            hasattr(self, "comboBox_landUseInputType")
-            and not hasattr(self, "comboBox_landCover_inputType")
-        ):
-            self.comboBox_landCover_inputType = self.comboBox_landUseInputType
-
-        if (
-            hasattr(self, "pushButton_executeAllMorphology")
-            and not hasattr(self, "pushButton_executeAll")
-        ):
-            self.pushButton_executeAll = self.pushButton_executeAllMorphology
-        if (
-            hasattr(self, "pushButton_execute_mHM")
-            and not hasattr(self, "pushButton_RUN")
-        ):
-            self.pushButton_RUN = self.pushButton_execute_mHM
-
-        for current_name, folder_name in (
-            ("pushButton_browsePrecipitationFile", "pushButton_browsePrecipitationFolder"),
-            ("pushButton_browseTemperatureFile", "pushButton_browseTemperatureFolder"),
-            ("pushButton_browsePetFile", "pushButton_browsePetFolder"),
-        ):
-            current = getattr(self, current_name, None)
-            if current is not None and not hasattr(self, folder_name):
-                setattr(self, folder_name, current)
-
-    def configure_page_aliases(self):
-        """Keep renamed stacked pages compatible with older plugin code."""
-
-        if hasattr(self, "page_configuration") and not hasattr(self, "page_validation"):
-            self.page_validation = self.page_configuration
-        if hasattr(self, "page_execution") and not hasattr(self, "page_datasets"):
-            self.page_datasets = self.page_execution
-        if hasattr(self, "pushButton_Terminal") and not hasattr(self, "pushButton_terminal"):
-            self.pushButton_terminal = self.pushButton_Terminal
+            setattr(self, adapter_name, adapter)
 
     def configure_morphology_display(self):
         """Attach stable keys to the morphology display choices."""
@@ -754,10 +715,10 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 )
 
         for kind, combo_name in (
-            ("lc", "comboBox_landCover_inputType"),
+            ("lc", "comboBox_landUseInputType"),
             ("soil", "comboBox_soil_inputType"),
             ("geology", "comboBox_geology_inputType"),
-            ("lai", "comboBox_laiInputType"),
+            ("lai", "comboBox_lai_inputType"),
         ):
             combo = getattr(self, combo_name, None)
             if combo is not None:
@@ -922,9 +883,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         self.connect_grid_resolution_signals()
 
         for kind, button in (
-            ("precipitation", self.pushButton_browsePrecipitationFolder),
-            ("temperature", self.pushButton_browseTemperatureFolder),
-            ("pet", self.pushButton_browsePetFolder),
+            ("precipitation", self.pushButton_browsePrecipitationFile),
+            ("temperature", self.pushButton_browseTemperatureFile),
+            ("pet", self.pushButton_browsePetFile),
         ):
             button.clicked.connect(
                 lambda checked=False, meteo_kind=kind:
@@ -957,8 +918,6 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 self.configuration_processor.edit_namelists,
             )
         run_mhm_button = getattr(self, "pushButton_execute_mHM", None)
-        if run_mhm_button is None:
-            run_mhm_button = getattr(self, "pushButton_RUN", None)
         if run_mhm_button is not None:
             run_mhm_button.setToolTip("Run mHM")
             self.connect_processor_button(
@@ -966,15 +925,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 "Run mHM",
                 self.configuration_processor.run_mhm,
             )
-        connected_terminal_buttons = set()
-        for terminal_button_name in ("pushButton_terminal", "pushButton_Terminal"):
-            terminal_button = getattr(self, terminal_button_name, None)
-            if (
-                terminal_button is not None
-                and id(terminal_button) not in connected_terminal_buttons
-            ):
-                terminal_button.clicked.connect(self.open_project_terminal)
-                connected_terminal_buttons.add(id(terminal_button))
+        terminal_button = getattr(self, "pushButton_terminal", None)
+        if terminal_button is not None:
+            terminal_button.clicked.connect(self.open_project_terminal)
         if hasattr(self, "comboBox_mHMversion"):
             self.comboBox_mHMversion.currentIndexChanged.connect(
                 lambda index=None: self.configuration_processor.handle_version_changed()
@@ -1550,9 +1503,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                 except Exception:
                     pass
 
-        if hasattr(self, "comboBox_laiInputType"):
+        if hasattr(self, "comboBox_lai_inputType"):
             try:
-                self.comboBox_laiInputType.currentIndexChanged.connect(
+                self.comboBox_lai_inputType.currentIndexChanged.connect(
                     self.handle_model_input_changed
                 )
             except Exception:
@@ -1993,7 +1946,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
         return {
             "execute_all": {
                 "button": "pushButton_executeAllMorphology",
-                "fallback_button": "pushButton_executeAll",
+                "fallback_button": "pushButton_executeAllMorphology",
                 "label": "Execute All Processing",
                 "action_name": "Execute All Processing",
                 "method": "execute_all_processing",
@@ -2420,11 +2373,11 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             "lc": "comboBox_landUseInputType",
             "soil": "comboBox_soil_inputType",
             "geology": "comboBox_geology_inputType",
-            "lai": "comboBox_laiInputType",
+            "lai": "comboBox_lai_inputType",
         }[kind]
         combo = getattr(self, name, None)
         if combo is None and kind == "lc":
-            combo = getattr(self, "comboBox_landCover_inputType")
+            combo = getattr(self, "comboBox_landUseInputType")
         return combo
 
     def categorical_input_mode(self, kind):
@@ -2912,7 +2865,7 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
 
     def restore_lai_input_type(self, lai_input_type):
         """Restore the selected LAI input type by text when possible."""
-        combo_box = getattr(self, "comboBox_laiInputType", None)
+        combo_box = getattr(self, "comboBox_lai_inputType", None)
         if combo_box is None or not lai_input_type:
             return
         index = combo_box.findText(lai_input_type)
@@ -3030,8 +2983,8 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
             "grid_resolutions": grid_resolutions,
             "grid_configuration": self.grid_configuration_snapshot(),
             "lai_input_type": (
-                self.comboBox_laiInputType.currentText()
-                if hasattr(self, "comboBox_laiInputType") else ""
+                self.comboBox_lai_inputType.currentText()
+                if hasattr(self, "comboBox_lai_inputType") else ""
             ),
             "folder_search": self.checkBox_enableFolderSearch.isChecked(),
             "categorical_types": {
@@ -3532,9 +3485,9 @@ class pymhmDialog(QDialog, Ui_pymhmDialog, DialogUtils):
                     f"{config['mapping_field']} -> {config['class_field']}"
                 )
 
-        if hasattr(self, "comboBox_laiInputType"):
+        if hasattr(self, "comboBox_lai_inputType"):
             self.log_message(
-                f"LAI input type: {self.comboBox_laiInputType.currentText() or '<not selected>'}"
+                f"LAI input type: {self.comboBox_lai_inputType.currentText() or '<not selected>'}"
             )
         if hasattr(self, "lineEdit_lai_file"):
             self.log_message(

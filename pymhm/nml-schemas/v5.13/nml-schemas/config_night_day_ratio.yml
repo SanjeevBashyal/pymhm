@@ -1,11 +1,16 @@
 title: Meteorological day/night ratios
+description: Monthly weights used to disaggregate daily meteorological forcing when explicit hourly weight files are not read.
 x-fortran-namelist: nightDayRatio
 type: object
 properties:
   read_meteo_weights:
+    description: |-
+      Read explicit meteorological weights from forcing files instead of using the monthly night fractions below.
+      Weight arrays use Fortran dimensions (rows, columns, 12 months, 24 hours).
     type: boolean
     default: false
   fnight_prec: &monthly_values
+    description: Monthly night-time precipitation fractions; daytime fractions are the complement to one.
     type: array
     items:
       type: number
@@ -18,13 +23,17 @@ properties:
     examples: [[0.46, 0.5, 0.52, 0.51, 0.48, 0.5, 0.49, 0.48, 0.52, 0.56, 0.5, 0.47]]
   fnight_pet:
     <<: *monthly_values
+    description: Monthly night-time potential-evapotranspiration fractions; daytime fractions are the complement to one.
     examples: [[0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]]
   fnight_temp:
     <<: *monthly_values
+    description: Monthly additive night-time correction factors for average temperature.
     examples: [[-0.76, -1.3, -1.88, -2.38, -2.72, -2.75, -2.74, -3.04, -2.44, -1.6, -0.94, -0.53]]
   fnight_ssrd:
     <<: *monthly_values
+    description: Monthly night-time fractions for surface downward shortwave radiation used by river-temperature routing.
     examples: [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
   fnight_strd:
     <<: *monthly_values
+    description: Monthly night-time fractions for surface downward longwave radiation used by river-temperature routing.
     examples: [[0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45]]

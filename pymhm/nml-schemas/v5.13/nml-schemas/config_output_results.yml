@@ -1,24 +1,43 @@
 title: mHM output configuration
+description: NetCDF encoding, temporal frequency, and gridded flux/state selection for mHM outputs.
 x-fortran-namelist: NLoutputResults
 type: object
 properties:
   output_deflate_level:
+    description: NetCDF4 compression level, from 0 for no compression to 9 for maximum compression.
     type: integer
     minimum: 0
     maximum: 9
     default: 6
   output_double_precision:
+    description: Write floating-point NetCDF output variables in double precision.
     type: boolean
     default: true
   output_time_reference:
+    description: |-
+      Reference point assigned to each output interval.
+      0: start of interval; 1: center of interval; 2: end of interval.
     type: integer
     enum: [0, 1, 2]
     default: 0
   timeStep_model_outputs:
+    description: |-
+      Write frequency for gridded model outputs.
+      Positive values write after that many model time steps; 0 writes only at the end;
+      -1 writes daily, -2 monthly, and -3 yearly.
     type: integer
     minimum: -3
     default: -2
   outputFlxState:
+    description: |-
+      Enable individual gridded mHM outputs by one-based index:
+      1 canopy interception storage; 2 snowpack; 3 soil water content by layer;
+      4 volumetric soil moisture by layer; 5 mean volumetric soil moisture;
+      6 sealed-area storage; 7 unsaturated-zone storage; 8 saturated-zone storage;
+      9 potential evapotranspiration; 10 actual evapotranspiration; 11 total runoff;
+      12 direct runoff; 13 fast interflow; 14 slow interflow; 15 baseflow;
+      16 groundwater recharge; 17 soil infiltration; 18 neutron signal;
+      19 actual evapotranspiration by soil layer; 20 effective precipitation; 21 snowmelt.
     type: array
     items:
       type: boolean

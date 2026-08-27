@@ -1,8 +1,10 @@
 title: Optional calibration data
+description: Domain-specific observation inputs and weighting controls used by spatial and multi-variable objective functions.
 x-fortran-namelist: optional_data
 type: object
 properties:
   dir_soil_moisture: &domain_directory
+    description: Directory containing soil-moisture observations for each domain; expected file sm.nc and variable sm.
     type: array
     items:
       type: string
@@ -11,38 +13,51 @@ properties:
     x-fortran-shape: max_domains
     examples: [[data/optional_data/]]
   nSoilHorizons_sm_input:
+    description: Number of mHM soil layers, counted from the top, represented by the soil-moisture input.
     type: integer
     minimum: 1
     default: 1
   timeStep_sm_input:
+    description: "Temporal resolution of soil-moisture input: -1 daily, -2 monthly, or -3 yearly."
     type: integer
     enum: [-3, -2, -1]
     default: -2
   dir_neutrons:
     <<: *domain_directory
+    description: Directory containing neutron observations for each domain; expected file neutrons.nc and variable neutrons.
   dir_evapotranspiration:
     <<: *domain_directory
+    description: Directory containing evapotranspiration observations for each domain; expected file et.nc and variable et.
   timeStep_et_input:
+    description: "Temporal resolution of evapotranspiration input: -1 daily, -2 monthly, or -3 yearly."
     type: integer
     enum: [-3, -2, -1]
     default: -2
   dir_tws:
     <<: *domain_directory
+    description: Directory containing domain-average total-water-storage anomaly observations; expected file twsa.nc and variable twsa.
   timeStep_tws_input:
+    description: "Temporal resolution of total-water-storage input: -1 daily, -2 monthly, or -3 yearly."
     type: integer
     enum: [-3, -2, -1]
     default: -2
   dir_spf:
     <<: *domain_directory
+    description: Directory containing binary snow-presence observations for each domain; expected file spf.nc and variable spf.
   timeStep_spf_input:
+    description: "Temporal resolution of snow-presence input: -1 daily, -2 monthly, or -3 yearly."
     type: integer
     enum: [-3, -2, -1]
     default: -1
   weight_for_optional_data:
+    description: |-
+      Weight of the spatial variable relative to discharge in objective functions 38-40, 43-45, and 47.
+      A value x represents a spatial-variable-to-discharge weight of x:1.
     type: integer
     minimum: 0
     default: 1
   snow_water_equivalent_threshold_for_spf:
+    description: Snow-water-equivalent threshold in millimeters used to convert modeled snow to a binary snow-presence flag for objectives 46 and 47.
     type: integer
     minimum: 0
     default: 0

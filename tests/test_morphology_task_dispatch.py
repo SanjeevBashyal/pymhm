@@ -97,7 +97,7 @@ def test_execute_all_stage_order_includes_lai_before_hydrology():
         if "lambda next_step: self.start_" in line
     ]
     assert order == [
-        "fill", "terrain", "categorical", "categorical", "categorical",
+        "dem_derivatives", "categorical", "categorical", "categorical",
         "lai", "hydrology",
     ]
 

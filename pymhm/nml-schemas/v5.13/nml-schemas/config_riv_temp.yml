@@ -1,40 +1,51 @@
 title: River-temperature configuration
+description: Physical constants, iterative-solver controls, and river-width input used by river-temperature routing.
 x-fortran-namelist: config_riv_temp
 type: object
 properties:
   albedo_water:
+    description: Albedo of open water; 0.15 is representative of tilt angles between 10 and 20 degrees (Wanders et al. 2019).
     type: number
     default: 0.15
   pt_a_water:
+    description: Priestley-Taylor alpha parameter for potential evapotranspiration over open water (1.26 in Bonan 2015).
     type: number
     default: 1.26
   emissivity_water:
+    description: Emissivity of water (0.96 in Wanders et al. 2019).
     type: number
     default: 0.96
   turb_heat_ex_coeff:
+    description: Turbulent heat-exchange coefficient for water (20.0 in Wanders et al. 2019).
     type: number
     default: 20.0
   max_iter:
+    description: Maximum number of solver iterations used to determine river temperature.
     type: integer
     minimum: 1
     default: 50
   delta_iter:
+    description: Convergence tolerance for the iterative river-temperature solver, expressed as a temperature difference in kelvin.
     type: number
     minimum: 0.0
     default: 0.01
   step_iter:
+    description: Maximum temperature step allowed during an iteration, in kelvin.
     type: number
     minimum: 0.0
     default: 5.0
   riv_widths_file:
+    description: Base file name containing river-width data.
     type: string
     x-fortran-len: buf
     default: Q_bkfl
   riv_widths_name:
+    description: Variable name of river widths in the input file.
     type: string
     x-fortran-len: buf
     default: P_bkfl
   dir_riv_widths:
+    description: Directory containing river-width data for each domain; required only for river-temperature routing.
     type: array
     items:
       type: string

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import os
+import shutil
 from pathlib import Path
 
 
@@ -491,6 +492,75 @@ def fill_dem_file(
         "filled_cells": int(np.count_nonzero(changed)) if changed is not None else 0,
         "reused": False,
     }
+
+
+#: mHM-tools derivative -> (result key, canonical geometry-folder file name).
+DEM_DERIVATIVE_OUTPUTS = {
+    "dem_filled": ("filled_dem", "1_dem_filled.tif"),
+    "slope": ("slope", "1_dem_slope.tif"),
+    "aspect": ("aspect", "1_dem_aspect.tif"),
+    "facc": ("flow_accumulation", "2_flow_accumulation.tif"),
+    "fdir": ("flow_direction", "2_flow_direction.tif"),
+}
+
+
+def dem_derivative_files(
+    source,
+    output_folder,
+    *,
+    source_crs="",
+    target_crs="",
+    reprojected_path="",
+    compute=None,
+    log=None,
+    task=None,
+):
+    """Create the filled DEM, slope, aspect, facc and fdir in one mHM-tools pass.
+
+    Reprojection and the same-grid reuse check stay here because they are
+    project concerns; the derivatives themselves come from mHM-tools. `compute`
+    lets the caller run that step out of process -- it holds every derivative in
+    memory at once, which is several gigabytes on a country-scale DEM.
+    """
+    _cancelled(task)
+    prepared = _prepared_dem_source(
+        source, source_crs, target_crs, reprojected_path
+    )
+    _progress(task, 10)
+    folder = Path(output_folder)
+    targets = {
+        key: folder / name for key, (_result, name) in DEM_DERIVATIVE_OUTPUTS.items()
+    }
+    result = {
+        result_key: str(targets[key])
+        for key, (result_key, _name) in DEM_DERIVATIVE_OUTPUTS.items()
+    }
+    result["dem_source"] = prepared
+    if all(path.exists() for path in targets.values()) and _same_grid(
+        str(targets["dem_filled"]), prepared
+    ):
+        _progress(task, 100)
+        return {**result, "reused": True}
+
+    staging = folder / "0_dem_derivatives"
+    try:
+        written = (compute or _compute_dem_derivatives)(prepared, staging, log)
+        _cancelled(task)
+        _progress(task, 85)
+        for key, target in targets.items():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            Path(written[key]).replace(target)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    _progress(task, 100)
+    return {**result, "reused": False}
+
+
+def _compute_dem_derivatives(prepared, staging, log):
+    """Run the mHM-tools derivative pass in this process."""
+    from ..mhm_tools_adapter import create_dem_derivative_files
+
+    return create_dem_derivative_files(prepared, staging, "tif", log=log)
 
 
 def _flow_context(filled_dem):

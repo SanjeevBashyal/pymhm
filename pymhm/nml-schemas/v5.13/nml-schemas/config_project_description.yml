@@ -1,32 +1,40 @@
 title: Project description
+description: Descriptive metadata written to NetCDF output attributes for the model simulation.
 x-fortran-namelist: project_description
 type: object
 properties:
   project_details:
+    description: Project name or short project identifier.
     type: string
     x-fortran-len: buf
     default: mHM project
   setup_description:
+    description: Specific description of the simulation setup and forcing data.
     type: string
     x-fortran-len: buf
     default: Model run
   simulation_type:
+    description: Type of simulation, for example hindcast, seasonal forecast, or climate projection.
     type: string
     x-fortran-len: buf
     default: Simulation
   Conventions:
+    description: Data convention followed by the generated datasets.
     type: string
     x-fortran-len: buf
     default: None
   contact:
+    description: Contact details for the principal investigator, modelers, or responsible organization.
     type: string
     x-fortran-len: buf
     default: Developer
   mHM_details:
+    description: Developing institution and relevant mHM revision or release information.
     type: string
     x-fortran-len: buf
     default: Research unit
   history:
+    description: Data or model-run version history; creation time is added automatically.
     type: string
     x-fortran-len: buf
     default: Model run version 1

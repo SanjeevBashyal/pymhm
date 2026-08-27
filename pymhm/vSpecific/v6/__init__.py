@@ -22,6 +22,9 @@ def build_dimensions(dialog: Any) -> dict[str, int]:
     }
 
 
+MORPH_INPUT = "data/master/morph/input.nc"
+
+
 def build_initial_values(dialog: Any) -> dict[str, Any]:
     count = domain_count(dialog)
     settings = namelist_settings(dialog)
@@ -44,40 +47,42 @@ def build_initial_values(dialog: Any) -> dict[str, Any]:
             },
             "config_resolution": resolution_values,
             "config_input": {
-                "latlon_path": repeat("data/master/latlon.nc", count),
-                "pre_path": repeat("data/master/meteo/pre/pre.nc", count),
-                "pet_path": repeat("data/master/meteo/pet/pet.nc", count),
-                "temp_path": repeat("data/master/meteo/tavg/tavg.nc", count),
-                "tann_path": repeat("data/master/meteo/tann/tann.nc", count),
-                "tmin_path": repeat("data/master/meteo/tmin/tmin.nc", count),
-                "tmax_path": repeat("data/master/meteo/tmax/tmax.nc", count),
-                "ssrd_path": repeat("data/master/meteo/ssrd/ssrd.nc", count),
-                "strd_path": repeat("data/master/meteo/strd/strd.nc", count),
-                "netrad_path": repeat("data/master/meteo/netrad/netrad.nc", count),
-                "eabs_path": repeat("data/master/meteo/eabs/eabs.nc", count),
-                "wind_path": repeat("data/master/meteo/windspeed/windspeed.nc", count),
+                "latlon_path": repeat(MORPH_INPUT, count),
+                "meteo_mask_path": repeat(
+                    "data/master/meteo/mask.nc", count),
+                "pre_path": repeat("data/master/meteo/pre.nc", count),
+                "pet_path": repeat("data/master/meteo/pet.nc", count),
+                "temp_path": repeat("data/master/meteo/tavg.nc", count),
+                "tann_path": repeat("data/master/meteo/tann.nc", count),
+                "tmin_path": repeat("data/master/meteo/tmin.nc", count),
+                "tmax_path": repeat("data/master/meteo/tmax.nc", count),
+                "ssrd_path": repeat("data/master/meteo/ssrd.nc", count),
+                "strd_path": repeat("data/master/meteo/strd.nc", count),
+                "netrad_path": repeat("data/master/meteo/net_rad.nc", count),
+                "eabs_path": repeat("data/master/meteo/eabs.nc", count),
+                "wind_path": repeat("data/master/meteo/windspeed.nc", count),
                 "hydro_mask_path": domain_dems,
                 "dem_path": domain_dems,
-                "slope_path": repeat("data/master/static/morph/slope.asc", count),
-                "aspect_path": repeat("data/master/static/morph/aspect.asc", count),
-                "fdir_path": repeat("data/master/static/morph/fdir.asc", count),
-                "facc_path": repeat("data/master/static/morph/facc.asc", count),
-                "geo_class_path": repeat("data/master/static/morph/geology_class.asc", count),
-                "soil_class_path": repeat("data/master/static/morph/soil_class.asc", count),
-                "lai_class_path": repeat("data/master/static/morph/lc.asc", count),
+                "slope_path": repeat(MORPH_INPUT, count),
+                "aspect_path": repeat(MORPH_INPUT, count),
+                "fdir_path": repeat(MORPH_INPUT, count),
+                "facc_path": repeat(MORPH_INPUT, count),
+                "geo_class_path": repeat(MORPH_INPUT, count),
+                "soil_class_path": repeat(MORPH_INPUT, count),
+                "lai_class_path": repeat("", count),
                 "morph_mask_path": domain_dems,
             },
             "config_mpr": {
-                "land_cover_path": repeat("data/master/static/morph/lc.asc", count),
-                "lai_path": repeat("data/master/lai/lai.nc", count),
+                "land_cover_path": repeat("data/master/morph/lc_periods.nc", count),
+                "lai_path": repeat("data/master/morph/lai.nc", count),
                 "soil_lut_path": repeat(
-                    "data/master/static/morph/soil_classdefinition.txt", count
+                    "data/master/morph/soil_classdefinition.txt", count
                 ),
                 "geo_lut_path": repeat(
-                    "data/master/static/morph/geology_classdefinition.txt", count
+                    "data/master/morph/geology_classdefinition.txt", count
                 ),
                 "lai_lut_path": repeat(
-                    "data/master/static/morph/LAI_classdefinition.txt", count
+                    "data/master/morph/LAI_classdefinition.txt", count
                 ),
                 "restart_input_path": repeat("restart/mpr_restart_in.nc", count),
                 "restart_output_path": repeat("restart/mpr_restart_out.nc", count),
@@ -88,7 +93,7 @@ def build_initial_values(dialog: Any) -> dict[str, Any]:
                 "restart_output_path": repeat("restart/mhm_restart_out.nc", count),
             },
             "config_mrm": {
-                "scc_gauges_path": repeat("data/master/static/morph/idgauges.asc", count),
+                "scc_gauges_path": repeat("data/master/morph/idgauges.asc", count),
                 "output_path": repeat("output/mrm_output.nc", count),
                 "output_node_path": repeat("output/mrm_node_output.nc", count),
                 "restart_input_path": repeat("restart/mrm_restart_in.nc", count),
@@ -116,13 +121,10 @@ def _domain_dem_paths(settings: dict[str, Any], count: int) -> list[str]:
         key=lambda item: int(item.get("domain_id", 0) or 0),
     )
     values = [
-        str(item.get("dem_path", "") or "data/master/static/morph/dem.asc")
+        str(item.get("dem_path", "") or MORPH_INPUT)
         for item in ordered[:count]
     ]
-    return values + [
-        "data/master/static/morph/dem.asc"
-        for _ in range(max(0, count - len(values)))
-    ]
+    return values + [MORPH_INPUT for _ in range(max(0, count - len(values)))]
 
 
 def _apply_land_cover(main, settings, count):

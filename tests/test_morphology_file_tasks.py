@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -14,9 +15,11 @@ standalone_qgis.install(force=True)
 
 from pymhm.grid_resolution import CATEGORICAL_PAD_VALUE  # noqa: E402
 from pymhm.Morphology.file_tasks import (  # noqa: E402
+    DEM_DERIVATIVE_OUTPUTS,
     crop_aligned_l0_raster,
     delineate_domains_file,
     delineate_outlet_file,
+    dem_derivative_files,
     fill_dem_file,
     hydrology_files,
     mask_aligned_l0_raster,
@@ -328,3 +331,112 @@ def test_repeating_degree_cell_size_stays_aligned_but_a_floored_one_does_not(tmp
         crop_aligned_l0_raster(
             source, tmp_path / "bad.tif", floored_l0, reference_path=source
         )
+
+
+def test_dem_derivatives_land_on_the_canonical_geometry_names(tmp_path):
+    source = tmp_path / "dem.tif"
+    folder = tmp_path / "geometry"
+    _dem(source)
+
+    result = dem_derivative_files(str(source), str(folder), log=lambda _m: None)
+
+    assert result["reused"] is False
+    for _key, (result_key, name) in DEM_DERIVATIVE_OUTPUTS.items():
+        assert result[result_key] == str(folder / name)
+        assert (folder / name).is_file()
+    # The staging folder the tool wrote into must not survive.
+    assert not (folder / "0_dem_derivatives").exists()
+
+    for name in ("1_dem_filled.tif", "1_dem_slope.tif", "2_flow_accumulation.tif"):
+        dataset = gdal.Open(str(folder / name))
+        assert (dataset.RasterXSize, dataset.RasterYSize) == (10, 10)
+        assert dataset.GetGeoTransform() == (0, 100, 0, 1000, 0, -100)
+        assert dataset.GetRasterBand(1).GetNoDataValue() == -9999
+        dataset = None
+
+
+def test_dem_derivatives_reuse_outputs_that_match_the_source_grid(tmp_path):
+    source = tmp_path / "dem.tif"
+    folder = tmp_path / "geometry"
+    _dem(source)
+
+    dem_derivative_files(str(source), str(folder), log=lambda _m: None)
+    stamps = {
+        path.name: path.stat().st_mtime_ns for path in sorted(folder.glob("*.tif"))
+    }
+    again = dem_derivative_files(str(source), str(folder), log=lambda _m: None)
+
+    assert again["reused"] is True
+    assert {
+        path.name: path.stat().st_mtime_ns for path in sorted(folder.glob("*.tif"))
+    } == stamps
+
+
+def test_dem_derivatives_rebuild_when_the_source_grid_changes(tmp_path):
+    source = tmp_path / "dem.tif"
+    folder = tmp_path / "geometry"
+    _dem(source)
+    dem_derivative_files(str(source), str(folder), log=lambda _m: None)
+
+    wider = gdal.GetDriverByName("GTiff").Create(
+        str(source), 12, 10, 1, gdal.GDT_Float32
+    )
+    wider.SetGeoTransform((0, 100, 0, 1000, 0, -100))
+    crs = osr.SpatialReference()
+    crs.ImportFromEPSG(32632)
+    wider.SetProjection(crs.ExportToWkt())
+    wider.GetRasterBand(1).WriteArray(
+        np.add.outer(np.arange(10, 0, -1), np.arange(12, 0, -1)).astype("float32")
+    )
+    wider.GetRasterBand(1).SetNoDataValue(-9999)
+    wider = None
+
+    again = dem_derivative_files(str(source), str(folder), log=lambda _m: None)
+    assert again["reused"] is False
+    dataset = gdal.Open(str(folder / "1_dem_filled.tif"))
+    assert dataset.RasterXSize == 12
+    dataset = None
+
+
+def test_dem_derivatives_delegate_the_expensive_pass_to_the_caller(tmp_path):
+    """The bridge injects a worker-backed `compute`; the hook must be honoured."""
+    source = tmp_path / "dem.tif"
+    folder = tmp_path / "geometry"
+    _dem(source)
+    calls = []
+
+    def compute(prepared, staging, log):
+        calls.append((prepared, Path(staging)))
+        from pymhm.mhm_tools_adapter import create_dem_derivative_files
+
+        return create_dem_derivative_files(prepared, staging, "tif", log=log)
+
+    result = dem_derivative_files(
+        str(source), str(folder), compute=compute, log=lambda _m: None
+    )
+
+    assert len(calls) == 1
+    prepared, staging = calls[0]
+    assert prepared == str(source)
+    assert staging.parent == folder
+    assert result["reused"] is False
+    assert (folder / "1_dem_filled.tif").is_file()
+
+
+def test_native_worker_runs_the_dem_derivative_job(tmp_path):
+    from pymhm.native_worker import run
+
+    source = tmp_path / "dem.tif"
+    _dem(source)
+
+    result = run({
+        "kind": "dem-derivatives",
+        "input_file": str(source),
+        "output_folder": str(tmp_path / "staging"),
+    })
+
+    assert result["kind"] == "dem-derivatives"
+    assert set(result["outputs"]) == {
+        "dem", "dem_filled", "slope", "aspect", "facc", "fdir"
+    }
+    assert all(Path(path).is_file() for path in result["outputs"].values())

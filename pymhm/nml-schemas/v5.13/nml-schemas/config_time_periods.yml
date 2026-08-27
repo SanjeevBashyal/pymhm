@@ -1,8 +1,12 @@
 title: Simulation periods
+description: Domain-specific warming durations and evaluation date ranges for mHM and mRM simulations.
 x-fortran-namelist: time_periods
 type: object
 properties:
   warming_Days:
+    description: |-
+      Number of warming days preceding the evaluation period for each domain.
+      Dynamic inputs must cover the warming interval through the final evaluation day.
     type: array
     items:
       type: integer
@@ -11,17 +15,18 @@ properties:
     x-fortran-shape: max_domains
     examples: [[0]]
   eval_Per:
+    description: Start and end date of the requested evaluation period for each domain.
     type: array
     x-fortran-shape: max_domains
     items:
       type: object
       x-fortran-type: eval_period_t
       properties:
-        yStart: {type: integer, default: 1990}
-        mStart: {type: integer, minimum: 1, maximum: 12, default: 1}
-        dStart: {type: integer, minimum: 1, maximum: 31, default: 1}
-        yEnd: {type: integer, default: 1990}
-        mEnd: {type: integer, minimum: 1, maximum: 12, default: 12}
-        dEnd: {type: integer, minimum: 1, maximum: 31, default: 31}
+        yStart: {type: integer, default: 1990, description: First year of the evaluation period.}
+        mStart: {type: integer, minimum: 1, maximum: 12, default: 1, description: First month of the evaluation period.}
+        dStart: {type: integer, minimum: 1, maximum: 31, default: 1, description: First day of the evaluation period.}
+        yEnd: {type: integer, default: 1990, description: Last year of the evaluation period.}
+        mEnd: {type: integer, minimum: 1, maximum: 12, default: 12, description: Last month of the evaluation period.}
+        dEnd: {type: integer, minimum: 1, maximum: 31, default: 31, description: Last day of the evaluation period.}
     examples:
       - - {yStart: 1990, mStart: 1, dStart: 1, yEnd: 1990, mEnd: 12, dEnd: 31}

@@ -1,18 +1,22 @@
 title: General directories
+description: Common and domain-specific paths for morphology, land cover, restart, coordinate, and model output files.
 x-fortran-namelist: directories_general
 type: object
 properties:
   dirConfigOut:
+    description: Directory for the run-configuration output shared by all modeled domains.
     type: string
     x-fortran-len: buf
     format: directory-path
     default: output/
   dirCommonFiles:
+    description: Directory containing class-definition input files shared by all modeled domains.
     type: string
     x-fortran-len: buf
     format: directory-path
     default: data/master/static/morph/
   dir_Morpho:
+    description: Directory containing morphological input files for each domain.
     type: array
     items:
       type: string
@@ -21,6 +25,7 @@ properties:
     x-fortran-shape: max_domains
     examples: [[data/<outlet-id>/]]
   dir_LCover:
+    description: Directory containing land-cover input files for each domain.
     type: array
     items:
       type: string
@@ -29,6 +34,7 @@ properties:
     x-fortran-shape: max_domains
     examples: [[data/master/static/morph/]]
   mhm_file_RestartOut:
+    description: Path of the mHM restart file to write for each domain.
     type: array
     items:
       type: string
@@ -37,6 +43,7 @@ properties:
     x-fortran-shape: max_domains
     examples: [[restart/mhm_restart_out.nc]]
   mrm_file_RestartOut:
+    description: Path of the mRM restart file to write for each domain.
     type: array
     items:
       type: string
@@ -45,6 +52,7 @@ properties:
     x-fortran-shape: max_domains
     examples: [[restart/mrm_restart_out.nc]]
   dir_Out:
+    description: Directory in which model output is written for each domain.
     type: array
     items:
       type: string
@@ -53,6 +61,7 @@ properties:
     x-fortran-shape: max_domains
     examples: [[output/]]
   file_LatLon:
+    description: NetCDF file containing latitude and longitude at the hydrological resolution for each domain.
     type: array
     items:
       type: string

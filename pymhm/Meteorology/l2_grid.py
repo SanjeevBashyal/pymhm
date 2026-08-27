@@ -52,9 +52,20 @@ def assert_header_file_matches(path: Path | str, header: Mapping[str, Any]) -> N
             raise ValueError(f"Written L2 header {key} does not match: {path}")
 
 
+def assert_netcdf_matches_header(path, variable, header) -> None:
+    """Raise when a written L2 NetCDF does not sit on the saved L2 header."""
+    import xarray as xr
+
+    with xr.open_dataset(path) as dataset:
+        if variable not in dataset:
+            raise ValueError(f"{path} has no {variable} variable.")
+        assert_matches_header(dataset, variable, header)
+
+
 __all__ = [
     "assert_header_file_matches",
     "assert_matches_header",
+    "assert_netcdf_matches_header",
     "axes_match_header",
     "slice_and_pad",
 ]

@@ -1,11 +1,19 @@
 title: Baseflow-index settings
+description: Configuration of observed or internally calculated baseflow indices used by baseflow-sensitive objective functions.
 x-fortran-namelist: baseflow_config
 type: object
 properties:
   BFI_calc:
+    description: |-
+      Calculate the baseflow index from discharge time series with the Eckhardt filter.
+      This requires one gauge per domain at the basin outlet.
+      See Eckhardt et al. (2008), doi:10.1016/j.jhydrol.2008.01.005.
     type: boolean
     default: true
   BFI_obs:
+    description: |-
+      Observed baseflow index for each domain. Required when BFI_calc is false.
+      Individual entries can override internal calculation when BFI_calc is true.
     type: array
     items:
       type: number

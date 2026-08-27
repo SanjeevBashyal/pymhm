@@ -1,16 +1,24 @@
 title: Main configuration
+description: Core mHM 5.13 domain, coordinate-system, hydrological-resolution, restart, and optional-data settings.
 x-fortran-namelist: mainconfig
 type: object
 properties:
   iFlag_cordinate_sys:
+    description: |-
+      Coordinate system used by input data and the model run.
+      0: regular projected x/y coordinates; 1: regular latitude/longitude coordinates.
     type: integer
     enum: [0, 1]
     default: 0
   nDomains:
+    description: |-
+      Number of modeled domains. This should agree with gaugeinfo.txt.
+      Legacy mHM 5.13 routing configurations require one domain when routing is enabled.
     type: integer
     minimum: 1
     default: 1
   resolution_Hydrology:
+    description: Target Level-1 hydrological resolution for each domain, in meters for projected coordinates or decimal degrees for geographic coordinates.
     type: array
     items:
       type: number
@@ -18,6 +26,9 @@ properties:
     x-fortran-shape: max_domains
     examples: [[1.0]]
   L0Domain:
+    description: |-
+      Index used to share Level-0 data between domains and reduce memory use.
+      Values must increase monotonically; a repeated value shares data, and an increased value must equal its one-based position.
     type: array
     items:
       type: integer
@@ -25,9 +36,14 @@ properties:
     x-fortran-shape: max_domains
     examples: [[1]]
   write_restart:
+    description: Write restart output at the end of the simulation.
     type: boolean
     default: false
   read_opt_domain_data:
+    description: |-
+      Optional domain data to read for each domain.
+      0: automatic; 1: runoff; 2: soil moisture; 3: total water storage;
+      4: neutrons; 5: evapotranspiration; 6: evapotranspiration and total water storage.
     type: array
     items:
       type: integer

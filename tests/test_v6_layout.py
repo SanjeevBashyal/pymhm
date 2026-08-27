@@ -1,0 +1,166 @@
+"""v6 uses a different input layout; v5.13 must be untouched by it."""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from pymhm import standalone_qgis  # noqa: E402
+
+standalone_qgis.install(force=True)
+
+from pymhm.Meteorology.paths import (  # noqa: E402
+    expected_meteo_outputs,
+    meteo_mask_path,
+)
+from pymhm.project_layout import (  # noqa: E402
+    domain_dem_path,
+    lai_folder,
+    morph_folder,
+    project_version,
+    streamflow_observation_folder,
+    workspace_folder,
+)
+
+xr = pytest.importorskip("xarray")
+
+
+def _project(tmp_path, version):
+    workspace = Path(workspace_folder(tmp_path))
+    workspace.mkdir(parents=True, exist_ok=True)
+    (workspace / "pymhm_input_state.json").write_text(
+        json.dumps({"mhm_version": version}), encoding="utf-8")
+    return tmp_path
+
+
+def _relative(project, path):
+    return str(Path(path).relative_to(workspace_folder(project)))
+
+
+def test_v6_places_every_input_where_the_template_expects_it(tmp_path):
+    project = _project(tmp_path, "6.0")
+
+    assert project_version(project) == "v6"
+    assert _relative(project, morph_folder(project)) == "data/master/morph"
+    assert _relative(project, lai_folder(project)) == "data/master/morph"
+    assert _relative(project, streamflow_observation_folder(project)) == (
+        "data/master/gauge/streamflow")
+    assert _relative(project, domain_dem_path(project, "280")) == "data/280/dem.nc"
+
+
+def test_v5_13_layout_is_unchanged(tmp_path):
+    project = _project(tmp_path, "5.13")
+
+    assert project_version(project) == "v5.13"
+    assert _relative(project, morph_folder(project)) == "data/master/static/morph"
+    assert _relative(project, lai_folder(project)) == "data/master/lai"
+    assert _relative(project, streamflow_observation_folder(project)) == (
+        "data/master/observation/streamflow")
+    assert _relative(project, domain_dem_path(project, "280")) == "data/280/dem.asc"
+
+
+def test_an_unknown_or_missing_version_falls_back_to_v5_13(tmp_path):
+    # No state file at all: every existing project already uses this layout.
+    assert project_version(tmp_path) == "v5.13"
+    broken = _project(tmp_path / "broken", "5.13")
+    (Path(workspace_folder(broken)) / "pymhm_input_state.json").write_text(
+        "{ not json", encoding="utf-8")
+    assert project_version(broken) == "v5.13"
+
+
+def test_v6_meteo_is_flat_and_has_no_header(tmp_path):
+    project = _project(tmp_path, "6.0")
+    outputs = expected_meteo_outputs(project)
+
+    assert _relative(project, outputs["pre"]["netcdf"]) == "data/master/meteo/pre.nc"
+    assert outputs["pre"]["header"] is None
+    assert _relative(project, meteo_mask_path(project)) == "data/master/meteo/mask.nc"
+
+
+def test_v5_13_meteo_keeps_its_folders_and_headers(tmp_path):
+    project = _project(tmp_path, "5.13")
+    outputs = expected_meteo_outputs(project)
+
+    assert _relative(project, outputs["pre"]["netcdf"]) == (
+        "data/master/meteo/pre/pre.nc")
+    assert _relative(project, outputs["pre"]["header"]) == (
+        "data/master/meteo/pre/header.txt")
+
+
+def test_the_meteo_mask_matches_the_example_format(tmp_path):
+    from pymhm.Meteorology.forcing import TargetGrid
+    from pymhm.Meteorology.mask import write_meteo_mask
+
+    header = {
+        "ncols": 4, "nrows": 3, "xllcorner": 100.0, "yllcorner": 200.0,
+        "cellsize": 10.0,
+    }
+    grid = TargetGrid(lon=np.arange(4), lat=np.arange(3), header=header)
+    output = write_meteo_mask(tmp_path / "mask.nc", grid)
+
+    # mask_and_scale would upcast to float when applying _FillValue; the file
+    # itself stores int32, which is what the mHM example has.
+    with xr.open_dataset(output, mask_and_scale=False) as result:
+        assert result["mask"].dims == ("y", "x")
+        assert result["mask"].shape == (3, 4)
+        assert result["mask"].dtype == np.int32
+        assert np.all(result["mask"].values == 1)
+        np.testing.assert_allclose(
+            result["x"].values, [105.0, 115.0, 125.0, 135.0])
+        np.testing.assert_allclose(result["y"].values, [225.0, 215.0, 205.0])
+        assert result["mask"].attrs["standard_name"] == "land_binary_mask"
+
+
+def test_the_meteo_mask_honours_an_explicit_valid_array(tmp_path):
+    from pymhm.Meteorology.forcing import TargetGrid
+    from pymhm.Meteorology.mask import write_meteo_mask
+
+    header = {
+        "ncols": 2, "nrows": 2, "xllcorner": 0.0, "yllcorner": 0.0,
+        "cellsize": 1.0,
+    }
+    grid = TargetGrid(lon=np.arange(2), lat=np.arange(2), header=header)
+    valid = np.array([[True, False], [False, True]])
+    output = write_meteo_mask(tmp_path / "mask.nc", grid, valid=valid)
+
+    with xr.open_dataset(output) as result:
+        np.testing.assert_array_equal(result["mask"].values, [[1, 0], [0, 1]])
+
+    with pytest.raises(ValueError, match="expected"):
+        write_meteo_mask(tmp_path / "bad.nc", grid, valid=np.ones((3, 3)))
+
+
+def test_the_v6_namelist_points_at_the_new_locations(tmp_path):
+    from pymhm.vSpecific import build_initial_values
+
+    class _Dialog:
+        project_folder = str(tmp_path)
+
+        def current_l1_resolution(self):
+            return 1000
+
+        def current_l11_resolution(self):
+            return 2000
+
+        def current_grid_unit(self):
+            return "m"
+
+    values = build_initial_values("6.0", _Dialog())["main"]
+    config_input = values["config_input"]
+    bundle = "data/master/morph/input.nc"
+    for key in ("dem_path", "slope_path", "aspect_path", "fdir_path",
+                "geo_class_path", "soil_class_path", "latlon_path"):
+        assert config_input[key][0] == bundle, key
+    assert config_input["pre_path"][0] == "data/master/meteo/pre.nc"
+    assert config_input["meteo_mask_path"][0] == "data/master/meteo/mask.nc"
+    # LAI classes are not produced yet, so the key names nothing.
+    assert config_input["lai_class_path"][0] == ""
+    mpr = values["config_mpr"]
+    assert mpr["land_cover_path"][0] == "data/master/morph/lc_periods.nc"
+    assert mpr["soil_lut_path"][0] == "data/master/morph/soil_classdefinition.txt"
+    assert mpr["geo_lut_path"][0] == "data/master/morph/geology_classdefinition.txt"

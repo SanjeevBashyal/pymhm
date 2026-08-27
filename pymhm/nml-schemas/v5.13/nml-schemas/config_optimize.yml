@@ -1,4 +1,5 @@
 title: Optimization configuration
+description: Combined optimization switches, objective selection, algorithm controls, and baseflow-index calculation settings.
 x-fortran-namelist: config_optimize
 type: object
 properties:
@@ -74,6 +75,7 @@ properties:
     x-fortran-kind: i4
     default: 7
     title: Number of iterations
+    description: Number of iteration steps performed for each parameter set.
   seed:
     type: integer
     x-fortran-kind: i4
@@ -102,6 +104,7 @@ properties:
     x-fortran-kind: i4
     default: 2
     title: Number of SCE Complexes
+    description: "Number of SCE complexes; -9 uses two complexes."
   sce_npg:
     type: integer
     x-fortran-kind: i4

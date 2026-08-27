@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 """Pad an Arc/Info ASCII grid onto a larger aligned header by streaming text.
 
-Reading a whole L0 grid into memory to pad it costs gigabytes -- measured at
-3.2 GiB for a 13201 x 6001 soil class raster, which is why soil failed inside
-QGIS after crop and mask had already claimed memory. An ASCII grid is row-major
+An ASCII grid is row-major
 text, so padding is a line-by-line rewrite with constant memory instead.
 """
 from __future__ import annotations

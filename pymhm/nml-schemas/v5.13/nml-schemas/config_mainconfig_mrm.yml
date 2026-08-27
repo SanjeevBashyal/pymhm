@@ -1,18 +1,23 @@
 title: mRM configuration
+description: Stand-alone mRM input conventions, runoff variable/file names, and groundwater-coupling settings.
 x-fortran-namelist: mainconfig_mrm
 type: object
 properties:
   ALMA_convention:
+    description: Use the ALMA convention for input and output variables; in version 5.13 this affects only total-runoff input units.
     type: boolean
     default: false
   varnametotalrunoff:
+    description: NetCDF variable name from which stand-alone mRM reads total runoff.
     type: string
     x-fortran-len: buf
     default: total_runoff
   filenametotalrunoff:
+    description: Base file name from which stand-alone mRM reads total runoff; the .nc extension is implied.
     type: string
     x-fortran-len: buf
     default: total_runoff
   gw_coupling:
+    description: Couple mRM to a groundwater model.
     type: boolean
     default: false

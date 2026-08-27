@@ -11,11 +11,13 @@ from qgis.PyQt.QtWidgets import QMessageBox
 
 from .forcing import (MeteoFolderSpec, TargetGrid,
                       process_meteo_inputs)
-from .paths import expected_meteo_outputs, meteo_output_root
+from .paths import expected_meteo_outputs, meteo_mask_path, meteo_output_root
 from .results import log_result_summary, record_forcing_outputs
 from .reuse import required_meteo_variables, stale_meteo_variables
 from .state import MeteorologyOutputState
+from .mask import write_meteo_mask
 from ..grid_resolution import save_meteo_grid_metadata
+from ..project_layout import is_v6
 
 
 @dataclass(frozen=True)
@@ -46,10 +48,15 @@ class MeteorologyProcessor:
         found = []
         for variable, paths in expected_meteo_outputs(
                 self.dialog.project_folder).items():
-            if paths["netcdf"].exists() and paths["header"].exists():
-                self.state.mark_prepared(paths["netcdf"], paths["netcdf"].name)
-                self.state.mark_prepared(paths["header"], paths["header"].name)
-                found.append(variable)
+            header = paths["header"]
+            if not paths["netcdf"].exists():
+                continue
+            if header is not None and not header.exists():
+                continue
+            self.state.mark_prepared(paths["netcdf"], paths["netcdf"].name)
+            if header is not None:
+                self.state.mark_prepared(header, header.name)
+            found.append(variable)
 
         if found:
             self.log_message(
@@ -97,14 +104,22 @@ class MeteorologyProcessor:
             return True
 
         try:
+            flat = is_v6(run.project_folder)
             result = process_meteo_inputs(
                 precipitation=run.precipitation,
                 temperature=run.temperature,
                 pet=run.pet,
                 output_root=meteo_output_root(run.project_folder),
                 target_grid=run.target_grid,
+                flat_layout=flat,
                 log=self.log_message,
             )
+            if flat:
+                # v6 names a meteorology mask in config_input.
+                mask = write_meteo_mask(
+                    meteo_mask_path(run.project_folder), run.target_grid)
+                self.state.mark_prepared(mask, mask.name)
+                self.log_message(f"Meteorology mask written: {mask}")
         except Exception as error:
             self.log_message(
                 f"ERROR: Meteorology processing failed: {error}\n"

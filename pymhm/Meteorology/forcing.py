@@ -255,6 +255,7 @@ def process_meteo_inputs(
         output_root: Path | str,
         target_grid: TargetGrid,
         pet: MeteoFolderSpec | None = None,
+        flat_layout: bool = False,
         log: Callable[[str], None] | None = None) -> MeteoForcingResult:
     """Compile, resample, crop, and write all selected meteorology inputs."""
     target_grid.validate()
@@ -330,19 +331,26 @@ def process_meteo_inputs(
                 )
                 assert_matches_header(ds_out, variable, target_grid.header)
 
-                output_dir = output_root / variable
-                output_file = output_dir / f"{variable}.nc"
-                header_file = output_dir / "header.txt"
+                # v6 keeps one flat file per variable and no header; v5.13
+                # keeps a per-variable folder with header.txt beside it.
+                if flat_layout:
+                    output_file = output_root / f"{variable}.nc"
+                    header_file = None
+                else:
+                    output_file = output_root / variable / f"{variable}.nc"
+                    header_file = output_root / variable / "header.txt"
                 write_netcdf(ds_out, variable, output_file)
-                write_header(
-                    ds_out,
-                    variable,
-                    header_file,
-                    header=dict(target_grid.header),
-                )
-                assert_header_file_matches(header_file, target_grid.header)
+                if header_file is not None:
+                    write_header(
+                        ds_out,
+                        variable,
+                        header_file,
+                        header=dict(target_grid.header),
+                    )
+                    assert_header_file_matches(header_file, target_grid.header)
                 outputs[variable] = output_file
-                headers[variable] = header_file
+                if header_file is not None:
+                    headers[variable] = header_file
                 files_used[variable] = (
                     len(metadata.files)
                     if folder_spec.source == ERA5LAND else 1

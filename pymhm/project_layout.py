@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 
 
 WORKSPACE_FOLDER_NAME = "mhm-plugin"
+INPUT_STATE_FILENAME = "pymhm_input_state.json"
 
 
 def plugin_root() -> str:
@@ -25,6 +27,30 @@ def version_key(version_text: str | None) -> str:
     if text.startswith("5"):
         return "v5.13"
     return "v6"
+
+
+def project_version(project_folder) -> str:
+    """Return the mHM version the project was set up with.
+
+    Read from the saved input state so the layout helpers can branch on version
+    without every caller having to thread it through. Defaults to v5.13, which
+    is the layout every existing project already uses.
+    """
+    path = os.path.join(
+        workspace_folder(project_folder), INPUT_STATE_FILENAME)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            state = json.load(handle)
+        if isinstance(state, dict):
+            return version_key(state.get("mhm_version"))
+    except (OSError, ValueError, TypeError):
+        pass
+    return "v5.13"
+
+
+def is_v6(project_folder) -> bool:
+    """Return True when the project uses the v6 input layout."""
+    return project_version(project_folder) == "v6"
 
 
 def project_template_dir(version_text: str | None) -> str | None:
@@ -96,7 +122,9 @@ def domain_data_folder(project_folder, outlet_id) -> str:
 
 
 def domain_dem_path(project_folder, outlet_id) -> str:
-    return os.path.join(domain_data_folder(project_folder, outlet_id), "dem.asc")
+    """Return the per-domain DEM: NetCDF for v6, Arc/Info ASCII for v5.13."""
+    name = "dem.nc" if is_v6(project_folder) else "dem.asc"
+    return os.path.join(domain_data_folder(project_folder, outlet_id), name)
 
 
 def data_raw_folder(project_folder) -> str:
@@ -111,6 +139,8 @@ def static_folder(project_folder) -> str:
 
 def morph_folder(project_folder) -> str:
     """Return the static morphology data folder."""
+    if is_v6(project_folder):
+        return os.path.join(master_data_folder(project_folder), "morph")
     return os.path.join(static_folder(project_folder), "morph")
 
 
@@ -126,11 +156,17 @@ def raw_meteo_folder(project_folder) -> str:
 
 def lai_folder(project_folder) -> str:
     """Return the LAI data folder."""
+    if is_v6(project_folder):
+        return morph_folder(project_folder)
     return os.path.join(master_data_folder(project_folder), "lai")
 
 
 def streamflow_observation_folder(project_folder) -> str:
     """Return the streamflow observation folder."""
+    if is_v6(project_folder):
+        return os.path.join(
+            master_data_folder(project_folder), "gauge", "streamflow"
+        )
     return os.path.join(
         master_data_folder(project_folder), "observation", "streamflow"
     )

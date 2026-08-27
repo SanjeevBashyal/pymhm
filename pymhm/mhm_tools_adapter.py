@@ -405,6 +405,30 @@ def _require_outputs(outputs: tuple[Path, ...]) -> tuple[Path, ...]:
     return outputs
 
 
+def create_dem_derivative_files(
+    input_file: str | Path,
+    output_folder: str | Path,
+    output_extension: str = "tif",
+    crs: str | None = None,
+    log: LogCallback | None = None,
+) -> dict[str, Path]:
+    """Create the DEM derivatives through mHM-tools, keyed by derivative name."""
+    from mhm_tools.pre.dem_derivatives import create_dem_derivatives
+
+    folder = Path(output_folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    with capture_messages(log):
+        written = create_dem_derivatives(
+            input_file=str(input_file),
+            output_path=folder,
+            output_extension=output_extension,
+            crs=crs,
+        )
+    paths = tuple(Path(path) for path in written)
+    _require_outputs(paths)
+    return {path.stem: path for path in paths}
+
+
 def create_latlon_file(
     out_file: str | Path,
     level0: dict | str | Path,
@@ -447,6 +471,7 @@ def create_latlon_file(
 
 __all__ = [
     "capture_messages",
+    "create_dem_derivative_files",
     "create_latlon_file",
     "prepare_categorical_file",
     "prepare_land_cover_periods",

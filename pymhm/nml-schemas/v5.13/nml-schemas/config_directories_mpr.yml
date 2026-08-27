@@ -1,8 +1,10 @@
 title: MPR directories
+description: Domain-specific directories for gridded leaf-area-index input used by multiscale parameter regionalization.
 x-fortran-namelist: directories_MPR
 type: object
 properties:
   dir_gridded_LAI:
+    description: Directory containing gridded LAI files for each domain; required when timeStep_LAI_input is not zero.
     type: array
     items:
       type: string

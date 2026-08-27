@@ -1,8 +1,10 @@
 title: mRM directories
+description: Domain-specific directories for discharge observations and runoff inputs used by the multiscale routing model.
 x-fortran-namelist: directories_mRM
 type: object
 properties:
   dir_Gauges: &domain_directory
+    description: Directory containing observed discharge files for each domain.
     type: array
     items:
       type: string
@@ -12,7 +14,9 @@ properties:
     examples: [[data/master/observation/streamflow/]]
   dir_Total_Runoff:
     <<: *domain_directory
+    description: Directory containing simulated total runoff when mRM is not directly coupled to mHM.
     examples: [[output/]]
   dir_Bankfull_Runoff:
     <<: *domain_directory
+    description: Directory containing runoff at bankfull conditions when coupling mRM to a groundwater model.
     examples: [[data/master/static/morph/]]

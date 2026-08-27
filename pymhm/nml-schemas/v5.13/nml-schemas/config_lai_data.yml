@@ -1,11 +1,18 @@
 title: LAI input configuration
+description: Configuration of leaf-area-index input mode and gridded file format, shared by all modeled domains.
 x-fortran-namelist: LAI_data_information
 type: object
 properties:
   timeStep_LAI_input:
+    description: |-
+      LAI input mode.
+      0 reads long-term monthly means from LAI_classdefinition.txt;
+      -1, -2, and -3 read daily, monthly, and yearly gridded LAI respectively;
+      1 reads a NetCDF file containing 12 mean-monthly LAI grids per domain.
     type: integer
     default: 1
   inputFormat_gridded_LAI:
+    description: File format for gridded LAI input. Version 5.13 supports NetCDF files named lai.nc.
     type: string
     x-fortran-len: buf
     enum: [nc]

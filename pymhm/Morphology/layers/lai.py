@@ -268,7 +268,7 @@ class LaiProcessingMixin(
 
     def _selected_lai_input_type(self) -> str:
         """Return the normalized LAI input type selection."""
-        combo_box = getattr(self.dialog, "comboBox_laiInputType", None)
+        combo_box = getattr(self.dialog, "comboBox_lai_inputType", None)
         if combo_box is None:
             return ""
         return (combo_box.currentText() or "").strip().lower()

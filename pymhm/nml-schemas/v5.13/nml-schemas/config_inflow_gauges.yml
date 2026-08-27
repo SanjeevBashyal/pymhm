@@ -1,12 +1,15 @@
 title: Inflow gauges
+description: Gauges or grid cells supplying observed inflow from upstream areas outside a modeled domain.
 x-fortran-namelist: inflow_gauges
 type: object
 properties:
   nInflowGaugesTotal:
+    description: Total number of inflow gauges across all modeled domains.
     type: integer
     minimum: 0
     default: 0
   NoInflowGauges_domain:
+    description: Number of inflow gauges in each domain.
     type: array
     items:
       type: integer
@@ -14,12 +17,14 @@ properties:
     x-fortran-shape: max_domains
     examples: [[0]]
   InflowGauge_id:
+    description: Identifier of each inflow gauge, indexed by domain and gauge position.
     type: array
     items:
       type: integer
     x-fortran-shape: [max_domains, max_gauges]
     examples: [[[-9]]]
   InflowGauge_filename:
+    description: Name of the inflow time-series file for each domain and gauge position.
     type: array
     items:
       type: string
@@ -27,6 +32,7 @@ properties:
     x-fortran-shape: [max_domains, max_gauges]
     examples: [[[""]]]
   InflowGauge_Headwater:
+    description: Whether flows from upstream or headwater cells of each inflow gauge are included.
     type: array
     items:
       type: boolean

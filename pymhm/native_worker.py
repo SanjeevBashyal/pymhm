@@ -61,6 +61,17 @@ def _soil(value):
 def run(job):
     if job.get("mode") == "lookup":
         return run_lookup_job(job["job"])
+    if job["kind"] == "dem-derivatives":
+        # Imported here so the worker never pulls in the QGIS-only packages.
+        from .mhm_tools_adapter import create_dem_derivative_files
+
+        outputs = create_dem_derivative_files(
+            job["input_file"], job["output_folder"], "tif"
+        )
+        return {
+            "kind": job["kind"],
+            "outputs": {name: str(path) for name, path in outputs.items()},
+        }
     common = (job["project_folder"], job["version"])
     if job["kind"] == "lc":
         outputs = process_land_cover_input(

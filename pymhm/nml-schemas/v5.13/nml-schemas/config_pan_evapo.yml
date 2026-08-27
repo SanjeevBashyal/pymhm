@@ -1,8 +1,10 @@
 title: Pan evaporation
+description: Annual cycle of monthly free-pan evaporation coefficients for open-water surfaces.
 x-fortran-namelist: panEvapo
 type: object
 properties:
   evap_coeff:
+    description: Free-pan evaporation coefficient for each month from January through December.
     type: array
     items:
       type: number

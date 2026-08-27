@@ -2,6 +2,7 @@
 """ASCII export of masked morphology rasters."""
 from __future__ import annotations
 
+from ...project_layout import is_v6
 from ..common import (
     os,
     QMessageBox,
@@ -53,6 +54,11 @@ class AsciiExportMixin(MaskingMixin):
 
         morph_output_folder = morph_folder(self.dialog.project_folder)
         os.makedirs(morph_output_folder, exist_ok=True)
+
+        if is_v6(self.dialog.project_folder):
+            # v6 reads one bundled NetCDF instead of the separate ASCII files.
+            return self._write_morph_input_nc(
+                headers["L0"], morph_output_folder, show_error_dialog)
 
         # Mapping from masked layer filenames to output ASCII settings.
         filename_mapping = {
@@ -135,4 +141,53 @@ class AsciiExportMixin(MaskingMixin):
         self.log_message(f"Successfully converted: {len(result.outputs)} layer(s)")
         self.log_message(f"ASCII files saved to: {morph_output_folder}")
         self.log_message("ASCII conversion process completed.")
+        return True
+
+    def _write_morph_input_nc(
+            self, l0_header, morph_output_folder, show_error_dialog) -> bool:
+        """Bundle the masked L0 rasters into the v6 `input.nc`."""
+        from ..layers.morph_input_nc import (
+            available_layers,
+            write_morph_input_nc,
+        )
+
+        geometry = geometry_folder(self.dialog.project_folder)
+        layers = available_layers(geometry)
+        if not layers:
+            message = (
+                "No masked morphology rasters were found. Run Crop and Mask "
+                "before writing the v6 input.nc."
+            )
+            self.log_message(f"ERROR: {message}")
+            if show_error_dialog:
+                QMessageBox.warning(self.dialog, "No Masked Layers", message)
+            return False
+
+        crs = self.dialog.get_crs()
+        crs_string = ""
+        if crs is not None and crs.isValid():
+            crs_string = crs.authid() or (
+                f"EPSG:{crs.postgisSrid()}" if crs.postgisSrid() else "")
+        output = os.path.join(morph_output_folder, "input.nc")
+        self.log_message(
+            f"Writing v6 input.nc with {len(layers)} layer(s): "
+            f"{', '.join(sorted(layers))}"
+        )
+        try:
+            write_morph_input_nc(
+                output,
+                layers,
+                l0_header,
+                crs_string=crs_string or None,
+                title="Static morphology inputs prepared by pymhm",
+                log=self.log_message,
+            )
+        except Exception as error:
+            self.log_message(f"ERROR: Could not write input.nc: {error}")
+            if show_error_dialog:
+                QMessageBox.warning(self.dialog, "input.nc Error", str(error))
+            return False
+
+        self.mark_output_prepared(output, name="input.nc", loaded=False)
+        self.log_message(f"v6 morphology bundle written: {output}")
         return True

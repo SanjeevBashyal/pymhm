@@ -1,0 +1,171 @@
+"""The v6 morphology bundle must match the mHM example's input.nc layout."""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import numpy as np
+import pytest
+from osgeo import gdal, osr
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from pymhm import standalone_qgis  # noqa: E402
+
+standalone_qgis.install(force=True)
+
+from pymhm.Morphology.layers.morph_input_nc import (  # noqa: E402
+    MORPH_VARIABLES,
+    available_layers,
+    write_morph_input_nc,
+)
+
+xr = pytest.importorskip("xarray")
+
+L0 = {
+    "ncols": 4, "nrows": 3, "xllcorner": 100.0, "yllcorner": 200.0,
+    "cellsize": 10.0, "nodata_value": -9999.0,
+}
+
+
+def _raster(path, values, nodata=-9999, epsg=32632):
+    rows, columns = values.shape
+    dataset = gdal.GetDriverByName("GTiff").Create(
+        str(path), columns, rows, 1, gdal.GDT_Float32)
+    dataset.SetGeoTransform((100.0, 10.0, 0, 230.0, 0, -10.0))
+    crs = osr.SpatialReference()
+    crs.ImportFromEPSG(epsg)
+    dataset.SetProjection(crs.ExportToWkt())
+    dataset.GetRasterBand(1).WriteArray(values.astype("float32"))
+    dataset.GetRasterBand(1).SetNoDataValue(nodata)
+    dataset = None
+    return path
+
+
+def _masked_set(folder, names=None):
+    folder.mkdir(parents=True, exist_ok=True)
+    written = {}
+    base = np.arange(12, dtype="float64").reshape(3, 4)
+    for index, (name, stem, _dtype, _attrs) in enumerate(MORPH_VARIABLES):
+        if names is not None and name not in names:
+            continue
+        written[name] = _raster(folder / f"{stem}_masked.tif", base + index * 100)
+    return written
+
+
+def test_available_layers_finds_the_masked_rasters(tmp_path):
+    _masked_set(tmp_path, names={"dem", "slope"})
+    found = available_layers(tmp_path)
+    assert sorted(found) == ["dem", "slope"]
+    assert found["dem"].name == "1_dem_filled_masked.tif"
+
+
+def test_input_nc_has_the_example_structure(tmp_path):
+    _masked_set(tmp_path)
+    output = write_morph_input_nc(
+        tmp_path / "input.nc", available_layers(tmp_path), L0,
+        crs_string="EPSG:32632", title="Static morphology inputs for test",
+    )
+
+    with xr.open_dataset(output, mask_and_scale=False) as result:
+        # Seven morphology variables; LAI_class is deliberately absent for now.
+        morphology = [
+            name for name in result.data_vars
+            if not name.endswith("_bnds")
+        ]
+        assert sorted(morphology) == [
+            "aspect", "dem", "facc", "fdir", "geology_class", "slope",
+            "soil_class",
+        ]
+        # The `coordinates` attribute promotes lon/lat, matching the example.
+        assert sorted(result.coords) == ["lat", "lon", "x", "y"]
+        assert result["x"].attrs["bounds"] == "x_bnds"
+        assert result["dem"].dims == ("y", "x")
+        assert result["dem"].shape == (3, 4)
+        assert result.attrs["Conventions"] == "CF-1.8"
+        assert result.attrs["title"] == "Static morphology inputs for test"
+        # Axes carry the projected coordinates and their bounds.
+        np.testing.assert_allclose(result["x"].values, [105.0, 115.0, 125.0, 135.0])
+        np.testing.assert_allclose(result["y"].values, [225.0, 215.0, 205.0])
+        np.testing.assert_allclose(result["x_bnds"].values[0], [100.0, 110.0])
+        np.testing.assert_allclose(result["y_bnds"].values[0], [230.0, 220.0])
+        assert result["dem"].attrs["units"] == "m"
+        assert result["fdir"].dtype == np.int32
+        assert result["dem"].dtype == np.float64
+
+    # xarray folds `coordinates` into encoding on read, so check the raw file:
+    # mHM reads the attribute itself.
+    from netCDF4 import Dataset
+
+    with Dataset(output) as raw:
+        assert raw.variables["dem"].coordinates == "lat lon"
+        assert raw.variables["dem"].missing_value == -9999
+        assert raw.variables["fdir"].getncattr("_FillValue") == -9999
+
+
+def test_values_are_copied_verbatim_from_the_masked_rasters(tmp_path):
+    _masked_set(tmp_path)
+    output = write_morph_input_nc(
+        tmp_path / "input.nc", available_layers(tmp_path), L0,
+        crs_string="EPSG:32632")
+
+    base = np.arange(12, dtype="float64").reshape(3, 4)
+    with xr.open_dataset(output, mask_and_scale=False) as result:
+        for index, (name, _stem, _dtype, _attrs) in enumerate(MORPH_VARIABLES):
+            np.testing.assert_array_equal(
+                result[name].values, (base + index * 100).astype(
+                    result[name].dtype))
+
+
+def test_a_geographic_project_writes_lon_lat_without_transforming(tmp_path):
+    geographic = {
+        "ncols": 2, "nrows": 2, "xllcorner": 79.0, "yllcorner": 30.0,
+        "cellsize": 0.1,
+    }
+    folder = tmp_path / "geo"
+    folder.mkdir()
+    path = folder / "1_dem_filled_masked.tif"
+    dataset = gdal.GetDriverByName("GTiff").Create(str(path), 2, 2, 1, gdal.GDT_Float32)
+    dataset.SetGeoTransform((79.0, 0.1, 0, 30.2, 0, -0.1))
+    crs = osr.SpatialReference()
+    crs.ImportFromEPSG(4326)
+    dataset.SetProjection(crs.ExportToWkt())
+    dataset.GetRasterBand(1).WriteArray(np.ones((2, 2), dtype="float32"))
+    dataset = None
+
+    output = write_morph_input_nc(
+        tmp_path / "input.nc", available_layers(folder), geographic,
+        crs_string="EPSG:4326")
+
+    with xr.open_dataset(output) as result:
+        # lon/lat equal the axes themselves when the project is already lon/lat.
+        np.testing.assert_allclose(result["lon"].values[0], result["x"].values)
+        np.testing.assert_allclose(result["lat"].values[:, 0], result["y"].values)
+
+
+def test_missing_layers_are_simply_omitted(tmp_path):
+    _masked_set(tmp_path, names={"dem", "facc"})
+    output = write_morph_input_nc(
+        tmp_path / "input.nc", available_layers(tmp_path), L0,
+        crs_string="EPSG:32632")
+
+    with xr.open_dataset(output) as result:
+        assert "dem" in result and "facc" in result
+        assert "slope" not in result and "soil_class" not in result
+
+
+def test_writing_without_any_layer_is_rejected(tmp_path):
+    with pytest.raises(ValueError, match="No masked morphology rasters"):
+        write_morph_input_nc(tmp_path / "input.nc", {}, L0)
+
+
+def test_a_failed_write_leaves_no_partial_file(tmp_path):
+    _masked_set(tmp_path, names={"dem"})
+    layers = available_layers(tmp_path)
+    layers["slope"] = tmp_path / "absent.tif"
+
+    with pytest.raises(RuntimeError, match="Could not open the masked raster"):
+        write_morph_input_nc(tmp_path / "input.nc", layers, L0,
+                             crs_string="EPSG:32632")
+    assert not (tmp_path / "input.nc").exists()
+    assert not list(tmp_path.glob(".*.tmp"))

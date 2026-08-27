@@ -290,7 +290,10 @@ def test_initial_values_render_version_specific_main_groups(tmp_path: Path) -> N
     assert "&config_input\n" in rendered_v6
     assert "&config_resolution\n" in rendered_v6
     assert "hydro(1) = 1000.0" in rendered_v6
-    assert 'dem_path(1) = "data/master/static/morph/dem.asc"' in rendered_v6
+    # v6 reads its morphology from the bundled input.nc, not separate ASCII.
+    assert 'dem_path(1) = "data/master/morph/input.nc"' in rendered_v6
+    assert 'slope_path(1) = "data/master/morph/input.nc"' in rendered_v6
+    assert 'pre_path(1) = "data/master/meteo/pre.nc"' in rendered_v6
 
 
 def test_domain_dimensions_and_paths_follow_plugin_domains(tmp_path: Path) -> None:

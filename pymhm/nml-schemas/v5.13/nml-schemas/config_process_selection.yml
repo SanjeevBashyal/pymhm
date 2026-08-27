@@ -1,8 +1,25 @@
 title: Process selection
+description: Selection of the eleven process formulations used by the legacy mHM 5.13 simulation.
 x-fortran-namelist: processSelection
 type: object
 properties:
   processCase:
+    description: |-
+      Process option by one-based index:
+      1 interception (1: maximum interception);
+      2 snow (1: degree-day);
+      3 soil moisture (1: Feddes/multilayer, 2: Jarvis/multilayer,
+      3: Jarvis/global field capacity, 4: Feddes/global field capacity);
+      4 direct runoff (1: linear-reservoir exceedance);
+      5 PET (-1: input with LAI correction, 0: input with aspect correction,
+      1: Hargreaves-Samani, 2: Priestley-Taylor, 3: Penman-Monteith);
+      6 interflow (1: nonlinear storage reservoir);
+      7 percolation (1: linear groundwater reservoir);
+      8 routing (0: off, 1: Muskingum, 2: adaptive/constant celerity,
+      3: adaptive/spatially varying celerity);
+      9 baseflow (1: recession parameters);
+      10 cosmic-ray neutrons (0: off, 1: Desilets inverse N0, 2: COSMIC);
+      11 river-temperature routing (0: off, 1: Beek et al. 2012).
     type: array
     items:
       type: integer

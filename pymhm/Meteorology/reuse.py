@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from .l2_grid import assert_header_file_matches
+from .l2_grid import assert_header_file_matches, assert_netcdf_matches_header
 from .paths import expected_meteo_outputs
 from ..project_layout import workspace_folder
 
@@ -49,7 +49,10 @@ def stale_meteo_variables(
         if paths is None:
             stale[variable] = "unknown meteorology variable"
             continue
-        for path in (paths["netcdf"], paths["header"]):
+        expected_paths = [paths["netcdf"]]
+        if paths["header"] is not None:
+            expected_paths.append(paths["header"])
+        for path in expected_paths:
             key = output_state_key(project_folder, path)
             entry = recorded_outputs.get(key)
             if not isinstance(entry, Mapping) or not entry.get("exists"):
@@ -59,6 +62,13 @@ def stale_meteo_variables(
                 stale[variable] = f"{path.name} is missing on disk"
                 break
         else:
+            if paths["header"] is None:
+                # v6 has no header file, so the grid itself is the check.
+                try:
+                    assert_netcdf_matches_header(paths["netcdf"], variable, header)
+                except (OSError, ValueError) as error:
+                    stale[variable] = f"{error}"
+                continue
             try:
                 assert_header_file_matches(paths["header"], header)
             except (OSError, ValueError) as error:

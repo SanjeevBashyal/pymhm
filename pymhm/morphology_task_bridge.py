@@ -15,7 +15,8 @@ from qgis.PyQt.QtWidgets import QMessageBox
 from qgis.core import QgsRasterLayer
 
 from .Morphology.core.soil_sources import local_layer_source
-from .Morphology.file_tasks import fill_dem_file, hydrology_files, terrain_files
+from .Morphology.file_tasks import (dem_derivative_files, fill_dem_file,
+                                    hydrology_files, terrain_files)
 from .Morphology.hydrology.outlets import configured_gauged_outlet_ids
 from .Morphology.layers.categorical import _SPECS
 from .Morphology.layers.lai_source import run_lai_resample
@@ -65,6 +66,23 @@ def _saved_categorical_outputs(project_folder, kind):
 
 def _run_fill(task, options):
     return fill_dem_file(task=task, **options)
+
+
+def _run_dem_derivatives(task, options):
+    """Derive in the disposable worker: the pass peaks at several gigabytes."""
+    def compute(prepared, staging, _log):
+        result = _run_in_worker(
+            task,
+            {
+                "kind": "dem-derivatives",
+                "input_file": str(prepared),
+                "output_folder": str(staging),
+            },
+            str(Path(staging).parent),
+        )
+        return {name: Path(path) for name, path in result["outputs"].items()}
+
+    return dem_derivative_files(task=task, compute=compute, **options)
 
 
 def _run_hydrology(task, options):
@@ -262,12 +280,15 @@ class MorphologyTaskBridge(QtCore.QObject):
         direction=True,
         include_channel=True,
         write_flow=True,
+        accumulation=True,
     ):
         folder = Path(geometry_folder(self.dialog.project_folder))
         return {
             "filled_dem": self.processor.filled_dem_path,
             "accumulation_path": (
-                str(folder / "2_flow_accumulation.tif") if write_flow else ""
+                str(folder / "2_flow_accumulation.tif")
+                if write_flow and accumulation
+                else ""
             ),
             "area_path": (
                 str(folder / "2_flow_accumulation_area.tif") if write_flow else ""
@@ -292,6 +313,7 @@ class MorphologyTaskBridge(QtCore.QObject):
         direction=True,
         include_channel=True,
         write_flow=True,
+        accumulation=True,
         done=None,
         failed=None,
     ):
@@ -311,6 +333,7 @@ class MorphologyTaskBridge(QtCore.QObject):
                     direction=direction,
                     include_channel=include_channel,
                     write_flow=write_flow,
+                    accumulation=accumulation,
                     done=done,
                     failed=failed,
                 ),
@@ -322,6 +345,7 @@ class MorphologyTaskBridge(QtCore.QObject):
             direction=direction,
             include_channel=include_channel,
             write_flow=write_flow,
+            accumulation=accumulation,
         )
         publish_channel = not channel_path
         return self.coordinator.submit(
@@ -352,6 +376,48 @@ class MorphologyTaskBridge(QtCore.QObject):
             self.processor.mark_output_prepared(str(path), name=name, loaded=False)
             if load == key:
                 self.processor.load_layer(str(path), name, is_raster=is_raster)
+        if done is not None:
+            done(result)
+
+    def start_dem_derivatives(
+        self,
+        *,
+        key="execute-all-dem-derivatives",
+        controls=(),
+        load=False,
+        done=None,
+        failed=None,
+    ):
+        """Fill the DEM and derive slope, aspect, facc and fdir in one pass."""
+        try:
+            options = self._dem_options()
+        except Exception as error:
+            self._error("DEM derivatives", error, failed)
+            return False
+        options.pop("output_path", None)
+        options["output_folder"] = str(geometry_folder(self.dialog.project_folder))
+        options["log"] = self.dialog.log_message
+        return self.coordinator.submit(
+            key,
+            "Prepare DEM derivatives",
+            partial(_run_dem_derivatives, options=options),
+            controls=self._controls(controls),
+            resource="morphology-files",
+            task_aware=True,
+            on_success=lambda result: self._dem_derivatives_ready(result, load, done),
+            on_error=lambda message: self._error("DEM derivatives", message, failed),
+        )
+
+    def _dem_derivatives_ready(self, result, load, done):
+        self._filled(result, load, None)
+        self.processor.slope_path = result["slope"]
+        self.processor.aspect_path = result["aspect"]
+        self.processor.flow_accumulation_path = result["flow_accumulation"]
+        self.processor.flow_direction_path = result["flow_direction"]
+        for key in ("slope", "aspect", "flow_accumulation", "flow_direction"):
+            self.processor.mark_output_prepared(
+                result[key], name=Path(result[key]).name, loaded=False
+            )
         if done is not None:
             done(result)
 
@@ -805,14 +871,10 @@ class MorphologyTaskBridge(QtCore.QObject):
         self.processor.mark_workflow_status("execute_all", "running")
         self.dialog.set_morphology_workflow_button_state("execute_all", "running")
         stages = [
-            lambda next_step: self.start_fill(
+            lambda next_step: self.start_dem_derivatives(
                 key="execute-all-dem",
-                load=False,
                 done=lambda _r: next_step(),
                 failed=self._fail_execute_all,
-            ),
-            lambda next_step: self.start_terrain(
-                done=lambda _r: next_step(), failed=self._fail_execute_all
             ),
             lambda next_step: self.start_categorical(
                 "lc",
@@ -838,9 +900,13 @@ class MorphologyTaskBridge(QtCore.QObject):
                 done=lambda _r: next_step(),
                 failed=self._fail_execute_all,
             ),
+            # facc and fdir already came from the derivatives stage; this pass
+            # only adds the upstream-area raster and the channel network.
             lambda next_step: self.start_hydrology(
                 key="execute-all-hydrology",
                 load="",
+                accumulation=False,
+                direction=False,
                 done=lambda _r: next_step(),
                 failed=self._fail_execute_all,
             ),

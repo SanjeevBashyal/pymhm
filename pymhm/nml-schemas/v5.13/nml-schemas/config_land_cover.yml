@@ -1,24 +1,29 @@
 title: Land-cover periods
+description: Chronologically ordered land-cover scenes shared by all domains; their periods must cover the complete simulation period.
 x-fortran-namelist: LCover
 type: object
 properties:
   nLCoverScene:
+    description: Number of land-cover scenes used by the simulation.
     type: integer
     minimum: 1
     default: 1
   LCoverYearStart:
+    description: First year represented by each land-cover scene.
     type: array
     items:
       type: integer
     x-fortran-shape: max_lcover_scenes
     examples: [[1900]]
   LCoverYearEnd:
+    description: Last year represented by each land-cover scene.
     type: array
     items:
       type: integer
     x-fortran-shape: max_lcover_scenes
     examples: [[2100]]
   LCoverfName:
+    description: File name of each land-cover scene; scene names must be the same for all domains.
     type: array
     items:
       type: string
