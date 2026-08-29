@@ -1,3 +1,8 @@
+# Temporary files
+.scripts/
+.vscode/
+.ruff_cache/
+
 # Doxy files
 src/mhm_qgis/docs/sphinx/
 src/mhm_qgis/docs/doxy/
