@@ -9,12 +9,12 @@ from osgeo import gdal, ogr, osr
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm import standalone_qgis
+from mhm_qgis import standalone_qgis
 
 standalone_qgis.install(force=True)
 
-from pymhm.grid_resolution import CATEGORICAL_PAD_VALUE  # noqa: E402
-from pymhm.Morphology.file_tasks import (  # noqa: E402
+from mhm_qgis.grid_resolution import CATEGORICAL_PAD_VALUE  # noqa: E402
+from mhm_qgis.Morphology.file_tasks import (  # noqa: E402
     DEM_DERIVATIVE_OUTPUTS,
     crop_aligned_l0_raster,
     delineate_domains_file,
@@ -303,7 +303,7 @@ def _degree_dem(path, cellsize, cols=24, rows=12):
 
 def test_repeating_degree_cell_size_stays_aligned_but_a_floored_one_does_not(tmp_path):
     """Regression: flooring 1/1200 deg to 8 places drifts off the source grid."""
-    from pymhm.grid_resolution import aligned_l0_l2_headers
+    from mhm_qgis.grid_resolution import aligned_l0_l2_headers
 
     exact = 1.0 / 1200.0
     source = tmp_path / "dem.tif"
@@ -407,7 +407,7 @@ def test_dem_derivatives_delegate_the_expensive_pass_to_the_caller(tmp_path):
 
     def compute(prepared, staging, log):
         calls.append((prepared, Path(staging)))
-        from pymhm.mhm_tools_adapter import create_dem_derivative_files
+        from mhm_qgis.mhm_tools_adapter import create_dem_derivative_files
 
         return create_dem_derivative_files(prepared, staging, "tif", log=log)
 
@@ -424,7 +424,7 @@ def test_dem_derivatives_delegate_the_expensive_pass_to_the_caller(tmp_path):
 
 
 def test_native_worker_runs_the_dem_derivative_job(tmp_path):
-    from pymhm.native_worker import run
+    from mhm_qgis.native_worker import run
 
     source = tmp_path / "dem.tif"
     _dem(source)

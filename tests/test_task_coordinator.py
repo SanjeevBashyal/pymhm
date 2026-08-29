@@ -4,14 +4,14 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm import standalone_qgis
+from mhm_qgis import standalone_qgis
 
 standalone_qgis.install(force=True)
 
 from qgis.PyQt import QtCore, QtWidgets  # noqa: E402
 
-from pymhm.task_coordinator import TaskCoordinator  # noqa: E402
-from pymhm.thread_display_dialog import ThreadDisplayDialog  # noqa: E402
+from mhm_qgis.task_coordinator import TaskCoordinator  # noqa: E402
+from mhm_qgis.thread_display_dialog import ThreadDisplayDialog  # noqa: E402
 
 
 _APPLICATION = None

@@ -6,12 +6,12 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm import standalone_qgis  # noqa: E402
+from mhm_qgis import standalone_qgis  # noqa: E402
 
 standalone_qgis.install(force=True)
 
-from pymhm.grid_resolution import CATEGORICAL_PAD_VALUE  # noqa: E402
-from pymhm.Morphology.layers.masking import MaskingMixin  # noqa: E402
+from mhm_qgis.grid_resolution import CATEGORICAL_PAD_VALUE  # noqa: E402
+from mhm_qgis.Morphology.layers.masking import MaskingMixin  # noqa: E402
 
 
 # Layers the DEM workflow produces, and the policy each one must follow.

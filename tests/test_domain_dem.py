@@ -10,12 +10,12 @@ from osgeo import gdal, ogr, osr
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm import standalone_qgis  # noqa: E402
+from mhm_qgis import standalone_qgis  # noqa: E402
 
 standalone_qgis.install(force=True)
 
-from pymhm.Morphology.file_tasks import write_domain_dem_ascii  # noqa: E402
-from pymhm.Morphology.latlon.ascii_pad import read_ascii_header  # noqa: E402
+from mhm_qgis.Morphology.file_tasks import write_domain_dem_ascii  # noqa: E402
+from mhm_qgis.Morphology.latlon.ascii_pad import read_ascii_header  # noqa: E402
 
 
 L0 = {
@@ -149,7 +149,7 @@ def test_source_nodata_becomes_the_ascii_nodata(tmp_path):
 
 
 def _domain_state(project, outlets, dem_domain=False):
-    from pymhm.Morphology.watershed.domain_state import save_state
+    from mhm_qgis.Morphology.watershed.domain_state import save_state
 
     save_state(project, {
         "definition_mode": "snapped_pour_points",
@@ -165,7 +165,7 @@ def _domain_state(project, outlets, dem_domain=False):
 
 
 def test_the_plan_lists_every_active_domain_with_its_polygon(tmp_path):
-    from pymhm.Morphology.layers.domain_dem import domain_dem_plan
+    from mhm_qgis.Morphology.layers.domain_dem import domain_dem_plan
 
     _domain_state(tmp_path, ("001", "002"), dem_domain=True)
     plan = domain_dem_plan(tmp_path)
@@ -181,7 +181,7 @@ def test_the_plan_lists_every_active_domain_with_its_polygon(tmp_path):
 
 
 def test_writing_domain_dems_refuses_a_missing_polygon(tmp_path):
-    from pymhm.Morphology.layers.domain_dem import write_domain_dems
+    from mhm_qgis.Morphology.layers.domain_dem import write_domain_dems
 
     dem = tmp_path / "crop.tif"
     _cropped_dem(dem)
@@ -192,7 +192,7 @@ def test_writing_domain_dems_refuses_a_missing_polygon(tmp_path):
 
 
 def test_writing_domain_dems_refuses_a_missing_cropped_dem(tmp_path):
-    from pymhm.Morphology.layers.domain_dem import write_domain_dems
+    from mhm_qgis.Morphology.layers.domain_dem import write_domain_dems
 
     _domain_state(tmp_path, ("001",))
     with pytest.raises(FileNotFoundError, match="cropped L0 DEM is required"):
@@ -200,19 +200,19 @@ def test_writing_domain_dems_refuses_a_missing_cropped_dem(tmp_path):
 
 
 def test_no_active_domains_is_a_no_op(tmp_path):
-    from pymhm.Morphology.layers.domain_dem import write_domain_dems
+    from mhm_qgis.Morphology.layers.domain_dem import write_domain_dems
 
     assert write_domain_dems(tmp_path, str(tmp_path / "absent.tif"), L0) == []
 
 
 def test_the_state_records_the_domain_plan(tmp_path):
-    from pymhm.Morphology.core.processing_state import ProcessingStateMixin
-    from pymhm.state_cache import load_state
+    from mhm_qgis.Morphology.core.processing_state import ProcessingStateMixin
+    from mhm_qgis.state_cache import load_state
 
     class _State(ProcessingStateMixin):
         def __init__(self, project):
             self.dialog = type("D", (), {"project_folder": str(project)})()
-            self.processing_state_filename = "pymhm_processing_state.json"
+            self.processing_state_filename = "mhm_qgis_processing_state.json"
             self.processing_state = {"version": 1, "outputs": {}, "workflows": {}}
             self.log_message = lambda _m: None
 
@@ -229,7 +229,7 @@ def test_the_state_records_the_domain_plan(tmp_path):
 
 
 def _master_inputs(project, names):
-    from pymhm.project_layout import morph_folder
+    from mhm_qgis.project_layout import morph_folder
 
     master = Path(morph_folder(project))
     master.mkdir(parents=True, exist_ok=True)
@@ -239,7 +239,7 @@ def _master_inputs(project, names):
 
 
 def test_the_shared_morphology_inputs_are_copied_into_the_domain(tmp_path):
-    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+    from mhm_qgis.Morphology.layers.domain_dem import copy_master_inputs
 
     _master_inputs(tmp_path, (
         "slope.asc", "slope.prj", "aspect.asc", "facc.asc", "fdir.asc",
@@ -268,7 +268,7 @@ def test_the_shared_morphology_inputs_are_copied_into_the_domain(tmp_path):
 
 
 def test_recopying_is_skipped_when_the_destination_is_current(tmp_path):
-    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+    from mhm_qgis.Morphology.layers.domain_dem import copy_master_inputs
 
     _master_inputs(tmp_path, ("slope.asc",))
     domain = tmp_path / "data" / "280"
@@ -279,7 +279,7 @@ def test_recopying_is_skipped_when_the_destination_is_current(tmp_path):
 
 
 def test_an_updated_master_file_is_recopied(tmp_path):
-    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+    from mhm_qgis.Morphology.layers.domain_dem import copy_master_inputs
 
     master = _master_inputs(tmp_path, ("slope.asc",))
     domain = tmp_path / "data" / "280"
@@ -295,7 +295,7 @@ def test_an_updated_master_file_is_recopied(tmp_path):
 
 
 def test_v6_soil_names_are_copied_when_present(tmp_path):
-    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+    from mhm_qgis.Morphology.layers.domain_dem import copy_master_inputs
 
     _master_inputs(tmp_path, (
         "soil_horizon_class.nc", "soil_classdefinition_iFlag_soilDB_1.txt",
@@ -308,14 +308,14 @@ def test_v6_soil_names_are_copied_when_present(tmp_path):
 
 
 def test_missing_master_files_are_simply_skipped(tmp_path):
-    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+    from mhm_qgis.Morphology.layers.domain_dem import copy_master_inputs
 
     assert copy_master_inputs(tmp_path, tmp_path / "data" / "280") == []
 
 
 def test_what_master_could_not_supply_is_logged(tmp_path):
     """A silent skip once left every domain holding only its dem.asc."""
-    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+    from mhm_qgis.Morphology.layers.domain_dem import copy_master_inputs
 
     _master_inputs(tmp_path, ("slope.asc",))
     messages = []
@@ -329,7 +329,7 @@ def test_what_master_could_not_supply_is_logged(tmp_path):
 
 def test_one_spelling_of_a_group_is_enough_to_stay_quiet(tmp_path):
     """v5 soil files must not be reported as missing just because v6's are."""
-    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
+    from mhm_qgis.Morphology.layers.domain_dem import copy_master_inputs
 
     _master_inputs(tmp_path, (
         "slope.asc", "aspect.asc", "facc.asc", "fdir.asc",
@@ -350,9 +350,9 @@ def test_a_published_advanced_soil_raster_reaches_the_domain(tmp_path):
     `publish_model_inputs` moves it, so copying before that step silently gave
     every domain a bare dem.asc.
     """
-    from pymhm.Morphology.layers.advanced_l0 import publish_model_inputs
-    from pymhm.Morphology.layers.domain_dem import copy_master_inputs
-    from pymhm.project_layout import morph_staging_folder
+    from mhm_qgis.Morphology.layers.advanced_l0 import publish_model_inputs
+    from mhm_qgis.Morphology.layers.domain_dem import copy_master_inputs
+    from mhm_qgis.project_layout import morph_staging_folder
 
     staging = Path(morph_staging_folder(tmp_path))
     staging.mkdir(parents=True, exist_ok=True)

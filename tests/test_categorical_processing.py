@@ -1,8 +1,8 @@
-"""Focused tests for pymhm categorical workflow orchestration."""
+"""Focused tests for mhm_qgis categorical workflow orchestration."""
 
 from pathlib import Path
 
-from pymhm import standalone_qgis
+from mhm_qgis import standalone_qgis
 
 standalone_qgis.install(force=True)
 
@@ -13,8 +13,8 @@ from qgis.core import (  # noqa: E402
     QgsVectorLayer,
 )
 
-from pymhm.Morphology.layers import categorical  # noqa: E402
-from pymhm.project_layout import (
+from mhm_qgis.Morphology.layers import categorical  # noqa: E402
+from mhm_qgis.project_layout import (
     geometry_folder,
     morph_folder,
     morph_staging_folder,
@@ -36,9 +36,12 @@ class _Combo:
 class _Dialog:
     def __init__(self, project, kind, layer, mode, lookup=None):
         self.project_folder = str(project)
-        setattr(self, categorical._SPECS[kind]["combo"], _Combo(layer))
+        self._input_adapters = {categorical._SPECS[kind]["kind"]: _Combo(layer)}
         self.mode = mode
         self.lookup = lookup
+
+    def input_combo(self, kind):
+        return self._input_adapters.get(kind)
 
     def categorical_input_mode(self, _kind):
         return self.mode
@@ -209,7 +212,7 @@ def test_ready_mode_rejects_vector_input(tmp_path, monkeypatch):
 
 
 def test_ready_land_cover_is_available_to_elevation_bands(tmp_path):
-    from pymhm.Morphology.elevation_bands.band_landcover_helpers import \
+    from mhm_qgis.Morphology.elevation_bands.band_landcover_helpers import \
         BandLandCoverHelperMixin
 
     project = tmp_path / "project"

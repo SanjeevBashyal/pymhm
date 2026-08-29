@@ -4,23 +4,23 @@ include LICENSE
 include requirements.txt
 
 # Include package data
-recursive-include pymhm *.asc
-recursive-include pymhm *.html
-recursive-include pymhm *.md
-recursive-include pymhm *.nc
-recursive-include pymhm *.nml
-recursive-include pymhm *.png
-recursive-include pymhm *.qrc
-recursive-include pymhm *.rst
-recursive-include pymhm *.sh
-recursive-include pymhm *.ts
-recursive-include pymhm *.txt
-recursive-include pymhm *.ui
-recursive-include pymhm *.yml
-recursive-include pymhm i18n/*
-graft pymhm/nml-schemas
-graft pymhm/project-template
-graft pymhm/Resources
+recursive-include src/mhm_qgis *.asc
+recursive-include src/mhm_qgis *.html
+recursive-include src/mhm_qgis *.md
+recursive-include src/mhm_qgis *.nc
+recursive-include src/mhm_qgis *.nml
+recursive-include src/mhm_qgis *.png
+recursive-include src/mhm_qgis *.qrc
+recursive-include src/mhm_qgis *.rst
+recursive-include src/mhm_qgis *.sh
+recursive-include src/mhm_qgis *.ts
+recursive-include src/mhm_qgis *.txt
+recursive-include src/mhm_qgis *.ui
+recursive-include src/mhm_qgis *.yml
+recursive-include src/mhm_qgis i18n/*
+graft src/mhm_qgis/nml-schemas
+graft src/mhm_qgis/project-template
+graft src/mhm_qgis/Resources
 
 # Include documentation
 recursive-include docs *.rst

@@ -8,11 +8,11 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm import standalone_qgis  # noqa: E402
+from mhm_qgis import standalone_qgis  # noqa: E402
 
 standalone_qgis.install(force=True)
 
-from pymhm.Morphology.layers.lai_l0 import (  # noqa: E402
+from mhm_qgis.Morphology.layers.lai_l0 import (  # noqa: E402
     CHUNK_ROWS,
     NODATA,
     PAD_VALUE,
@@ -385,7 +385,7 @@ def _lai_source(path):
 
 def test_run_lai_resample_stages_on_the_dem_grid_from_primitives(tmp_path):
     """The QgsTask entry point must work from paths and strings alone."""
-    from pymhm.Morphology.layers.lai_source import run_lai_resample
+    from mhm_qgis.Morphology.layers.lai_source import run_lai_resample
 
     dem = tmp_path / "dem.tif"
     source = tmp_path / "lai_src.nc"
@@ -421,7 +421,7 @@ def test_run_lai_resample_stages_on_the_dem_grid_from_primitives(tmp_path):
 
 
 def test_a_cancelled_task_stops_the_stream_and_leaves_no_output(tmp_path):
-    from pymhm.Morphology.layers.lai_source import run_lai_resample
+    from mhm_qgis.Morphology.layers.lai_source import run_lai_resample
 
     dem = tmp_path / "dem.tif"
     source = tmp_path / "lai_src.nc"
@@ -516,7 +516,7 @@ def test_the_resample_stage_fills_blanks_with_zero_by_default():
     """`run_lai_resample` is the Execute All entry point, so 0 is its default."""
     import inspect
 
-    from pymhm.Morphology.layers import lai_source
+    from mhm_qgis.Morphology.layers import lai_source
 
     source = inspect.getsource(lai_source.run_lai_resample)
     assert 'blank_fill=options.get("blank_fill", 0.0)' in source

@@ -1,6 +1,6 @@
-# Contributing to PymHM
+# Contributing to mHM QGIS
 
-Thank you for your interest in contributing to PymHM! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to mHM QGIS! This document provides guidelines and information for contributors.
 
 ## Code of Conduct
 
@@ -10,14 +10,14 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 
 ### Reporting Issues
 
-- Use the [GitHub issue tracker](https://github.com/SanjeevBashyal/pymhm/issues)
+- Use the [GitHub issue tracker](https://github.com/SanjeevBashyal/mhm-qgis/issues)
 - Search existing issues before creating new ones
 - Provide detailed information about the problem
 - Include steps to reproduce the issue
 
 ### Suggesting Enhancements
 
-- Use the [GitHub issue tracker](https://github.com/SanjeevBashyal/pymhm/issues) with the "enhancement" label
+- Use the [GitHub issue tracker](https://github.com/SanjeevBashyal/mhm-qgis/issues) with the "enhancement" label
 - Describe the feature and its benefits
 - Consider the impact on existing functionality
 
@@ -58,8 +58,8 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 
 ```bash
 # Clone the repository
-git clone https://github.com/SanjeevBashyal/pymhm.git
-cd pymhm
+git clone https://github.com/SanjeevBashyal/mhm-qgis.git
+cd mhm_qgis
 
 # Install in development mode
 pip install -e .[dev]
@@ -75,7 +75,7 @@ pre-commit install
 pytest
 
 # Run with coverage
-pytest --cov=pymhm
+pytest --cov=mhm_qgis
 
 # Run specific test file
 pytest tests/test_specific.py
@@ -91,13 +91,13 @@ We use the following tools for code quality:
 
 ```bash
 # Format code
-black pymhm/
+black src/mhm_qgis/
 
 # Check linting
-flake8 pymhm/
+flake8 src/mhm_qgis/
 
 # Type checking
-mypy pymhm/
+mypy src/mhm_qgis/
 ```
 
 ## Pull Request Guidelines
@@ -157,7 +157,7 @@ def example_function(param1: str, param2: int) -> bool:
 
 ## Questions?
 
-- Open a [GitHub Discussion](https://github.com/SanjeevBashyal/pymhm/discussions)
+- Open a [GitHub Discussion](https://github.com/SanjeevBashyal/mhm-qgis/discussions)
 - Contact: sanjeev.bashyal01@gmail.com
 
-Thank you for contributing to PymHM!
+Thank you for contributing to mHM QGIS!

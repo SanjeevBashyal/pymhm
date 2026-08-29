@@ -8,16 +8,16 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm import standalone_qgis  # noqa: E402
+from mhm_qgis import standalone_qgis  # noqa: E402
 
 standalone_qgis.install(force=True)
 
-from pymhm.Meteorology import inspection_cache  # noqa: E402
-from pymhm.Meteorology.inspection_cache import (  # noqa: E402
+from mhm_qgis.Meteorology import inspection_cache  # noqa: E402
+from mhm_qgis.Meteorology.inspection_cache import (  # noqa: E402
     inspect_meteo_folder_cached,
     inspection_fingerprint,
 )
-from pymhm.Meteorology.forcing import MeteoFolderSpec  # noqa: E402
+from mhm_qgis.Meteorology.forcing import MeteoFolderSpec  # noqa: E402
 
 xr = pytest.importorskip("xarray")
 

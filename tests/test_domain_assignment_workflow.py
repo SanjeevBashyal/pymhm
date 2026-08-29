@@ -5,22 +5,22 @@ from pathlib import Path
 
 import pytest
 
-from pymhm import standalone_qgis
+from mhm_qgis import standalone_qgis
 
 standalone_qgis.install(force=True)
 
 # isort: off
 from qgis.core import QgsVectorLayer  # noqa: E402
 
-from pymhm.Morphology.hydrology.discharge_dialog import (  # noqa: E402
+from mhm_qgis.Morphology.hydrology.discharge_dialog import (  # noqa: E402
     OutletAssignment,
 )
-from pymhm.Morphology.watershed.domain_state import (  # noqa: E402
+from mhm_qgis.Morphology.watershed.domain_state import (  # noqa: E402
     DOMAIN_MODE_DEM_EXTENT,
     DOMAIN_MODE_SNAPPED,
     gauge_records,
 )
-from pymhm.Morphology.watershed.domain_workflow import (  # noqa: E402
+from mhm_qgis.Morphology.watershed.domain_workflow import (  # noqa: E402
     DomainWorkflow,
 )
 # isort: on

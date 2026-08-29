@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from pymhm.morphology_display import land_cover_periods, resolve_display_output
-from pymhm.nml_settings import update_section
-from pymhm.project_layout import ensure_project_structure, morph_folder
+from mhm_qgis.morphology_display import land_cover_periods, resolve_display_output
+from mhm_qgis.nml_settings import update_section
+from mhm_qgis.project_layout import ensure_project_structure, morph_folder
 
 
 def test_historical_land_cover_resolves_the_selected_period(tmp_path):

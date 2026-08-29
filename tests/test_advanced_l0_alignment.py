@@ -9,26 +9,26 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm import standalone_qgis  # noqa: E402
+from mhm_qgis import standalone_qgis  # noqa: E402
 
 standalone_qgis.install(force=True)
 
-from pymhm.Morphology.latlon.ascii_morphology import (  # noqa: E402
+from mhm_qgis.Morphology.latlon.ascii_morphology import (  # noqa: E402
     pad_dataset_to_header,
     pad_l0_file_to_header,
 )
-from pymhm.Morphology.layers.advanced_l0 import (  # noqa: E402
+from mhm_qgis.Morphology.layers.advanced_l0 import (  # noqa: E402
     missing_model_inputs,
     pad_spec_for,
     publish_model_inputs,
     staged_files,
 )
-from pymhm.grid_resolution import (  # noqa: E402
+from mhm_qgis.grid_resolution import (  # noqa: E402
     CATEGORICAL_PAD_VALUE,
     LAI_PAD_VALUE,
 )
-from pymhm.nml_settings import update_section  # noqa: E402
-from pymhm.project_layout import (  # noqa: E402
+from mhm_qgis.nml_settings import update_section  # noqa: E402
+from mhm_qgis.project_layout import (  # noqa: E402
     morph_folder,
     morph_staging_folder,
     workspace_folder,
@@ -216,7 +216,7 @@ def test_publishing_repoints_the_namelist_handoff_at_data_master(tmp_path):
 
     publish_model_inputs(tmp_path, L0_TARGET)
 
-    from pymhm.nml_settings import load_settings
+    from mhm_qgis.nml_settings import load_settings
 
     settings = load_settings(tmp_path)
     assert settings["soil"]["output_path"] == (
@@ -277,7 +277,7 @@ def test_a_path_left_pointing_at_staging_is_repointed_to_master(tmp_path):
 
     publish_model_inputs(tmp_path, L0_TARGET)      # nothing staged to move
 
-    from pymhm.nml_settings import load_settings
+    from mhm_qgis.nml_settings import load_settings
 
     assert load_settings(tmp_path)["geology"]["classdefinition_path"] == (
         "data/master/static/morph/geology_classdefinition.txt"

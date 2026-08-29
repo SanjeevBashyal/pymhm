@@ -16,7 +16,7 @@ test: ## Run tests
 	pytest
 
 test-cov: ## Run tests with coverage
-	pytest --cov=pymhm --cov-report=html --cov-report=term
+	pytest --cov=mhm_qgis --cov-report=html --cov-report=term
 
 clean: ## Clean build artifacts
 	rm -rf build/
@@ -41,12 +41,12 @@ docs: ## Build documentation
 	cd docs && make html
 
 lint: ## Run linting
-	flake8 pymhm/
-	black --check pymhm/
-	mypy pymhm/
+	flake8 src/mhm_qgis/
+	black --check src/mhm_qgis/
+	mypy src/mhm_qgis/
 
 format: ## Format code
-	black pymhm/
+	black src/mhm_qgis/
 
 check: lint test ## Run all checks
 

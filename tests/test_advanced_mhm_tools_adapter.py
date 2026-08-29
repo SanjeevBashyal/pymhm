@@ -4,7 +4,7 @@ from __future__ import annotations
 import sys
 from types import ModuleType
 
-from pymhm.mhm_tools_adapter import (
+from mhm_qgis.mhm_tools_adapter import (
     prepare_land_cover_periods,
     prepare_soil_horizons,
 )

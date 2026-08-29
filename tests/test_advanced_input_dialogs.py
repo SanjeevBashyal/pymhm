@@ -5,13 +5,13 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm.standalone_qgis import install
+from mhm_qgis.standalone_qgis import install
 
 install(force=True)
 
 from qgis.PyQt import QtWidgets  # noqa: E402
 
-from pymhm.advanced_input_dialogs import (  # noqa: E402
+from mhm_qgis.advanced_input_dialogs import (  # noqa: E402
     HistoricalLandUseDialog,
     MultiHorizonSoilDialog,
 )

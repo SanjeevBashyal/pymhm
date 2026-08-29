@@ -2,13 +2,13 @@
 
 from pathlib import Path
 
-from pymhm import standalone_qgis
+from mhm_qgis import standalone_qgis
 
 standalone_qgis.install(force=True)
 
 # isort: off
-from pymhm.Morphology.orchestration.execute_all import ExecuteAllMixin  # noqa: E402
-from pymhm.project_layout import (  # noqa: E402
+from mhm_qgis.Morphology.orchestration.execute_all import ExecuteAllMixin  # noqa: E402
+from mhm_qgis.project_layout import (  # noqa: E402
     geometry_folder,
     morph_staging_folder,
 )

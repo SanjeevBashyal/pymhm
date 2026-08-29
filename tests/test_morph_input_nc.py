@@ -10,11 +10,11 @@ from osgeo import gdal, osr
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm import standalone_qgis  # noqa: E402
+from mhm_qgis import standalone_qgis  # noqa: E402
 
 standalone_qgis.install(force=True)
 
-from pymhm.Morphology.layers.morph_input_nc import (  # noqa: E402
+from mhm_qgis.Morphology.layers.morph_input_nc import (  # noqa: E402
     MORPH_VARIABLES,
     available_layers,
     write_morph_input_nc,

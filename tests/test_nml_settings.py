@@ -1,12 +1,12 @@
 """Tests for the project-local namelist handoff."""
 
-from pymhm import standalone_qgis
+from mhm_qgis import standalone_qgis
 
 standalone_qgis.install(force=True)
 
-from pymhm.Morphology.watershed.domain_state import save_state
-from pymhm.nml_settings import load_settings, sync_domain_settings, update_section
-from pymhm.vSpecific import build_initial_values
+from mhm_qgis.Morphology.watershed.domain_state import save_state
+from mhm_qgis.nml_settings import load_settings, sync_domain_settings, update_section
+from mhm_qgis.vSpecific import build_initial_values
 
 
 class Dialog:

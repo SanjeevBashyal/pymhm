@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pymhm.project_layout import (
+from mhm_qgis.project_layout import (
     data_folder,
     data_raw_folder,
     domain_data_folder,

@@ -8,13 +8,13 @@ from pathlib import Path
 
 import nml_tools.gui
 
-from pymhm import configuration_processor as controller_module
-from pymhm.configuration_processor import ConfigurationProcessor
-from pymhm.dependency_bootstrap import (
+from mhm_qgis import configuration_processor as controller_module
+from mhm_qgis.configuration_processor import ConfigurationProcessor
+from mhm_qgis.dependency_bootstrap import (
     configure_qtpy_api,
     dependency_from_requirement_line,
 )
-from pymhm.project_layout import workspace_folder
+from mhm_qgis.project_layout import workspace_folder
 
 
 class ComboBox:
@@ -57,12 +57,12 @@ def test_edit_namelists_forwards_project_values_and_dimensions(
     dialog = Dialog(tmp_path, "5.13")
     calls = []
     prepared = []
-    adapter = types.ModuleType("pymhm.vSpecific")
+    adapter = types.ModuleType("mhm_qgis.vSpecific")
     adapter.build_initial_values = lambda version, owner: {
         "main": {"config_project": {"project_details": version}}
     }
     adapter.build_dimensions = lambda version, owner: {"n_domains": 2}
-    monkeypatch.setitem(sys.modules, "pymhm.vSpecific", adapter)
+    monkeypatch.setitem(sys.modules, "mhm_qgis.vSpecific", adapter)
     monkeypatch.setattr(
         controller_module,
         "ensure_project_structure",

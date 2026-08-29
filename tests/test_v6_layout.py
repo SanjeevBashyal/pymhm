@@ -10,15 +10,15 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm import standalone_qgis  # noqa: E402
+from mhm_qgis import standalone_qgis  # noqa: E402
 
 standalone_qgis.install(force=True)
 
-from pymhm.Meteorology.paths import (  # noqa: E402
+from mhm_qgis.Meteorology.paths import (  # noqa: E402
     expected_meteo_outputs,
     meteo_mask_path,
 )
-from pymhm.project_layout import (  # noqa: E402
+from mhm_qgis.project_layout import (  # noqa: E402
     domain_dem_path,
     lai_folder,
     morph_folder,
@@ -33,7 +33,7 @@ xr = pytest.importorskip("xarray")
 def _project(tmp_path, version):
     workspace = Path(workspace_folder(tmp_path))
     workspace.mkdir(parents=True, exist_ok=True)
-    (workspace / "pymhm_input_state.json").write_text(
+    (workspace / "mhm_qgis_input_state.json").write_text(
         json.dumps({"mhm_version": version}), encoding="utf-8")
     return tmp_path
 
@@ -68,7 +68,7 @@ def test_an_unknown_or_missing_version_falls_back_to_v5_13(tmp_path):
     # No state file at all: every existing project already uses this layout.
     assert project_version(tmp_path) == "v5.13"
     broken = _project(tmp_path / "broken", "5.13")
-    (Path(workspace_folder(broken)) / "pymhm_input_state.json").write_text(
+    (Path(workspace_folder(broken)) / "mhm_qgis_input_state.json").write_text(
         "{ not json", encoding="utf-8")
     assert project_version(broken) == "v5.13"
 
@@ -93,8 +93,8 @@ def test_v5_13_meteo_keeps_its_folders_and_headers(tmp_path):
 
 
 def test_the_meteo_mask_matches_the_example_format(tmp_path):
-    from pymhm.Meteorology.forcing import TargetGrid
-    from pymhm.Meteorology.mask import write_meteo_mask
+    from mhm_qgis.Meteorology.forcing import TargetGrid
+    from mhm_qgis.Meteorology.mask import write_meteo_mask
 
     header = {
         "ncols": 4, "nrows": 3, "xllcorner": 100.0, "yllcorner": 200.0,
@@ -117,8 +117,8 @@ def test_the_meteo_mask_matches_the_example_format(tmp_path):
 
 
 def test_the_meteo_mask_honours_an_explicit_valid_array(tmp_path):
-    from pymhm.Meteorology.forcing import TargetGrid
-    from pymhm.Meteorology.mask import write_meteo_mask
+    from mhm_qgis.Meteorology.forcing import TargetGrid
+    from mhm_qgis.Meteorology.mask import write_meteo_mask
 
     header = {
         "ncols": 2, "nrows": 2, "xllcorner": 0.0, "yllcorner": 0.0,
@@ -136,7 +136,7 @@ def test_the_meteo_mask_honours_an_explicit_valid_array(tmp_path):
 
 
 def test_the_v6_namelist_points_at_the_new_locations(tmp_path):
-    from pymhm.vSpecific import build_initial_values
+    from mhm_qgis.vSpecific import build_initial_values
 
     class _Dialog:
         project_folder = str(tmp_path)

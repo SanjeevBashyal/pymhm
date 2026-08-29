@@ -17,11 +17,11 @@ from nml_tools.gui.model import (
     render_profile,
 )
 
-from pymhm.project_layout import geometry_folder
-from pymhm.vSpecific import build_dimensions, build_initial_values
+from mhm_qgis.project_layout import geometry_folder
+from mhm_qgis.vSpecific import build_dimensions, build_initial_values
 
 
-SCHEMAS = Path(__file__).resolve().parents[1] / "pymhm" / "nml-schemas"
+SCHEMAS = Path(__file__).resolve().parents[1] / "src" / "mhm_qgis" / "nml-schemas"
 V5_MAIN_GROUPS = [
     "project_description",
     "mainconfig",
@@ -94,6 +94,10 @@ PARAMETER_COMPONENT_LABELS = [
 class Dialog:
     def __init__(self, project_folder: Path):
         self.project_folder = str(project_folder)
+        self._input_adapters = {}
+
+    def input_combo(self, kind):
+        return self._input_adapters.get(kind)
 
     def current_l1_resolution(self):
         return 1000.0
@@ -298,7 +302,7 @@ def test_initial_values_render_version_specific_main_groups(tmp_path: Path) -> N
 
 def test_domain_dimensions_and_paths_follow_plugin_domains(tmp_path: Path) -> None:
     dialog = Dialog(tmp_path)
-    dialog.mMapLayerComboBox_pour_points = LayerWidget()
+    dialog._input_adapters["pour_points"] = LayerWidget()
 
     assert build_dimensions("5.13", dialog)["max_domains"] == 2
     assert build_dimensions("6.0", dialog)["n_domains"] == 2

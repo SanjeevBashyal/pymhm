@@ -3,7 +3,7 @@ requires = ["setuptools>=68,<69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pymhm"
+name = "mhm-qgis"
 version = "0.1.1"
 description = "Python package for mesoscale Hydrological Model"
 readme = "README.md"
@@ -63,22 +63,23 @@ gui = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/SanjeevBashyal/pymhm"
-Documentation = "https://github.com/SanjeevBashyal/pymhm/wiki"
-Repository = "https://github.com/SanjeevBashyal/pymhm"
-"Bug Tracker" = "https://github.com/SanjeevBashyal/pymhm/issues"
+Homepage = "https://github.com/SanjeevBashyal/mhm-qgis"
+Documentation = "https://github.com/SanjeevBashyal/mhm-qgis/wiki"
+Repository = "https://github.com/SanjeevBashyal/mhm-qgis"
+"Bug Tracker" = "https://github.com/SanjeevBashyal/mhm-qgis/issues"
 
 [project.scripts]
-pymhm = "pymhm.cli:main"
+mhm-qgis = "mhm_qgis.cli:main"
 
 [tool.setuptools]
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["pymhm*"]
+where = ["src"]
+include = ["mhm_qgis*"]
 
 [tool.setuptools.package-data]
-pymhm = [
+mhm_qgis = [
     "**/*.asc",
     "**/*.csv",
     "**/*.html",
@@ -117,6 +118,7 @@ extend-exclude = '''
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

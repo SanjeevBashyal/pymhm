@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from pymhm import standalone_qgis
+from mhm_qgis import standalone_qgis
 
 standalone_qgis.install(force=True)
 
 # isort: off
-from pymhm.Morphology.watershed.domain_state import (
+from mhm_qgis.Morphology.watershed.domain_state import (
     DEM_DOMAIN_ID,
     active_domain_records,
     default_state,

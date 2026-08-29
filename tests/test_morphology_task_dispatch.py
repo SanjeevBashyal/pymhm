@@ -4,16 +4,16 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm import standalone_qgis
+from mhm_qgis import standalone_qgis
 
 standalone_qgis.install(force=True)
 
 from qgis.PyQt.QtWidgets import QApplication, QPushButton  # noqa: E402
 
-from pymhm.pymhm_dialog import pymhmDialog  # noqa: E402
-from pymhm.morphology_task_bridge import _saved_categorical_outputs  # noqa: E402
-from pymhm.nml_settings import update_section  # noqa: E402
-from pymhm.project_layout import ensure_project_structure  # noqa: E402
+from mhm_qgis.mhm_qgis_dialog import MhmQgisDialog  # noqa: E402
+from mhm_qgis.morphology_task_bridge import _saved_categorical_outputs  # noqa: E402
+from mhm_qgis.nml_settings import update_section  # noqa: E402
+from mhm_qgis.project_layout import ensure_project_structure  # noqa: E402
 
 
 _APPLICATION = None
@@ -27,7 +27,7 @@ def _app():
 
 def test_land_cover_action_uses_path_task_bridge():
     _app()
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     button = QPushButton()
     calls = []
     dialog.morphology_tasks.start_categorical = (
@@ -45,7 +45,7 @@ def test_land_cover_action_uses_path_task_bridge():
 
 def test_execute_all_uses_managed_pipeline():
     _app()
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     calls = []
     dialog.morphology_tasks.start_execute_all = lambda: calls.append(True) or True
 
@@ -88,7 +88,7 @@ def test_execute_all_stage_order_includes_lai_before_hydrology():
     """The button runs the task bridge, so the LAI stage must live there."""
     import inspect
 
-    from pymhm.morphology_task_bridge import MorphologyTaskBridge
+    from mhm_qgis.morphology_task_bridge import MorphologyTaskBridge
 
     source = inspect.getsource(MorphologyTaskBridge.start_execute_all)
     order = [
@@ -104,7 +104,7 @@ def test_execute_all_stage_order_includes_lai_before_hydrology():
 
 def test_lai_stage_is_skipped_without_a_netcdf_selection():
     _app()
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     bridge = dialog.morphology_tasks
     submitted = []
     bridge.coordinator.submit = lambda *a, **k: submitted.append(a) or True
@@ -121,7 +121,7 @@ def test_lai_stage_is_skipped_without_a_netcdf_selection():
 
 def test_lai_stage_submits_a_background_task_when_selected(tmp_path):
     _app()
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     dialog.project_folder = str(tmp_path)
     bridge = dialog.morphology_tasks
     submitted = []
@@ -152,10 +152,10 @@ def test_lai_stage_submits_a_background_task_when_selected(tmp_path):
 
 def test_unchanged_lai_inputs_reuse_the_staged_file(tmp_path):
     """The 153 GiB staged LAI must not be regenerated when nothing changed."""
-    from pymhm.state_cache import fingerprint, store_payload
+    from mhm_qgis.state_cache import fingerprint, store_payload
 
     _app()
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     dialog.project_folder = str(tmp_path)
     bridge = dialog.morphology_tasks
     submitted = []
@@ -209,10 +209,10 @@ def test_unchanged_lai_inputs_reuse_the_staged_file(tmp_path):
 
 
 def test_a_missing_staged_file_forces_the_lai_resample(tmp_path):
-    from pymhm.state_cache import fingerprint, store_payload
+    from mhm_qgis.state_cache import fingerprint, store_payload
 
     _app()
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     dialog.project_folder = str(tmp_path)
     bridge = dialog.morphology_tasks
     submitted = []
@@ -253,7 +253,7 @@ def test_a_missing_staged_file_forces_the_lai_resample(tmp_path):
 def test_geology_outputs_already_on_disk_are_adopted_not_rebuilt(tmp_path):
     """A project prepared before the cache existed must not rebuild geology."""
     _app()
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     dialog.project_folder = str(tmp_path)
     bridge = dialog.morphology_tasks
     submitted = []
@@ -303,7 +303,7 @@ def test_geology_outputs_already_on_disk_are_adopted_not_rebuilt(tmp_path):
     assert any("Adopted the existing geology output" in m for m in messages)
 
     # The adoption is recorded, so the next run reuses without re-adopting.
-    from pymhm.state_cache import load_state
+    from mhm_qgis.state_cache import load_state
 
     assert "geology" in load_state(tmp_path)["stages"]
     messages.clear()

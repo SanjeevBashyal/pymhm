@@ -1,8 +1,8 @@
-# PymHM - Python Mesoscale Hydrological Model
+# mHM QGIS - Python Mesoscale Hydrological Model
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
-[![PyPI version](https://badge.fury.io/py/pymhm.svg)](https://badge.fury.io/py/pymhm)
+[![PyPI version](https://badge.fury.io/py/mhm_qgis.svg)](https://badge.fury.io/py/mhm_qgis)
 
 A Python package for mesoscale hydrological modeling, designed to work both as a standalone library and as a QGIS plugin.
 
@@ -16,12 +16,12 @@ A Python package for mesoscale hydrological modeling, designed to work both as a
 
 ## Installation
 
-`pymhm` is published as a Python/PyPI package, not as an Ubuntu/Debian APT
+`mhm_qgis` is published as a Python/PyPI package, not as an Ubuntu/Debian APT
 package. This will not work unless a separate Debian package is published to an
 APT repository:
 
 ```bash
-sudo apt install python3-pymhm
+sudo apt install python3-mhm_qgis
 ```
 
 ### From PyPI (Recommended)
@@ -31,7 +31,7 @@ For an isolated command-line application install:
 ```bash
 sudo apt install pipx
 pipx ensurepath
-pipx install pymhm
+pipx install mhm_qgis
 ```
 
 If you prefer a project virtual environment:
@@ -39,31 +39,31 @@ If you prefer a project virtual environment:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install pymhm
+python3 -m pip install mhm_qgis
 ```
 
 ### From Source
 
 ```bash
-git clone https://github.com/SanjeevBashyal/pymhm.git
-cd pymhm
+git clone https://github.com/SanjeevBashyal/mhm-qgis.git
+cd mhm_qgis
 python3 -m pip install -e .
 ```
 
 ### For QGIS Plugin
 
 1. Download the plugin from the QGIS Plugin Manager
-2. Or install manually by copying the `pymhm` folder to your QGIS plugins directory
+2. Or install manually by copying the `mhm_qgis` folder to your QGIS plugins directory
 
 ## Quick Start
 
 ### As a Python Package
 
 ```python
-import pymhm
+import mhm_qgis
 
 # Initialize the model
-model = pymhm.HydrologicalModel()
+model = mhm_qgis.HydrologicalModel()
 
 # Run simulation
 results = model.run_simulation()
@@ -73,15 +73,15 @@ results = model.run_simulation()
 
 1. Open QGIS
 2. Go to Plugins → Manage and Install Plugins
-3. Search for "PymHM"
+3. Search for "mHM QGIS"
 4. Install and activate the plugin
 5. Access the plugin from the Plugins menu
 
 ## Documentation
 
-- [User Guide](https://github.com/SanjeevBashyal/pymhm/wiki)
-- [API Reference](https://github.com/SanjeevBashyal/pymhm/wiki/API-Reference)
-- [Examples](https://github.com/SanjeevBashyal/pymhm/tree/main/examples)
+- [User Guide](https://github.com/SanjeevBashyal/mhm-qgis/wiki)
+- [API Reference](https://github.com/SanjeevBashyal/mhm-qgis/wiki/API-Reference)
+- [Examples](https://github.com/SanjeevBashyal/mhm-qgis/tree/main/examples)
 
 ## Requirements
 
@@ -96,8 +96,8 @@ results = model.run_simulation()
 ### Setting up Development Environment
 
 ```bash
-git clone https://github.com/SanjeevBashyal/pymhm.git
-cd pymhm
+git clone https://github.com/SanjeevBashyal/mhm-qgis.git
+cd mhm_qgis
 pip install -e .[dev]
 ```
 
@@ -130,22 +130,22 @@ This project is licensed under the GNU General Public License v2.0 - see the [LI
 
 ## Citation
 
-If you use PymHM in your research, please cite:
+If you use mHM QGIS in your research, please cite:
 
 ```bibtex
-@software{pymhm2025,
-  title={PymHM: Python Mesoscale Hydrological Model},
+@software{mhm_qgis2025,
+  title={mHM QGIS: Python Mesoscale Hydrological Model},
   author={Sanjeev Bashyal},
   year={2025},
-  url={https://github.com/SanjeevBashyal/pymhm},
+  url={https://github.com/SanjeevBashyal/mhm-qgis},
   version={0.1.0}
 }
 ```
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/SanjeevBashyal/pymhm/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/SanjeevBashyal/pymhm/discussions)
+- **Issues**: [GitHub Issues](https://github.com/SanjeevBashyal/mhm-qgis/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/SanjeevBashyal/mhm-qgis/discussions)
 - **Email**: sanjeev.bashyal01@gmail.com
 
 ## Changelog
@@ -156,4 +156,4 @@ See [CHANGELOG.md](CHANGELOG.md) for a list of changes and version history.
 
 - QGIS Development Team for the excellent platform
 - Python Scientific Community for the amazing tools
-- Contributors and users of PymHM
+- Contributors and users of mHM QGIS

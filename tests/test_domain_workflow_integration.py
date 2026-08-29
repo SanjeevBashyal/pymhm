@@ -5,23 +5,23 @@ from pathlib import Path
 
 import pytest
 
-from pymhm import standalone_qgis
+from mhm_qgis import standalone_qgis
 
 standalone_qgis.install(force=True)
 
 # isort: off
-from pymhm.Morphology.core.predecessors import PredecessorMixin  # noqa: E402
-from pymhm.Morphology.hydrology.gauge import GaugePositionMixin  # noqa: E402
-from pymhm.Morphology.hydrology.outlets import OutletCountMixin  # noqa: E402
-from pymhm.Morphology.orchestration.reset_geometry import (  # noqa: E402
+from mhm_qgis.Morphology.core.predecessors import PredecessorMixin  # noqa: E402
+from mhm_qgis.Morphology.hydrology.gauge import GaugePositionMixin  # noqa: E402
+from mhm_qgis.Morphology.hydrology.outlets import OutletCountMixin  # noqa: E402
+from mhm_qgis.Morphology.orchestration.reset_geometry import (  # noqa: E402
     ResetGeometryMixin,
 )
-from pymhm.Morphology.watershed.domain_state import (  # noqa: E402
+from mhm_qgis.Morphology.watershed.domain_state import (  # noqa: E402
     load_state,
     save_state,
 )
-from pymhm.project_layout import geometry_folder  # noqa: E402
-from pymhm.vSpecific.common import domain_count  # noqa: E402
+from mhm_qgis.project_layout import geometry_folder  # noqa: E402
+from mhm_qgis.vSpecific.common import domain_count  # noqa: E402
 # isort: on
 
 
@@ -88,7 +88,7 @@ def test_saved_state_controls_gauge_and_domain_counts(tmp_path: Path) -> None:
         (),
         {
             "project_folder": str(tmp_path),
-            "mMapLayerComboBox_pour_points": selector,
+            "input_combo": lambda self, kind: selector,
             "label_numberOfGaugedOutletsValue": label,
         },
     )()

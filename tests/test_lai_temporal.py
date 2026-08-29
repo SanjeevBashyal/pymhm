@@ -5,11 +5,11 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from pymhm import standalone_qgis
+from mhm_qgis import standalone_qgis
 
 standalone_qgis.install(force=True)
 
-from pymhm.lai_temporal import lai_time_step, prepare_lai_temporal  # noqa: E402
+from mhm_qgis.lai_temporal import lai_time_step, prepare_lai_temporal  # noqa: E402
 
 
 def _series(values, start, frequency):
@@ -63,8 +63,8 @@ def test_lai_output_guard_is_about_disk_not_memory(monkeypatch, tmp_path):
     """Memory is bounded by streaming, so only the output size can still block."""
     import shutil as shutil_module
 
-    from pymhm.Morphology.layers import lai as lai_module
-    from pymhm.Morphology.layers.lai import (
+    from mhm_qgis.Morphology.layers import lai as lai_module
+    from mhm_qgis.Morphology.layers.lai import (
         LAI_MAX_BYTES_ENV,
         assert_lai_output_fits,
         lai_grid_byte_size,
@@ -94,7 +94,7 @@ def test_lai_output_guard_is_about_disk_not_memory(monkeypatch, tmp_path):
 def test_lai_output_guard_refuses_when_the_volume_cannot_hold_it(monkeypatch, tmp_path):
     import shutil as shutil_module
 
-    from pymhm.Morphology.layers import lai as lai_module
+    from mhm_qgis.Morphology.layers import lai as lai_module
 
     monkeypatch.delenv(lai_module.LAI_MAX_BYTES_ENV, raising=False)
     monkeypatch.setattr(
@@ -110,7 +110,7 @@ def test_the_disk_guard_uses_the_measured_bilinear_compression(monkeypatch, tmp_
     """Bilinear output compresses ~1.8:1, so the guard must not assume better."""
     import shutil as shutil_module
 
-    from pymhm.Morphology.layers import lai as lai_module
+    from mhm_qgis.Morphology.layers import lai as lai_module
 
     monkeypatch.delenv(lai_module.LAI_MAX_BYTES_ENV, raising=False)
     # The measured bilinear ratio, not the 70:1 that nearest-neighbour reached.

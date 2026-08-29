@@ -10,7 +10,7 @@ SET QGIS_VERSION=QGIS 3.40.6
 SET QGIS_ROOT="C:\Program Files\%QGIS_VERSION%"
 
 REM -- The folder you want to open in VS Code --
-SET VSC_PROJECT_FOLDER="E:\0 Python\pymhm"
+SET VSC_PROJECT_FOLDER="E:\0 Python\mhm_qgis"
 
 REM -- Call the QGIS environment setup batch file --
 CALL %QGIS_ROOT%\bin\o4w_env.bat

@@ -1,0 +1,423 @@
+"""Bounded QGIS task queue shared by plugin preprocessing tasks."""
+from __future__ import annotations
+
+import traceback
+from dataclasses import dataclass, field
+
+try:
+    from qgis.PyQt import QtCore
+    from qgis.core import QgsApplication, QgsTask
+except ImportError:
+    from .standalone_qgis import install
+
+    install(force=True)
+    from qgis.PyQt import QtCore
+    QgsApplication = None
+    QgsTask = None
+
+
+@dataclass
+class TaskRecord:
+    key: str
+    label: str
+    runner: object
+    controls: tuple = ()
+    on_success: object = None
+    on_error: object = None
+    resource: str = ""
+    status: str = "queued"
+    progress: int = 0
+    slot: int | None = None
+    logs: list[str] = field(default_factory=list)
+    thread: object = None
+    worker: object = None
+    task: object = None
+    task_aware: bool = False
+
+
+class _TaskWorker(QtCore.QObject):
+    completed = QtCore.pyqtSignal(object)
+    failed = QtCore.pyqtSignal(str)
+    progress = QtCore.pyqtSignal(float)
+
+    def __init__(self, runner, task_aware=False):
+        super().__init__()
+        self.runner = runner
+        self.task_aware = bool(task_aware)
+
+    @QtCore.pyqtSlot()
+    def run(self):
+        try:
+            proxy = _StandaloneTask(self.progress.emit)
+            result = self.runner(proxy) if self.task_aware else self.runner()
+            self.completed.emit(result)
+        except Exception as error:
+            self.failed.emit(f"{error}\n{traceback.format_exc()}")
+
+
+class TaskCoordinator(QtCore.QObject):
+    """Queue file-only jobs and expose stable QGIS-task status to the UI."""
+
+    changed = QtCore.pyqtSignal()
+
+    def __init__(self, parent=None, max_threads=2):
+        super().__init__(parent)
+        self._max_threads = max(1, int(max_threads))
+        self._pending: list[TaskRecord] = []
+        self._active: dict[str, TaskRecord] = {}
+        self._records: dict[str, TaskRecord] = {}
+        self._history: dict[int, TaskRecord] = {}
+        self._control_owners: dict[int, set[str]] = {}
+        self._control_states: dict[int, bool] = {}
+
+    @property
+    def max_threads(self):
+        return self._max_threads
+
+    def set_max_threads(self, value):
+        try:
+            requested = int(value)
+        except (TypeError, ValueError):
+            requested = 2
+        highest_active = max(
+            (record.slot or 1 for record in self._active.values()), default=1
+        )
+        self._max_threads = max(highest_active, min(32, max(1, requested)))
+        self.changed.emit()
+        self._start_available()
+
+    def is_busy(self, key=None):
+        if key is None:
+            return bool(self._pending or self._active)
+        record = self._records.get(str(key))
+        return bool(record and record.status in {"queued", "running"})
+
+    def resource_busy(self, resource):
+        resource = str(resource or "")
+        return bool(
+            resource
+            and any(
+                record.resource == resource
+                for record in (*self._active.values(), *self._pending)
+            )
+        )
+
+    def has_capacity(self):
+        return len(self._active) < self._max_threads
+
+    def submit(
+        self,
+        key,
+        label,
+        runner,
+        *,
+        controls=(),
+        on_success=None,
+        on_error=None,
+        resource="",
+        task_aware=False,
+    ):
+        key = str(key)
+        if self.is_busy(key):
+            return False
+        record = TaskRecord(
+            key=key,
+            label=str(label),
+            runner=runner,
+            controls=tuple(widget for widget in controls if widget is not None),
+            on_success=on_success,
+            on_error=on_error,
+            resource=str(resource or ""),
+            task_aware=bool(task_aware),
+        )
+        self._records[key] = record
+        self._pending.append(record)
+        self._set_controls(record, False)
+        self.changed.emit()
+        self._start_available()
+        return True
+
+    def append_log(self, key, message):
+        record = self._records.get(str(key))
+        if record is None:
+            return
+        record.logs.append(str(message))
+        del record.logs[:-500]
+        self.changed.emit()
+
+    def set_progress(self, key, value):
+        record = self._records.get(str(key))
+        if record is None:
+            return
+        record.progress = max(0, min(100, int(value)))
+        self.changed.emit()
+
+    @QtCore.pyqtSlot(float)
+    def _task_progress_changed(self, value):
+        source = self.sender()
+        key = source.property("mhm_qgis_task_key") if source is not None else ""
+        if key:
+            self.set_progress(str(key), value)
+
+    def snapshots(self):
+        rows = []
+        for slot in range(1, self._max_threads + 1):
+            record = next(
+                (item for item in self._active.values() if item.slot == slot),
+                None,
+            )
+            if record is None:
+                record = self._history.get(slot)
+            if record is None:
+                rows.append(
+                    {"slot": slot, "key": "", "status": "idle", "label": "", "progress": 0, "logs": []}
+                )
+            else:
+                rows.append(
+                    {
+                        "slot": slot,
+                        "key": record.key,
+                        "status": record.status,
+                        "label": record.label,
+                        "progress": record.progress,
+                        "logs": list(record.logs),
+                    }
+                )
+        return rows
+
+    def queued_count(self):
+        return len(self._pending)
+
+    def start_external(self, key, label, controls=(), resource=""):
+        """Expose a separately managed QThread in the same task monitor."""
+        key = str(key)
+        if self.is_busy(key) or len(self._active) >= self._max_threads:
+            return False
+        record = TaskRecord(
+            key=key,
+            label=str(label),
+            runner=None,
+            controls=tuple(widget for widget in controls if widget is not None),
+            status="running",
+            slot=self._free_slot(),
+            resource=str(resource or ""),
+        )
+        record.logs.append(f"Started: {record.label}")
+        self._records[key] = record
+        self._active[key] = record
+        self._set_controls(record, False)
+        self.changed.emit()
+        return True
+
+    def finish_external(self, key, success, message=""):
+        record = self._active.pop(str(key), None)
+        if record is None:
+            return
+        record.status = "completed" if success else "failed"
+        record.progress = 100 if success else record.progress
+        record.logs.append(
+            str(message)
+            if message
+            else (f"Completed: {record.label}" if success else f"Failed: {record.label}")
+        )
+        self._set_controls(record, True)
+        if record.slot is not None:
+            self._history[record.slot] = record
+        self.changed.emit()
+        self._start_available()
+
+    def cancel(self, key):
+        """Cancel a queued or active task."""
+        key = str(key)
+        for record in tuple(self._pending):
+            if record.key == key:
+                self._pending.remove(record)
+                self._finish_record(record, False, "Task cancelled.", "cancelled")
+                return True
+        record = self._active.get(key)
+        if record is None:
+            return False
+        task = record.task
+        if task is not None and hasattr(task, "cancel"):
+            task.cancel()
+            return True
+        thread = record.thread
+        if thread is not None:
+            thread.requestInterruption()
+            return True
+        return False
+
+    def _free_slot(self):
+        used = {record.slot for record in self._active.values()}
+        return next((slot for slot in range(1, self._max_threads + 1) if slot not in used), None)
+
+    def _start_available(self):
+        while self._pending and len(self._active) < self._max_threads:
+            slot = self._free_slot()
+            if slot is None:
+                return
+            active_resources = {
+                item.resource for item in self._active.values() if item.resource
+            }
+            index = next(
+                (
+                    position
+                    for position, item in enumerate(self._pending)
+                    if not item.resource or item.resource not in active_resources
+                ),
+                None,
+            )
+            if index is None:
+                return
+            record = self._pending.pop(index)
+            record.slot = slot
+            record.status = "running"
+            record.logs.append(f"Started: {record.label}")
+            self._active[record.key] = record
+            if QgsTask is not None and QgsApplication is not None:
+                self._start_qgis_task(record)
+            else:
+                self._start_standalone_task(record)
+            self.changed.emit()
+
+    def _start_qgis_task(self, record):
+        """Submit a callable to QGIS's managed task pool."""
+        runner = record.runner
+        task_aware = record.task_aware
+
+        def run(task):
+            if task.isCanceled():
+                return _CANCELLED
+            return runner(task) if task_aware else runner()
+
+        def finished(exception, result=None):
+            if task.isCanceled():
+                self._finish(record.key, False, "Task cancelled.", "cancelled")
+            elif exception is not None:
+                details = "".join(
+                    traceback.format_exception(
+                        type(exception), exception, exception.__traceback__
+                    )
+                )
+                self._finish(record.key, False, details)
+            elif result is _CANCELLED:
+                self._finish(record.key, False, "Task cancelled.", "cancelled")
+            else:
+                self._finish(record.key, True, result)
+
+        task = QgsTask.fromFunction(record.label, run, on_finished=finished)
+        task.setProperty("mhm_qgis_task_key", record.key)
+        task.progressChanged.connect(self._task_progress_changed)
+        record.task = task
+        QgsApplication.taskManager().addTask(task)
+
+    def _start_standalone_task(self, record):
+        """Use Qt only for the standalone shim, which has no QGIS task manager."""
+        thread = QtCore.QThread(self)
+        worker = _TaskWorker(record.runner, record.task_aware)
+        worker.setProperty("mhm_qgis_task_key", record.key)
+        worker.moveToThread(thread)
+        worker.completed.connect(
+            lambda result, task_key=record.key: self._finish(task_key, True, result)
+        )
+        worker.failed.connect(
+            lambda message, task_key=record.key: self._finish(task_key, False, message)
+        )
+        worker.progress.connect(self._task_progress_changed)
+        worker.completed.connect(lambda _result, current=thread: current.quit())
+        worker.failed.connect(lambda _message, current=thread: current.quit())
+        worker.completed.connect(worker.deleteLater)
+        worker.failed.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.started.connect(worker.run)
+        record.thread = thread
+        record.worker = worker
+        thread.start()
+
+    def _finish(self, key, success, payload, status=None):
+        record = self._active.pop(str(key), None)
+        if record is None:
+            return
+        self._finish_record(record, success, payload, status)
+
+    def _finish_record(self, record, success, payload, status=None):
+        record.status = status or ("completed" if success else "failed")
+        record.progress = 100 if success else record.progress
+        record.logs.append(
+            f"Completed: {record.label}" if success else str(payload)
+        )
+        thread = record.thread
+        if thread is not None and thread.isRunning():
+            thread.quit()
+            thread.wait(1000)
+        self._set_controls(record, True)
+        if record.slot is not None:
+            self._history[record.slot] = record
+        callback = record.on_success if success else record.on_error
+        if callback is not None:
+            try:
+                callback(payload)
+            except Exception as error:
+                details = "".join(
+                    traceback.format_exception(type(error), error, error.__traceback__)
+                )
+                record.status = "failed"
+                record.logs.append(details)
+                if success and record.on_error is not None:
+                    try:
+                        record.on_error(details)
+                    except Exception:
+                        record.logs.append(traceback.format_exc())
+        record.thread = None
+        record.worker = None
+        record.task = None
+        self.changed.emit()
+        self._start_available()
+
+    def _set_controls(self, record, enabled):
+        seen = set()
+        for widget in record.controls:
+            widget_id = id(widget)
+            if widget_id in seen:
+                continue
+            seen.add(widget_id)
+            owners = self._control_owners.setdefault(widget_id, set())
+            if enabled:
+                owners.discard(record.key)
+            else:
+                if not owners:
+                    try:
+                        self._control_states[widget_id] = widget.isEnabled()
+                    except RuntimeError:
+                        self._control_states[widget_id] = True
+                owners.add(record.key)
+            try:
+                widget.setEnabled(
+                    False
+                    if owners
+                    else self._control_states.pop(widget_id, True)
+                )
+            except RuntimeError:
+                pass
+            if not owners:
+                self._control_owners.pop(widget_id, None)
+                self._control_states.pop(widget_id, None)
+
+
+_CANCELLED = object()
+
+
+class _StandaloneTask:
+    """Small QgsTask-compatible progress object for the standalone shim."""
+
+    def __init__(self, progress):
+        self._progress = progress
+
+    def isCanceled(self):
+        return QtCore.QThread.currentThread().isInterruptionRequested()
+
+    def setProgress(self, value):
+        self._progress(float(value))
+
+
+__all__ = ["TaskCoordinator", "TaskRecord"]

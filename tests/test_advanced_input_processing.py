@@ -2,16 +2,16 @@
 
 from pathlib import Path
 
-from pymhm import advanced_input_processing as processing
-from pymhm.advanced_input_manifests import (
+from mhm_qgis import advanced_input_processing as processing
+from mhm_qgis.advanced_input_manifests import (
     LandUseInput,
     LandUsePeriod,
     SoilHorizon,
     SoilInput,
 )
-from pymhm.nml_settings import load_settings
-from pymhm.project_layout import ensure_project_structure
-from pymhm.vSpecific import build_initial_values
+from mhm_qgis.nml_settings import load_settings
+from mhm_qgis.project_layout import ensure_project_structure
+from mhm_qgis.vSpecific import build_initial_values
 
 
 class Dialog:
@@ -120,7 +120,7 @@ def test_soil_processing_saves_v6_schema_values_and_units(tmp_path, monkeypatch)
 
 def test_soil_state_projects_horizons_to_v5_soildata(tmp_path):
     ensure_project_structure(tmp_path, "5.13")
-    from pymhm.nml_settings import update_section
+    from mhm_qgis.nml_settings import update_section
 
     update_section(
         tmp_path,

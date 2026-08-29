@@ -3,14 +3,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pymhm import standalone_qgis
+from mhm_qgis import standalone_qgis
 
 standalone_qgis.install(force=True)
 
 # isort: off
-from pymhm.Meteorology.state import MeteorologyOutputState  # noqa: E402
-from pymhm.Morphology.core.processing_state import ProcessingStateMixin  # noqa: E402
-from pymhm.project_layout import workspace_folder  # noqa: E402
+from mhm_qgis.Meteorology.state import MeteorologyOutputState  # noqa: E402
+from mhm_qgis.Morphology.core.processing_state import ProcessingStateMixin  # noqa: E402
+from mhm_qgis.project_layout import workspace_folder  # noqa: E402
 # isort: on
 
 
@@ -26,7 +26,7 @@ class _Dialog:
 class _MorphologyState(ProcessingStateMixin):
     def __init__(self, dialog: _Dialog) -> None:
         self.dialog = dialog
-        self.processing_state_filename = "pymhm_processing_state.json"
+        self.processing_state_filename = "mhm_qgis_processing_state.json"
         self.processing_state = {"version": 1, "outputs": {}, "workflows": {}}
         self.log_message = dialog.log_message
 
@@ -34,7 +34,7 @@ class _MorphologyState(ProcessingStateMixin):
 def test_morphology_state_is_saved_in_workspace(tmp_path: Path) -> None:
     dialog = _Dialog(tmp_path)
     state = _MorphologyState(dialog)
-    expected = Path(workspace_folder(tmp_path)) / "pymhm_processing_state.json"
+    expected = Path(workspace_folder(tmp_path)) / "mhm_qgis_processing_state.json"
 
     assert Path(state.processing_state_path()) == expected
     state.save_processing_state()
@@ -48,7 +48,7 @@ def test_meteorology_state_and_output_keys_use_workspace(tmp_path: Path) -> None
     workspace = Path(workspace_folder(tmp_path))
     output = workspace / "data" / "meteo" / "pre" / "pre.nc"
 
-    assert state.state_path() == workspace / "pymhm_processing_state.json"
+    assert state.state_path() == workspace / "mhm_qgis_processing_state.json"
     assert state.output_key(output) == "data/meteo/pre/pre.nc"
     state.save({"version": 1, "outputs": {}})
 
@@ -56,7 +56,7 @@ def test_meteorology_state_and_output_keys_use_workspace(tmp_path: Path) -> None
 
 
 def test_grid_contract_is_persisted_and_revalidated_on_resume(tmp_path: Path) -> None:
-    from pymhm.grid_resolution import aligned_l0_l2_headers
+    from mhm_qgis.grid_resolution import aligned_l0_l2_headers
 
     dialog = _Dialog(tmp_path)
     state = _MorphologyState(dialog)
@@ -99,7 +99,7 @@ def test_an_inconsistent_saved_grid_contract_is_discarded(tmp_path: Path) -> Non
 
 def test_saving_the_registry_preserves_sections_other_writers_own(tmp_path: Path) -> None:
     """Wholesale writes used to erase the reuse fingerprints, disabling reuse."""
-    from pymhm.state_cache import cached_payload, load_state, store_payload
+    from mhm_qgis.state_cache import cached_payload, load_state, store_payload
 
     state = _MorphologyState(_Dialog(tmp_path))
     state.load_processing_state()
@@ -121,7 +121,7 @@ def test_saving_the_registry_preserves_sections_other_writers_own(tmp_path: Path
 
 
 def test_a_corrupt_registry_file_does_not_lose_the_new_write(tmp_path: Path) -> None:
-    from pymhm.state_cache import load_state
+    from mhm_qgis.state_cache import load_state
 
     state = _MorphologyState(_Dialog(tmp_path))
     state.load_processing_state()

@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from pymhm.Morphology.layers.land_cover_class_names import \
+from mhm_qgis.Morphology.layers.land_cover_class_names import \
     LandCoverClassNameMixin
 
 

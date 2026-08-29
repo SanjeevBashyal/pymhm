@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Setup script for pymhm package
+Setup script for mhm_qgis package
 """
 
 from setuptools import setup, find_packages
@@ -25,18 +25,18 @@ def read_requirements():
     return []
 
 setup(
-    name="pymhm",
+    name="mhm_qgis",
     version="0.1.1",
     author="Sanjeev Bashyal",
     author_email="sanjeev.bashyal01@gmail.com",
     description="Python package for mesoscale Hydrological Model",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
-    url="https://github.com/SanjeevBashyal/pymhm",
+    url="https://github.com/SanjeevBashyal/mhm-qgis",
     project_urls={
-        "Bug Tracker": "https://github.com/SanjeevBashyal/pymhm/issues",
-        "Documentation": "https://github.com/SanjeevBashyal/pymhm",
-        "Source Code": "https://github.com/SanjeevBashyal/pymhm",
+        "Bug Tracker": "https://github.com/SanjeevBashyal/mhm-qgis/issues",
+        "Documentation": "https://github.com/SanjeevBashyal/mhm-qgis",
+        "Source Code": "https://github.com/SanjeevBashyal/mhm-qgis",
     },
     packages=find_packages(),
     classifiers=[
@@ -72,7 +72,7 @@ setup(
     },
     include_package_data=True,
     package_data={
-        "pymhm": [
+        "mhm_qgis": [
             "**/*.asc",
             "**/*.csv",
             "**/*.html",
@@ -93,7 +93,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "pymhm=pymhm.cli:main",
+            "mhm_qgis=mhm_qgis.cli:main",
         ],
     },
     keywords="hydrology, modeling, mesoscale, water, environment, qgis, plugin",

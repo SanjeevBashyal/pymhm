@@ -6,7 +6,7 @@ import numpy as np
 import rasterio
 from rasterio.transform import from_origin
 
-from pymhm.viewport_raster_range import raster_window_range
+from mhm_qgis.viewport_raster_range import raster_window_range
 
 
 def test_visible_raster_range_clips_extent_and_ignores_nodata(tmp_path: Path):

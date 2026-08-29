@@ -5,14 +5,14 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm import standalone_qgis
+from mhm_qgis import standalone_qgis
 
 standalone_qgis.install(force=True)
 
 # isort: off
 from qgis.PyQt.QtWidgets import QApplication  # noqa: E402
 
-from pymhm.Morphology.hydrology.discharge_dialog import (  # noqa: E402
+from mhm_qgis.Morphology.hydrology.discharge_dialog import (  # noqa: E402
     DischargeTableAssignmentDialog,
     DomainAndDischargeTableAssignmentDialog,
     OutletAssignment,

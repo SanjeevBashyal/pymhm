@@ -1,11 +1,11 @@
 # Doxy files
-pymhm/docs/sphinx/
-pymhm/docs/doxy/
-pymhm/html/
-pymhm/latex/
-pymhm/xml/
-pymhm/rtf/
-pymhm/man/
+src/mhm_qgis/docs/sphinx/
+src/mhm_qgis/docs/doxy/
+src/mhm_qgis/html/
+src/mhm_qgis/latex/
+src/mhm_qgis/xml/
+src/mhm_qgis/rtf/
+src/mhm_qgis/man/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

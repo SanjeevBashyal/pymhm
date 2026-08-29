@@ -1,0 +1,16 @@
+<RCC>
+  <qresource prefix="/plugins/mhm_qgis">
+    <file>Resources/crop.png</file>
+    <file>Resources/runSave.png</file>
+    <file>Resources/band.png</file>
+    <file>Resources/latlon.png</file>
+    <file>Resources/mask.png</file>
+    <file>icon.png</file>
+    <file>Resources/write.png</file>
+    <file>Resources/run.png</file>
+    <file>Resources/riverNetwork.png</file>
+    <file>Resources/watershed.png</file>
+    <file>Resources/snap.png</file>
+    <file>Resources/fillSinks.png</file>
+  </qresource>
+</RCC>

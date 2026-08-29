@@ -3,10 +3,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "pymhm: Debug plugin dialog (Linux/QGIS)",
+            "name": "mhm_qgis: Debug plugin dialog (Linux/QGIS)",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/test_pymhm.py",
+            "program": "${workspaceFolder}/test_mhm_qgis.py",
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
             "python": "/usr/bin/python3",

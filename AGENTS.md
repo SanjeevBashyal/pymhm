@@ -1,37 +1,37 @@
 # AGENTS.md
 
-Guidance for coding agents working at the repository root of `pymhm`.
+Guidance for coding agents working at the repository root of `mhm_qgis`.
 
 ## Repository Shape
 
 This repository publishes one Python distribution and also contains the QGIS
 plugin folder:
 
-- `pymhm/`: QGIS plugin folder and Python package.
-- `pymhm/metadata.txt`, `pymhm/__init__.py`, `pymhm/pymhm.py`: QGIS plugin
+- `src/mhm_qgis/`: QGIS plugin folder and Python package.
+- `src/mhm_qgis/metadata.txt`, `src/mhm_qgis/__init__.py`, `src/mhm_qgis/mhm_qgis.py`: QGIS plugin
   entry points.
-- `pymhm/cli.py`: PyPI console entry point; `pymhm` opens the standalone GUI.
-- `pymhm/standalone_qgis.py`: Qt-backed fallback for opening the plugin dialog
+- `src/mhm_qgis/cli.py`: PyPI console entry point; `mhm_qgis` opens the standalone GUI.
+- `src/mhm_qgis/standalone_qgis.py`: Qt-backed fallback for opening the plugin dialog
   without QGIS installed.
-- `pymhm/mhm_tools_adapter.py`: small QGIS-free wrappers around the installed
+- `src/mhm_qgis/mhm_tools_adapter.py`: small QGIS-free wrappers around the installed
   `mhm_tools` Python API for categorical inputs and `latlon.nc`.
-- `pymhm/Morphology/latlon/ascii_morphology.py`: reusable morphology ASCII
+- `src/mhm_qgis/Morphology/latlon/ascii_morphology.py`: reusable morphology ASCII
   alignment and writing.
-- `pymhm/Meteorology/ERA5Land/mhm/`: local ERA5-Land forcing preparation.
+- `src/mhm_qgis/Meteorology/ERA5Land/mhm/`: local ERA5-Land forcing preparation.
 - `setup.py`, `pyproject.toml`, `MANIFEST.in`: PyPI package metadata.
 
-Read `pymhm/AGENTS.md` before making plugin-internal changes. It contains the
+Read `src/mhm_qgis/AGENTS.md` before making plugin-internal changes. It contains the
 current morphology, meteorology, configuration, and QGIS reload conventions.
 
 ## Dual Runtime Contract
 
 The project supports two runtimes:
 
-- QGIS plugin runtime: QGIS loads `pymhm/__init__.py` and `pymhm/pymhm.py`.
+- QGIS plugin runtime: QGIS loads `src/mhm_qgis/__init__.py` and `src/mhm_qgis/mhm_qgis.py`.
   Real QGIS APIs, `QgsMapLayerComboBox`, QGIS Processing, and the QGIS project
   are available.
-- Standalone PyPI runtime: the `pymhm` command installs
-  `pymhm.standalone_qgis` before importing the dialog. Layer selectors become
+- Standalone PyPI runtime: the `mhm_qgis` command installs
+  `mhm_qgis.standalone_qgis` before importing the dialog. Layer selectors become
   path selector widgets backed by lightweight layer objects.
 
 Keep this rule intact:
@@ -44,7 +44,7 @@ Reusable computation should move toward QGIS-free file/path/data APIs.
 
 ## Standalone GUI Notes
 
-- `pymhm.cli:main` is the console script target.
+- `mhm_qgis.cli:main` is the console script target.
 - The CLI intentionally calls `standalone_qgis.install(force=True)` so the
   command-line GUI uses file-path selectors even on machines where QGIS Python
   libraries are importable outside a real QGIS session.
@@ -52,15 +52,15 @@ Reusable computation should move toward QGIS-free file/path/data APIs.
   a real QGIS Processing backend. Processing actions that still call
   `processing.run(...)` need pure-Python or external-tool backends before they
   can be considered fully cluster-ready.
-- Do not import `pymhm.pymhm_dialog` in standalone paths before installing the
+- Do not import `mhm_qgis.mhm_qgis_dialog` in standalone paths before installing the
   shim.
 
 ## mHM-Tools Integration Snapshot
 
 - `mhm-tools>=0.3.0` is an external runtime dependency. There is no bundled
-  `pymhm/mhm_tools` source tree in the current project.
+  `src/mhm_qgis/mhm_tools` source tree in the current project.
 - The plugin calls exports from `mhm_tools.pre` through
-  `pymhm/mhm_tools_adapter.py`; it does not shell out to the `mhm-tools` CLI.
+  `src/mhm_qgis/mhm_tools_adapter.py`; it does not shell out to the `mhm-tools` CLI.
 - `rasterize_map_data` burns vector attributes directly or maps them through a
   lookup table, always using the filled DEM's exact grid.
 - `format_soil_data`, `format_geology_data`, and `format_lc_data` accept
@@ -72,7 +72,7 @@ Reusable computation should move toward QGIS-free file/path/data APIs.
   and `data-converter format-data`; the latter requires
   `--type soil|geology|lc`, a mapping field, and a class field.
 - QGIS-specific layer selection, materialization, logging, output placement,
-  and geology parameter metadata remain in `pymhm`. See `pymhm/AGENTS.md` for
+  and geology parameter metadata remain in `mhm_qgis`. See `src/mhm_qgis/AGENTS.md` for
   the detailed contract and current caveats.
 
 ## Domain And Worker Contracts
@@ -83,28 +83,28 @@ Reusable computation should move toward QGIS-free file/path/data APIs.
 - Each selected domain outlet owns exactly one physical DEM at
   `mhm-plugin/data/<outlet-id>/dem.asc`. Outlet IDs used as directory names
   must reject path separators and traversal components.
-- `pymhm_domain_delineation_state.json` is the canonical detailed state;
+- `mhm_qgis_domain_delineation_state.json` is the canonical detailed state;
   `nml-settings.json` is the normalized handoff containing domain directories,
   DEM paths, contained gauge IDs, and shared `data/master/` paths.
 - Qt and QGIS objects remain on the main thread. `QgsTask` jobs receive only
   copied primitive values and filesystem paths. Large advanced land-cover and
-  soil formatting runs through `pymhm.native_worker` in a child process so a
+  soil formatting runs through `mhm_qgis.native_worker` in a child process so a
   GDAL/NumPy native failure cannot terminate QGIS.
 - Historical v5.13 land-cover formatting is windowed and period-by-period in
   `mhm-tools`; never restore an eager list of full aligned period arrays.
 - One common L0/L2 extent covers every active domain. Prepared L0 rasters and
   published advanced categorical inputs are placed on it by integer window copy
-  and nodata padding, never resampled. See `pymhm/AGENTS.md`.
+  and nodata padding, never resampled. See `src/mhm_qgis/AGENTS.md`.
 
 ## Packaging Rules
 
 - Keep package discovery recursive. The project contains nested packages under
-  `pymhm/Morphology`, `pymhm/Meteorology`, and `pymhm/Configuration`.
+  `src/mhm_qgis/Morphology`, `src/mhm_qgis/Meteorology`, and `src/mhm_qgis/Configuration`.
 - Keep the `mhm-tools` dependency floor synchronized between `pyproject.toml`
   and `requirements.txt` when an adapter starts using a newer public API.
 - Include plugin assets, schemas, templates, and project-template files in the
   PyPI build.
-- If adding data files under `pymhm/`, update `MANIFEST.in` and package-data
+- If adding data files under `src/mhm_qgis/`, update `MANIFEST.in` and package-data
   patterns if the extension is new.
 - Do not add `qgis` as a PyPI dependency. QGIS is provided by QGIS itself.
 
@@ -114,7 +114,7 @@ Reusable computation should move toward QGIS-free file/path/data APIs.
 - Use `apply_patch` for manual edits.
 - Do not touch unrelated user changes.
 - Useful checks for this root-level packaging/runtime work:
-  - `python3 -m py_compile pymhm/cli.py pymhm/standalone_qgis.py`
-  - `QT_QPA_PLATFORM=offscreen python3 -m pymhm.cli --info`
+  - `python3 -m py_compile src/mhm_qgis/cli.py src/mhm_qgis/standalone_qgis.py`
+  - `QT_QPA_PLATFORM=offscreen python3 -m mhm_qgis.cli --info`
   - A standalone dialog import/instantiation smoke test with the shim installed.
   - `python3 -m pytest -q` for the focused adapter and logging tests in `tests/`.

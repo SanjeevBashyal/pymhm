@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2025-01-XX
 
 ### Added
-- Initial release of PymHM
+- Initial release of mHM QGIS
 - QGIS plugin functionality
 - Basic hydrological modeling capabilities
 - Python package structure

@@ -8,12 +8,12 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm import standalone_qgis  # noqa: E402
+from mhm_qgis import standalone_qgis  # noqa: E402
 
 standalone_qgis.install(force=True)
 
-from pymhm.Meteorology.paths import expected_meteo_outputs  # noqa: E402
-from pymhm.Meteorology.reuse import (  # noqa: E402
+from mhm_qgis.Meteorology.paths import expected_meteo_outputs  # noqa: E402
+from mhm_qgis.Meteorology.reuse import (  # noqa: E402
     output_state_key,
     required_meteo_variables,
     stale_meteo_variables,

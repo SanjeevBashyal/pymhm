@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from pymhm.Meteorology.forcing import (
+from mhm_qgis.Meteorology.forcing import (
     ERA5LAND,
     MHM_READY,
     MeteoFolderSpec,
@@ -195,7 +195,7 @@ def test_processes_separate_era5land_folders_and_optional_pet(
     assert not (tmp_path / "out" / "pet" / "pet.nc").exists()
     assert not (tmp_path / "out" / "pet" / "header.txt").exists()
 
-    from pymhm.Meteorology import forcing
+    from mhm_qgis.Meteorology import forcing
 
     previous_pre = without_pet.outputs["pre"].read_bytes()
     original_writer = forcing.write_netcdf
@@ -218,7 +218,7 @@ def test_processes_separate_era5land_folders_and_optional_pet(
             TargetGrid(lon=LON, lat=LAT, header=header),
         )
     assert without_pet.outputs["pre"].read_bytes() == previous_pre
-    assert not list((tmp_path / "out").glob(".pymhm-meteo-*"))
+    assert not list((tmp_path / "out").glob(".mhm_qgis-meteo-*"))
 
 
 def test_mhm_ready_only_clips_precipitation(tmp_path):

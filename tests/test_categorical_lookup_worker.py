@@ -11,7 +11,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm import standalone_qgis  # noqa: E402
+from mhm_qgis import standalone_qgis  # noqa: E402
 
 standalone_qgis.install(force=True)
 
@@ -45,7 +45,7 @@ def _run_worker(work, payload):
     job_file, result_file = work / "job.json", work / "result.json"
     job_file.write_text(json.dumps(payload), encoding="utf-8")
     process = subprocess.run(
-        [sys.executable, "-m", "pymhm.native_worker",
+        [sys.executable, "-m", "mhm_qgis.native_worker",
          str(job_file), str(result_file)],
         capture_output=True, text=True,
         env=dict(os.environ, PYTHONPATH=str(REPO)),
@@ -57,7 +57,7 @@ def test_the_lookup_module_imports_without_qgis():
     """It runs in a child process, where `processing` is unavailable."""
     process = subprocess.run(
         [sys.executable, "-c",
-         "import pymhm.categorical_lookup as m; print(m.run_lookup_job.__name__)"],
+         "import mhm_qgis.categorical_lookup as m; print(m.run_lookup_job.__name__)"],
         capture_output=True, text=True,
         env=dict(os.environ, PYTHONPATH=str(REPO)),
     )
@@ -80,7 +80,7 @@ def test_the_worker_asks_the_kernel_to_kill_it_before_qgis():
     """Geology formatting peaked at 5.5 GiB and OOM-killed the QGIS process."""
     process = subprocess.run(
         [sys.executable, "-c",
-         "from pymhm.native_worker import _prefer_worker_termination as f; f();"
+         "from mhm_qgis.native_worker import _prefer_worker_termination as f; f();"
          "print(open('/proc/self/oom_score_adj').read().strip())"],
         capture_output=True, text=True,
         env=dict(os.environ, PYTHONPATH=str(REPO)),
@@ -106,7 +106,7 @@ def test_the_bridge_sends_lookup_jobs_to_the_worker():
     """The in-process lookup runner must be gone, or QGIS is exposed again."""
     import inspect
 
-    from pymhm import morphology_task_bridge as bridge
+    from mhm_qgis import morphology_task_bridge as bridge
 
     source = inspect.getsource(bridge._run_lookup)
     assert "_run_in_worker" in source

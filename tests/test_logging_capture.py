@@ -4,12 +4,12 @@ import io
 import logging
 import sys
 
-from pymhm import standalone_qgis
+from mhm_qgis import standalone_qgis
 
 standalone_qgis.install(force=True)
 
-from pymhm.mhm_tools_adapter import capture_messages  # noqa: E402
-from pymhm.utils import DialogUtils  # noqa: E402
+from mhm_qgis.mhm_tools_adapter import capture_messages  # noqa: E402
+from mhm_qgis.utils import DialogUtils  # noqa: E402
 
 
 class _LogText:

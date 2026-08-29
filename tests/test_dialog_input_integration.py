@@ -10,7 +10,7 @@ import xarray as xr
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm import standalone_qgis
+from mhm_qgis import standalone_qgis
 
 standalone_qgis.install(force=True)
 
@@ -19,9 +19,9 @@ from qgis.core import (QgsCoordinateReferenceSystem,  # noqa: E402
                        QgsVectorLayer)
 from qgis.PyQt.QtWidgets import QApplication  # noqa: E402
 
-from pymhm.input_selection import InputComboAdapter  # noqa: E402
-from pymhm.project_layout import data_folder, workspace_folder  # noqa: E402
-from pymhm.pymhm_dialog import pymhmDialog  # noqa: E402
+from mhm_qgis.input_selection import InputComboAdapter  # noqa: E402
+from mhm_qgis.project_layout import data_folder, workspace_folder  # noqa: E402
+from mhm_qgis.mhm_qgis_dialog import MhmQgisDialog  # noqa: E402
 # isort: on
 
 _APPLICATION = None
@@ -42,13 +42,13 @@ def test_dialog_maps_new_combos_and_discovers_relative_project_files(tmp_path):
     excluded.parent.mkdir()
     excluded.touch()
 
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     dialog.project_folder = str(tmp_path)
     dialog.checkBox_enableFolderSearch.setChecked(True)
     dialog.refresh_input_sources()
 
-    assert isinstance(dialog.mMapLayerComboBox_dem, InputComboAdapter)
-    assert dialog.mMapLayerComboBox_dem.combo_box is dialog.comboBox_demInput
+    assert isinstance(dialog.input_combo("dem"), InputComboAdapter)
+    assert dialog.input_combo("dem").combo_box is dialog.comboBox_demInput
     labels = [
         dialog.comboBox_demInput.itemText(index)
         for index in range(dialog.comboBox_demInput.count())
@@ -67,7 +67,7 @@ def test_project_without_saved_state_clears_previous_project_inputs(tmp_path):
     raster = first_project / "soil.tif"
     raster.touch()
 
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     dialog.project_folder = str(first_project)
     dialog.comboBox_soilInput.addItem(
         "soil.tif",
@@ -111,9 +111,9 @@ def test_pour_point_fields_and_domain_choice_round_trip(tmp_path):
     )
     layer = QgsVectorLayer(str(pour_points), "pour points", "delimitedtext")
 
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     dialog.project_folder = str(tmp_path)
-    dialog.mMapLayerComboBox_pour_points.setLayer(layer)
+    dialog.input_combo("pour_points").setLayer(layer)
 
     fields = [
         dialog.comboBox_pourPointOutletID.itemText(index)
@@ -128,12 +128,12 @@ def test_pour_point_fields_and_domain_choice_round_trip(tmp_path):
     dialog.save_input_state()
     dialog.close()
 
-    state_path = Path(workspace_folder(tmp_path)) / "pymhm_input_state.json"
+    state_path = Path(workspace_folder(tmp_path)) / "mhm_qgis_input_state.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     assert state["pour_point_outlet_id_field"] == "outlet_name"
     assert state["dem_domain"] is True
 
-    restored = pymhmDialog()
+    restored = MhmQgisDialog()
     restored.project_folder = str(tmp_path)
     restored.load_input_state()
 
@@ -150,7 +150,7 @@ def test_meteo_folder_source_and_multiplier_state_round_trip(tmp_path):
     precipitation.mkdir(parents=True)
     temperature.mkdir()
 
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     assert dialog.comboBox_precipitationFile.count() == 1
     assert dialog.comboBox_precipitationFile.itemText(0) == ""
     dialog.project_folder = str(tmp_path)
@@ -184,7 +184,7 @@ def test_meteo_folder_source_and_multiplier_state_round_trip(tmp_path):
     dialog.save_input_state()
     dialog.close()
 
-    state_path = Path(workspace_folder(tmp_path)) / "pymhm_input_state.json"
+    state_path = Path(workspace_folder(tmp_path)) / "mhm_qgis_input_state.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     assert state["meteo_inputs"]["precipitation"] == {
         "folder": "forcing/pre",
@@ -192,7 +192,7 @@ def test_meteo_folder_source_and_multiplier_state_round_trip(tmp_path):
     }
     assert state["meteo_inputs"]["l2_multiplier"] == 4
 
-    restored = pymhmDialog()
+    restored = MhmQgisDialog()
     restored.project_folder = str(tmp_path)
     restored.load_input_state()
 
@@ -214,7 +214,7 @@ def test_meteo_required_folders_and_optional_blank_pet(tmp_path):
     precipitation.mkdir()
     temperature.mkdir()
 
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     dialog.project_folder = str(tmp_path)
     dialog.refresh_meteo_folder_sources()
 
@@ -260,7 +260,7 @@ def test_combined_workflow_green_state_restores_from_workspace(tmp_path):
     latlon = Path(data_folder(tmp_path)) / "latlon.nc"
     latlon.parent.mkdir(parents=True)
     latlon.touch()
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     dialog.project_folder = str(tmp_path)
     dialog.morphology_processor.load_processing_state()
     dialog.morphology_processor.mark_workflow_status(
@@ -269,7 +269,7 @@ def test_combined_workflow_green_state_restores_from_workspace(tmp_path):
     )
     dialog.close()
 
-    restored = pymhmDialog()
+    restored = MhmQgisDialog()
     restored.project_folder = str(tmp_path)
     restored.morphology_processor.load_processing_state()
     restored.refresh_morphology_workflow_button_states()
@@ -280,7 +280,7 @@ def test_combined_workflow_green_state_restores_from_workspace(tmp_path):
 
 def test_combined_workflow_green_state_requires_latlon(tmp_path):
     _app()
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     dialog.project_folder = str(tmp_path)
     dialog.morphology_processor.load_processing_state()
     dialog.morphology_processor.mark_workflow_status(
@@ -289,7 +289,7 @@ def test_combined_workflow_green_state_requires_latlon(tmp_path):
     )
     dialog.close()
 
-    restored = pymhmDialog()
+    restored = MhmQgisDialog()
     restored.project_folder = str(tmp_path)
     restored.morphology_processor.load_processing_state()
     restored.refresh_morphology_workflow_button_states()
@@ -323,7 +323,7 @@ def test_precipitation_selection_displays_resolution_and_l0_multiplier(tmp_path)
     )
     dataset.to_netcdf(folder / "pre.nc", engine="scipy")
 
-    dialog = pymhmDialog()
+    dialog = MhmQgisDialog()
     dialog.project_folder = str(tmp_path)
     dialog.mProjectionSelectionWidget_crs.setCrs(
         QgsCoordinateReferenceSystem("EPSG:4326")

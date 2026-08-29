@@ -7,7 +7,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pymhm.standalone_qgis import install
+from mhm_qgis.standalone_qgis import install
 
 install(force=True)
 
@@ -20,7 +20,7 @@ from qgis.core import (  # noqa: E402
 )
 from qgis.PyQt import QtWidgets  # noqa: E402
 
-from pymhm.input_selection import (  # noqa: E402
+from mhm_qgis.input_selection import (  # noqa: E402
     EXCLUDED_PROJECT_FOLDERS,
     InputComboAdapter,
     LaiNetcdfInputDialog,
