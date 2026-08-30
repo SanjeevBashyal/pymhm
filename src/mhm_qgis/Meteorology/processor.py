@@ -64,6 +64,8 @@ class MeteorologyProcessor:
                 + ", ".join(found))
         if hasattr(self.dialog, "update_l2_resolution_from_metadata"):
             self.dialog.update_l2_resolution_from_metadata()
+        if hasattr(self.dialog, "refresh_meteo_display"):
+            self.dialog.refresh_meteo_display()
 
     def reuse_prepared_meteo_forcing(self, run: MeteorologyRun) -> bool:
         """Return True when recorded forcing already matches the target L2 grid."""
@@ -135,6 +137,8 @@ class MeteorologyProcessor:
 
         record_forcing_outputs(self.state, result)
         log_result_summary(result, self.log_message)
+        if hasattr(self.dialog, "refresh_meteo_display"):
+            self.dialog.refresh_meteo_display()
         save_meteo_grid_metadata(run.project_folder, run.grid_metadata)
         if show_dialog:
             self.dialog.set_meteo_l2_grid_metadata(run.grid_metadata)

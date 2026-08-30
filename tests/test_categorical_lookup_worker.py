@@ -11,9 +11,9 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from mhm_qgis import standalone_qgis  # noqa: E402
+from mhm_qgis import standalone  # noqa: E402
 
-standalone_qgis.install(force=True)
+standalone.install(force=True)
 
 REPO = Path(__file__).resolve().parent.parent
 

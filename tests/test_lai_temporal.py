@@ -5,9 +5,9 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from mhm_qgis import standalone_qgis
+from mhm_qgis import standalone
 
-standalone_qgis.install(force=True)
+standalone.install(force=True)
 
 from mhm_qgis.lai_temporal import lai_time_step, prepare_lai_temporal  # noqa: E402
 

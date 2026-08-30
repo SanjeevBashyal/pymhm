@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mhm_qgis import standalone_qgis
+from mhm_qgis import standalone
 
-standalone_qgis.install(force=True)
+standalone.install(force=True)
 
 # isort: off
 from mhm_qgis.Meteorology.state import MeteorologyOutputState  # noqa: E402

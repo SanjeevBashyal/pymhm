@@ -4,12 +4,13 @@ from __future__ import annotations
 try:
     from qgis.PyQt import QtWidgets
 except ImportError:
-    from .standalone_qgis import install
+    from .standalone import install
 
     install(force=True)
     from qgis.PyQt import QtWidgets
 
-from .pyui.ui_thread_display_dialog import Ui_ThreadDisplayDialog
+from .qt.bindings.thread_display import bind as bind_thread_display
+from .ui.pyui.ui_thread_display_dialog import Ui_ThreadDisplayDialog
 
 
 class ThreadDisplayDialog(QtWidgets.QDialog, Ui_ThreadDisplayDialog):
@@ -18,8 +19,7 @@ class ThreadDisplayDialog(QtWidgets.QDialog, Ui_ThreadDisplayDialog):
         self.setupUi(self)
         self.coordinator = coordinator
         self.spinBox_threadCount.setValue(coordinator.max_threads)
-        self.spinBox_threadCount.valueChanged.connect(coordinator.set_max_threads)
-        self.tableWidget_threads.currentCellChanged.connect(self._show_log)
+        bind_thread_display(self, coordinator)
         coordinator.changed.connect(self.refresh)
         self.refresh()
 

@@ -53,9 +53,22 @@ def is_v6(project_folder) -> bool:
     return project_version(project_folder) == "v6"
 
 
+def project_template_root() -> str:
+    """Return the project-template directory.
+
+    A packaged plugin carries the templates inside itself; a source checkout
+    keeps them beside the package at the repository root.
+    """
+    packaged = os.path.join(plugin_root(), "project-template")
+    if os.path.isdir(packaged):
+        return packaged
+    repository = os.path.dirname(os.path.dirname(plugin_root()))
+    return os.path.join(repository, "project-template")
+
+
 def project_template_dir(version_text: str | None) -> str | None:
     """Return the best matching project-template directory."""
-    root = os.path.join(plugin_root(), "project-template")
+    root = project_template_root()
     preferred = os.path.join(root, version_key(version_text))
     if os.path.isdir(preferred):
         return preferred

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'src/mhm_qgis/ui/land_use_historical_input.ui'
+# Form implementation generated from reading ui file 'forms/land_use_historical_input.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #
@@ -43,7 +43,7 @@ class Ui_Dialog(object):
 "    }")
         self.pushButton_addLandUseInputWidgets.setText("")
         icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap(":/plugins/src/mhm_qgis/Resources/run.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon.addPixmap(QtGui.QPixmap(":/plugins/mhm_qgis/Resources/run.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.pushButton_addLandUseInputWidgets.setIcon(icon)
         self.pushButton_addLandUseInputWidgets.setObjectName("pushButton_addLandUseInputWidgets")
         self.horizontalLayout_nHorizons.addWidget(self.pushButton_addLandUseInputWidgets)

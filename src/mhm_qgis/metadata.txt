@@ -27,7 +27,7 @@ tags=python,hydrology,modeling
 
 homepage=https://github.com/SanjeevBashyal/mhm-qgis
 category=Plugins
-icon=icon.png
+icon=ui/forms/Resources/icon.png
 # experimental flag
 experimental=False
 

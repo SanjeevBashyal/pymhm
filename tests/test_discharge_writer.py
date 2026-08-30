@@ -1,9 +1,9 @@
 """Tests for discharge files that do not require a valid QGIS table layer."""
 from pathlib import Path
 
-from mhm_qgis import standalone_qgis
+from mhm_qgis import standalone
 
-standalone_qgis.install(force=True)
+standalone.install(force=True)
 
 # isort: off
 from mhm_qgis.Morphology.hydrology.discharge_writer import (

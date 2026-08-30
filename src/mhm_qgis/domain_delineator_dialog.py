@@ -46,7 +46,8 @@ from .Morphology.file_tasks import (
 )
 from .project_layout import geometry_folder
 from .project_layout import domain_data_folder, domain_dem_path
-from .pyui.ui_domain_delineator_dialog import Ui_DomainDelineatorDialog
+from .qt.bindings.domain_delineator import bind as bind_domain_delineator
+from .ui.pyui.ui_domain_delineator_dialog import Ui_DomainDelineatorDialog
 from .viewport_raster_range import ViewportRasterRangeController
 
 
@@ -116,18 +117,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             self.listWidget_outlets.setCurrentRow(0)
 
     def _connect_signals(self):
-        self.listWidget_outlets.currentTextChanged.connect(
-            self._load_outlet)
-        self.checkBox_isGaugedOutlet.toggled.connect(
-            self._set_discharge_enabled)
-        self.pushButton_browseDischargeFile.clicked.connect(
-            self._browse_discharge)
-        self.pushButton_generateChannelNetwork.clicked.connect(
-            self._generate_channel_network)
-        self.pushButton_pickLocation.clicked.connect(self._start_picking)
-        self.pushButton_nextPourPoint.clicked.connect(self._next_outlet)
-        self.pushButton_save.clicked.connect(self._save_outlet)
-        self.pushButton_close.clicked.connect(self.reject)
+        bind_domain_delineator(self)
 
     def _load_state(self):
         self.state = self.workflow.load_synced_state(

@@ -6,9 +6,9 @@ from types import ModuleType
 
 import pandas as pd
 
-from mhm_qgis import standalone_qgis
+from mhm_qgis import standalone
 
-standalone_qgis.install(force=True)
+standalone.install(force=True)
 
 from mhm_qgis import geology_metadata
 

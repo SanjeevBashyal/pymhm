@@ -69,7 +69,7 @@ Repository = "https://github.com/SanjeevBashyal/mhm-qgis"
 "Bug Tracker" = "https://github.com/SanjeevBashyal/mhm-qgis/issues"
 
 [project.scripts]
-mhm-qgis = "mhm_qgis.cli:main"
+mhm-qgis = "mhm_qgis.standalone.cli:main"
 
 [tool.setuptools]
 include-package-data = true

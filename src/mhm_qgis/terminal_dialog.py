@@ -7,7 +7,8 @@ import shlex
 
 from qgis.PyQt import QtCore, QtGui, QtWidgets
 
-from .pyui.ui_project_terminal_dialog import Ui_ProjectTerminalDialog
+from .qt.bindings.terminal import bind as bind_terminal
+from .ui.pyui.ui_project_terminal_dialog import Ui_ProjectTerminalDialog
 
 
 class ProjectTerminalDialog(QtWidgets.QDialog, Ui_ProjectTerminalDialog):
@@ -30,11 +31,8 @@ class ProjectTerminalDialog(QtWidgets.QDialog, Ui_ProjectTerminalDialog):
         font = QtGui.QFont("Monospace")
         font.setStyleHint(QtGui.QFont.TypeWriter)
         self.output.setFont(font)
-        self.command_edit.returnPressed.connect(self.send_current_command)
         self.command_edit.installEventFilter(self)
-        self.send_button.clicked.connect(self.send_current_command)
-        self.clear_button.clicked.connect(self.output.clear)
-        self.close_button.clicked.connect(self.hide)
+        bind_terminal(self)
 
     def show_for_directory(self, cwd: str) -> bool:
         """Show the terminal and ensure its shell is in ``cwd``."""

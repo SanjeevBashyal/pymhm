@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'src/mhm_qgis/ui/elevation_band_dialog.ui'
+# Form implementation generated from reading ui file 'forms/elevation_band_dialog.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #

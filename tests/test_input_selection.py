@@ -7,7 +7,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from mhm_qgis.standalone_qgis import install
+from mhm_qgis.standalone import install
 
 install(force=True)
 

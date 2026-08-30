@@ -16,9 +16,9 @@ from osgeo import gdal, osr
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from mhm_qgis import standalone_qgis  # noqa: E402
+from mhm_qgis import standalone  # noqa: E402
 
-standalone_qgis.install(force=True)
+standalone.install(force=True)
 
 from mhm_qgis.Morphology.latlon.ascii_morphology import (  # noqa: E402
     _read_raster,

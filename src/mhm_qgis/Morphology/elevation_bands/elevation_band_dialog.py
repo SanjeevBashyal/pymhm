@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..common import QDialog
 from ..core.naming import NamingAndRangeMixin
-from ...pyui.ui_elevation_band_dialog import Ui_ElevationBandDialog
+from ...ui.pyui.ui_elevation_band_dialog import Ui_ElevationBandDialog
 
 
 class ElevationBandDialogMixin(NamingAndRangeMixin):

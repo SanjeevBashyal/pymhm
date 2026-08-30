@@ -1,9 +1,0 @@
-<RCC>
-  <qresource prefix="Icons">
-    <file>run.png</file>
-    <file>riverNetwork.png</file>
-    <file>watershed.png</file>
-    <file>snap.png</file>
-    <file>fillSinks.png</file>
-  </qresource>
-</RCC>

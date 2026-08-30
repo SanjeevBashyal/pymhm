@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'src/mhm_qgis/ui/soil_multi_horizon_input.ui'
+# Form implementation generated from reading ui file 'forms/soil_multi_horizon_input.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #
@@ -44,7 +44,7 @@ class Ui_Dialog(object):
 "    }")
         self.pushButton_addHorizonInputWidgets.setText("")
         icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap(":/plugins/src/mhm_qgis/Resources/run.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon.addPixmap(QtGui.QPixmap(":/plugins/mhm_qgis/Resources/run.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.pushButton_addHorizonInputWidgets.setIcon(icon)
         self.pushButton_addHorizonInputWidgets.setObjectName("pushButton_addHorizonInputWidgets")
         self.horizontalLayout_nSoilHorizons.addWidget(self.pushButton_addHorizonInputWidgets)

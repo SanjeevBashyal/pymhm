@@ -175,7 +175,7 @@ class MhmQgis:
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
-        icon_path = ":/plugins/src/mhm_qgis/icon.png"
+        icon_path = ":/plugins/mhm_qgis/Resources/icon.png"
         self.add_action(
             icon_path,
             text=self.tr("mHM QGIS"),
@@ -229,7 +229,7 @@ class MhmQgis:
             )
             return
 
-        from .mhm_qgis_dialog import MhmQgisDialog
+        from .mhm_qgis_main import MhmQgisDialog
 
         # Create the dialog with elements (after translation) and keep reference
         # Only create GUI ONCE in callback, so that it will only load when the plugin is started

@@ -12,7 +12,7 @@ try:
                            QgsVectorLayer)
     from qgis.PyQt import QtCore, QtWidgets
 except ImportError:
-    from .standalone_qgis import install
+    from .standalone import install
 
     install(force=True)
     from qgis.core import (QgsMapLayer, QgsProject, QgsRasterLayer,
@@ -20,9 +20,12 @@ except ImportError:
     from qgis.PyQt import QtCore, QtWidgets
 
 from .project_layout import WORKSPACE_FOLDER_NAME
-from .pyui.ui_lai_netcdf_input_dialog import Ui_SingleLayerInputDialog as Ui_LaiNetcdfInputDialog
-from .pyui.ui_mhm_ready_dialog import Ui_SingleLayerInputDialog as Ui_MhmReadyInputDialog
-from .pyui.ui_single_layer_input_with_lookup_config_dialog import (
+from .qt.bindings.input_selection import (bind_lai_netcdf, bind_lookup_config,
+                                          bind_mhm_ready,
+                                          bind_single_layer_lookup)
+from .ui.pyui.ui_lai_netcdf_input_dialog import Ui_SingleLayerInputDialog as Ui_LaiNetcdfInputDialog
+from .ui.pyui.ui_mhm_ready_dialog import Ui_SingleLayerInputDialog as Ui_MhmReadyInputDialog
+from .ui.pyui.ui_single_layer_input_with_lookup_config_dialog import (
     Ui_SingleLayerInputDialog as Ui_SingleLayerLookupDialog,
 )
 
@@ -478,9 +481,7 @@ class LookupConfigDialog(QtWidgets.QDialog, Ui_SingleLayerLookupDialog):
         for item in scan_project_inputs(project_folder, "lookup"):
             self.lookup_table_combo.addItem(item.label, item.data["path"])
 
-        self.lookup_table_combo.currentIndexChanged.connect(self._refresh_fields)
-        self.mapping_field_combo.currentIndexChanged.connect(self._update_ok)
-        self.class_field_combo.currentIndexChanged.connect(self._update_ok)
+        bind_lookup_config(self)
         initial_path = self._initial_value("lookup_table")
         if initial_path:
             for index in range(self.lookup_table_combo.count()):
@@ -571,22 +572,7 @@ class MhmReadyInputDialog(QtWidgets.QDialog, Ui_MhmReadyInputDialog):
                 "lookup",
                 initial.get("classdefinition_path", "") if isinstance(initial, dict) else "",
             )
-        self.pushButton_browseInputLayer.clicked.connect(
-            lambda: _browse_into_combo(
-                self,
-                self.comboBox_inputLayer,
-                f"Select mHM-ready {title}",
-                "Raster files (*.asc *.nc *.tif *.tiff);;All files (*)",
-            )
-        )
-        self.pushButton_browseClassDefinition.clicked.connect(
-            lambda: _browse_into_combo(
-                self,
-                self.comboBox_classDefinitionInput,
-                "Select class definition",
-                "Class definition (*.txt *.csv);;All files (*)",
-            )
-        )
+        bind_mhm_ready(self, title)
 
     def selected_config(self) -> ReadyInputConfig | None:
         source = _combo_path(self.comboBox_inputLayer)
@@ -635,16 +621,7 @@ class SingleLayerInputDialog(QtWidgets.QDialog, Ui_SingleLayerLookupDialog):
             initial.get("lookup_table", "") if isinstance(initial, dict) else "",
         )
         self._initial = initial
-        self.lookup_table_combo.currentIndexChanged.connect(self._refresh_fields)
-        self.pushButton_browseInputLayer.clicked.connect(
-            lambda: _browse_into_combo(
-                self,
-                self.comboBox_inputLayer,
-                f"Select {title} input",
-                "Input layers (*.asc *.nc *.shp *.tif *.tiff);;All files (*)",
-            )
-        )
-        self.pushButton_browseLookupTable.clicked.connect(self._browse_lookup)
+        bind_single_layer_lookup(self, title)
         self._refresh_fields()
 
     def _browse_lookup(self):
@@ -712,14 +689,7 @@ class LaiNetcdfInputDialog(QtWidgets.QDialog, Ui_LaiNetcdfInputDialog):
         ):
             index = combo.findText(str(initial.get(key, "")))
             combo.setCurrentIndex(index)
-        self.pushButton_browseLAINetCDFInput.clicked.connect(
-            lambda: _browse_into_combo(
-                self,
-                self.comboBox_laiNetCDFInput,
-                "Select LAI NetCDF",
-                "NetCDF (*.nc);;All files (*)",
-            )
-        )
+        bind_lai_netcdf(self)
 
     def selected_config(self) -> LaiNetcdfConfig | None:
         source = _combo_path(self.comboBox_laiNetCDFInput)

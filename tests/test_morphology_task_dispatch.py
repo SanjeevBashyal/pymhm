@@ -4,13 +4,13 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from mhm_qgis import standalone_qgis
+from mhm_qgis import standalone
 
-standalone_qgis.install(force=True)
+standalone.install(force=True)
 
 from qgis.PyQt.QtWidgets import QApplication, QPushButton  # noqa: E402
 
-from mhm_qgis.mhm_qgis_dialog import MhmQgisDialog  # noqa: E402
+from mhm_qgis.mhm_qgis_main import MhmQgisDialog  # noqa: E402
 from mhm_qgis.morphology_task_bridge import _saved_categorical_outputs  # noqa: E402
 from mhm_qgis.nml_settings import update_section  # noqa: E402
 from mhm_qgis.project_layout import ensure_project_structure  # noqa: E402

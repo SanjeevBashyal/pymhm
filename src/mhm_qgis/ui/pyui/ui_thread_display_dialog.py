@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'src/mhm_qgis/ui/thread_display_dialog.ui'
+# Form implementation generated from reading ui file 'forms/thread_display_dialog.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #
@@ -39,7 +39,7 @@ class Ui_ThreadDisplayDialog(object):
 "    }")
         self.pushButton_addNThreads.setText("")
         icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap(":/plugins/src/mhm_qgis/Resources/run.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon.addPixmap(QtGui.QPixmap(":/plugins/mhm_qgis/Resources/run.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.pushButton_addNThreads.setIcon(icon)
         self.pushButton_addNThreads.setObjectName("pushButton_addNThreads")
         self.horizontalLayout_threads.addWidget(self.pushButton_addNThreads)

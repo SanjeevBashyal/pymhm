@@ -1,8 +1,8 @@
 """Tests for the project-local namelist handoff."""
 
-from mhm_qgis import standalone_qgis
+from mhm_qgis import standalone
 
-standalone_qgis.install(force=True)
+standalone.install(force=True)
 
 from mhm_qgis.Morphology.watershed.domain_state import save_state
 from mhm_qgis.nml_settings import load_settings, sync_domain_settings, update_section

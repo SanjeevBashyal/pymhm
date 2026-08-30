@@ -10,9 +10,9 @@ from osgeo import gdal, ogr, osr
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from mhm_qgis import standalone_qgis  # noqa: E402
+from mhm_qgis import standalone  # noqa: E402
 
-standalone_qgis.install(force=True)
+standalone.install(force=True)
 
 from mhm_qgis.Morphology.file_tasks import write_domain_dem_ascii  # noqa: E402
 from mhm_qgis.Morphology.latlon.ascii_pad import read_ascii_header  # noqa: E402

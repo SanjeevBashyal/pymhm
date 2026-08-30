@@ -31,8 +31,10 @@ sys.modules.setdefault("resources_rc", _resources_rc)
 
 from qgis.PyQt import QtWidgets  # noqa: E402
 
-from .pyui.ui_land_use_historical_input import Ui_Dialog as Ui_LandUse  # noqa: E402
-from .pyui.ui_soil_multi_horizon_input import Ui_Dialog as Ui_Soil  # noqa: E402
+from .qt.bindings.advanced_inputs import (bind_historical_land_use,
+                                          bind_multi_horizon_soil)
+from .ui.pyui.ui_land_use_historical_input import Ui_Dialog as Ui_LandUse  # noqa: E402
+from .ui.pyui.ui_soil_multi_horizon_input import Ui_Dialog as Ui_Soil  # noqa: E402
 
 
 @dataclass
@@ -163,14 +165,7 @@ class HistoricalLandUseDialog(_DynamicInputDialogMixin, QtWidgets.QDialog, Ui_La
 
         self._rows.append(self._first_row())
         self._populate_lookup()
-        self.pushButton_addLandUseInputWidgets.clicked.connect(
-            lambda: self.set_layer_count(self.spinBox_nLandUseLayers.value())
-        )
-        self.tableWidget_landUseTimeInputs.cellChanged.connect(self._update_bounds)
-        self.comboBox_lookupTableInput.currentIndexChanged.connect(
-            self._lookup_changed
-        )
-        self.pushButton_browsecLookupTable.clicked.connect(self._browse_lookup)
+        bind_historical_land_use(self)
         self._replace_accept_handler(self.buttonBox)
         self.set_layer_count(1)
         if initial:
@@ -411,9 +406,7 @@ class MultiHorizonSoilDialog(_DynamicInputDialogMixin, QtWidgets.QDialog, Ui_Soi
                     adapter,
                 )
             ]
-        self.pushButton_addHorizonInputWidgets.clicked.connect(
-            lambda: self.set_horizon_count(self.spinBox_nSoilHorizons.value())
-        )
+        bind_multi_horizon_soil(self)
         self._replace_accept_handler(self.buttonBox_cancelAndOK)
         self.set_horizon_count(1)
         if initial:

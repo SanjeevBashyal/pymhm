@@ -10,9 +10,9 @@ import xarray as xr
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from mhm_qgis import standalone_qgis
+from mhm_qgis import standalone
 
-standalone_qgis.install(force=True)
+standalone.install(force=True)
 
 # isort: off
 from qgis.core import (QgsCoordinateReferenceSystem,  # noqa: E402
@@ -21,7 +21,7 @@ from qgis.PyQt.QtWidgets import QApplication  # noqa: E402
 
 from mhm_qgis.input_selection import InputComboAdapter  # noqa: E402
 from mhm_qgis.project_layout import data_folder, workspace_folder  # noqa: E402
-from mhm_qgis.mhm_qgis_dialog import MhmQgisDialog  # noqa: E402
+from mhm_qgis.mhm_qgis_main import MhmQgisDialog  # noqa: E402
 # isort: on
 
 _APPLICATION = None

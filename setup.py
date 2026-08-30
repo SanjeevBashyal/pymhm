@@ -93,7 +93,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "mhm_qgis=mhm_qgis.cli:main",
+            "mhm-qgis=mhm_qgis.standalone.cli:main",
         ],
     },
     keywords="hydrology, modeling, mesoscale, water, environment, qgis, plugin",
