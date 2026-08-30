@@ -558,7 +558,7 @@ def dem_derivative_files(
 
 def _compute_dem_derivatives(prepared, staging, log):
     """Run the mHM-tools derivative pass in this process."""
-    from ..mhm_tools_adapter import create_dem_derivative_files
+    from ..applications.mhm_tools_handler import create_dem_derivative_files
 
     return create_dem_derivative_files(prepared, staging, "tif", log=log)
 

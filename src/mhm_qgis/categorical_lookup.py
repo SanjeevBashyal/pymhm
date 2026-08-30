@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from .mhm_tools_adapter import prepare_categorical_file
+from .applications.mhm_tools_handler import prepare_categorical_file
 from .geology_metadata import write_geology_metadata
 
 

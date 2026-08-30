@@ -54,63 +54,6 @@
        </layout>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="horizontalLayout_cinputTemporalResolution" stretch="1,1">
-        <property name="topMargin">
-         <number>0</number>
-        </property>
-        <item>
-         <widget class="QLabel" name="label_inputTemporalResolution">
-          <property name="enabled">
-           <bool>true</bool>
-          </property>
-          <property name="text">
-           <string>Temporal Resolution:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QComboBox" name="comboBox_inputTemporalResolution">
-          <property name="enabled">
-           <bool>true</bool>
-          </property>
-          <property name="currentIndex">
-           <number>-1</number>
-          </property>
-          <item>
-           <property name="text">
-            <string>Daily</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>Semi-weekly</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>Weekly</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>Biweekly</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>Monthly</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>Annual</string>
-           </property>
-          </item>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
        <layout class="QHBoxLayout" name="horizontalLayout_timestepLAIInput" stretch="1,1">
         <property name="topMargin">
          <number>0</number>

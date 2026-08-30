@@ -356,7 +356,7 @@ def test_geoparameter_orientation_is_version_specific(tmp_path: Path) -> None:
 
 def test_every_profile_form_constructs_and_renders(tmp_path: Path) -> None:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from nml_tools.gui.app import ProfileDialog
+    from nml_tools.gui.app import ProfileTab
     from qtpy.QtWidgets import QApplication
 
     application = QApplication.instance() or QApplication([])
@@ -364,7 +364,7 @@ def test_every_profile_form_constructs_and_renders(tmp_path: Path) -> None:
     for version in ("5.13", "6.0"):
         project, dimensions, document = _document(version, dialog)
         for profile in project.profiles:
-            editor = ProfileDialog(
+            editor = ProfileTab(
                 project,
                 profile,
                 profile_values(document, profile),

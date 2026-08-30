@@ -62,7 +62,7 @@ def test_metadata_ignores_starred_geo_id(tmp_path, monkeypatch):
             "PARAMETER_VALUE [int]": [100],
         }
     )
-    from mhm_qgis import mhm_tools_adapter
+    from mhm_qgis.applications import mhm_tools_handler as mhm_tools_adapter
 
     monkeypatch.setattr(
         mhm_tools_adapter, "read_categorical_lookup_table", lambda _path: table

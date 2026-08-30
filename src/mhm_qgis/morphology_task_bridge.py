@@ -19,7 +19,7 @@ from .Morphology.file_tasks import (dem_derivative_files, fill_dem_file,
                                     hydrology_files, terrain_files)
 from .Morphology.hydrology.outlets import configured_gauged_outlet_ids
 from .Morphology.layers.categorical import _SPECS
-from .Morphology.layers.lai_source import run_lai_resample
+from .applications.mhm_tools_handler import prepare_lai_file
 from .nml_settings import load_settings
 from .state_cache import (
     cached_payload,
@@ -95,7 +95,17 @@ def _run_terrain(task, options):
 
 def _run_lai(task, options, messages):
     """Resample LAI onto the filled DEM grid inside the worker thread."""
-    return run_lai_resample(options, task=task, log=messages.append)
+    return prepare_lai_file(
+        options["source_path"],
+        options["filled_dem"],
+        options["output_path"],
+        output_temporal_resolution=options["target_timestep"],
+        source_variable=options.get("source_variable"),
+        dem_crs=options.get("dem_crs") or None,
+        resampling=options.get("method") or "bilinear",
+        task=task,
+        log=messages.append,
+    )
 
 
 def _run_lookup(task, job):
@@ -492,7 +502,6 @@ class MorphologyTaskBridge(QtCore.QObject):
             (options["source_path"], options["filled_dem"]),
             {
                 "source_variable": options["source_variable"],
-                "input_resolution": options["input_resolution"],
                 "target_timestep": options["target_timestep"],
                 "method": options.get("method") or "bilinear",
                 "output_path": options["output_path"],

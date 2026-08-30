@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from ...mhm_tools_adapter import prepare_categorical_file
+from ...applications.mhm_tools_handler import prepare_categorical_file
 from ..common import (QgsRasterLayer, QgsVectorLayer, QMessageBox,
                       morph_folder, morph_staging_folder,
                       project_geometry_folder)

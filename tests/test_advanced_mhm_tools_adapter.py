@@ -4,8 +4,10 @@ from __future__ import annotations
 import sys
 from types import ModuleType
 
-from mhm_qgis.mhm_tools_adapter import (
+from mhm_qgis.applications.mhm_tools_handler import (
+    lai_time_step,
     prepare_land_cover_periods,
+    prepare_lai_file,
     prepare_soil_horizons,
 )
 
@@ -68,3 +70,32 @@ def test_soil_horizon_adapter_returns_data_and_definition(tmp_path, monkeypatch)
     assert definition.name == "soil_classdefinition.txt"
     assert calls[0]["composition_step"] == 5.0
     assert calls[0]["bulk_density_step"] == 0.1
+
+
+def test_lai_adapter_uses_the_mhm_tools_api(tmp_path, monkeypatch):
+    calls = []
+    format_lai = ModuleType("mhm_tools.pre.format_lai")
+
+    def format_lai_netcdf_file(input_file, dem_file, output_file, **kwargs):
+        calls.append((input_file, dem_file, output_file, kwargs))
+        output_file.write_bytes(b"nc")
+        return output_file
+
+    format_lai.format_lai_netcdf_file = format_lai_netcdf_file
+    format_lai.lai_time_step = lambda resolution: {
+        "long-term-mean-monthly": 1
+    }[resolution]
+    monkeypatch.setitem(sys.modules, "mhm_tools.pre.format_lai", format_lai)
+
+    output = prepare_lai_file(
+        tmp_path / "source.nc",
+        tmp_path / "dem.tif",
+        tmp_path / "lai.nc",
+        output_temporal_resolution="monthly",
+        dem_crs="EPSG:4326",
+    )
+
+    assert output == tmp_path / "lai.nc"
+    assert calls[0][3]["output_temporal_resolution"] == "monthly"
+    assert calls[0][3]["dem_crs"] == "EPSG:4326"
+    assert lai_time_step("long-term-mean-monthly") == 1

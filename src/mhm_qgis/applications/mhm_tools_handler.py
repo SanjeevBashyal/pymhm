@@ -394,6 +394,34 @@ def prepare_soil_horizons(
     return validated[0], validated[1]
 
 
+def xarray_coord_key(data, *, lat: bool = False, lon: bool = False) -> str:
+    """Return the name of a dataset's latitude or longitude coordinate."""
+    from mhm_tools.common.xarray_utils import get_coord_key
+
+    return get_coord_key(data, lat=lat, lon=lon)
+
+
+def xarray_single_data_var(dataset) -> str | None:
+    """Return the one payload variable of a dataset, or None when ambiguous."""
+    from mhm_tools.common.xarray_utils import get_single_data_var
+
+    return get_single_data_var(dataset)
+
+
+def read_xarray_dataset(file_path, **kwargs):
+    """Read a raster or NetCDF into an xarray Dataset."""
+    from mhm_tools.common.file_handler import get_xarray_ds_from_file
+
+    return get_xarray_ds_from_file(file_path, **kwargs)
+
+
+def write_xarray_ascii(dataset, file_path, data_var=None, **kwargs) -> None:
+    """Write one xarray payload as an mHM-readable ASCII grid."""
+    from mhm_tools.common.file_handler import write_xarray_to_ascii
+
+    write_xarray_to_ascii(dataset, file_path, data_var, **kwargs)
+
+
 def _require_outputs(outputs: tuple[Path, ...]) -> tuple[Path, ...]:
     if not outputs:
         raise RuntimeError("mHM-tools did not return any formatted outputs.")
@@ -405,14 +433,87 @@ def _require_outputs(outputs: tuple[Path, ...]) -> tuple[Path, ...]:
     return outputs
 
 
+def prepare_lai_file(
+    input_file: str | Path,
+    dem_file: str | Path,
+    output_file: str | Path,
+    *,
+    output_temporal_resolution: str = "long-term-mean-monthly",
+    source_variable: str | None = None,
+    dem_crs: str | None = None,
+    resampling: str = "bilinear",
+    task=None,
+    log: LogCallback | None = None,
+) -> Path:
+    """Stream gridded LAI onto the DEM through mHM-tools."""
+    from mhm_tools.pre.format_lai import format_lai_netcdf_file
+
+    output = Path(output_file)
+    with capture_messages(log):
+        result = format_lai_netcdf_file(
+            input_file,
+            dem_file,
+            output,
+            output_temporal_resolution=output_temporal_resolution,
+            source_variable=source_variable,
+            dem_crs=dem_crs,
+            resampling=resampling,
+            is_cancelled=task.isCanceled if task is not None else None,
+            progress=task.setProgress if task is not None else None,
+            log=log,
+        )
+    return _require_outputs((Path(result),))[0]
+
+
+def copy_lai_file_to_grid(
+    input_file: str | Path,
+    output_file: str | Path,
+    target_header: dict,
+    crs: str,
+    description: str,
+    *,
+    task=None,
+    log: LogCallback | None = None,
+) -> Path:
+    """Window-copy aligned LAI through mHM-tools."""
+    from mhm_tools.pre.format_lai import copy_lai_netcdf_to_grid
+
+    with capture_messages(log):
+        result = copy_lai_netcdf_to_grid(
+            input_file,
+            output_file,
+            target_header,
+            crs,
+            description,
+            is_cancelled=task.isCanceled if task is not None else None,
+            progress=task.setProgress if task is not None else None,
+            log=log,
+        )
+    return _require_outputs((Path(result),))[0]
+
+
+def lai_time_step(output_temporal_resolution: str) -> int:
+    """Return the mHM LAI time-step flag through mHM-tools."""
+    from mhm_tools.pre.format_lai import lai_time_step as _lai_time_step
+
+    return _lai_time_step(output_temporal_resolution)
+
+
 def create_dem_derivative_files(
     input_file: str | Path,
     output_folder: str | Path,
     output_extension: str = "tif",
     crs: str | None = None,
+    *,
     log: LogCallback | None = None,
 ) -> dict[str, Path]:
-    """Create the DEM derivatives through mHM-tools, keyed by derivative name."""
+    """Create the DEM derivatives through mHM-tools, keyed by derivative name.
+
+    The whole pass is held in memory, so callers that can afford a subprocess
+    should run it through `mhm_qgis.native_worker` -- see
+    `Morphology.file_tasks.dem_derivative_files`, which injects a worker-backed
+    `compute` hook. This function is the one entry point either route uses.
+    """
     from mhm_tools.pre.dem_derivatives import create_dem_derivatives
 
     folder = Path(output_folder)
@@ -471,10 +572,17 @@ def create_latlon_file(
 
 __all__ = [
     "capture_messages",
+    "read_xarray_dataset",
+    "write_xarray_ascii",
+    "xarray_coord_key",
+    "xarray_single_data_var",
+    "copy_lai_file_to_grid",
     "create_dem_derivative_files",
     "create_latlon_file",
+    "lai_time_step",
     "prepare_categorical_file",
     "prepare_land_cover_periods",
+    "prepare_lai_file",
     "prepare_soil_horizons",
     "read_categorical_lookup_table",
     "resolve_vector_mapping_field",

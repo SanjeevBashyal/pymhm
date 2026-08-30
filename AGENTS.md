@@ -63,14 +63,16 @@ Reusable computation should move toward QGIS-free file/path/data APIs.
   `src/mhm_qgis/mhm_tools_adapter.py`; it does not shell out to the `mhm-tools` CLI.
 - `rasterize_map_data` burns vector attributes directly or maps them through a
   lookup table, always using the filled DEM's exact grid.
-- `format_soil_data`, `format_geology_data`, and `format_lc_data` accept
+- `format_soil_data`, `format_geology_data`, `format_lai_data`, and
+  `format_lc_data` accept
   categorical and DEM rasters in ASCII, GeoTIFF, or NetCDF form and align
   categories to the DEM with nearest-neighbour resampling.
 - Shared raster file I/O and alignment live in `mhm_tools.common.file_handler`;
   `mhm_tools.common.rasterize` is intentionally limited to `rasterize_vector`.
 - The corresponding external CLI commands are `data-converter rasterize-map`
-  and `data-converter format-data`; the latter requires
-  `--type soil|geology|lc`, a mapping field, and a class field.
+  and `data-converter format-data`. Categorical inputs require lookup fields;
+  gridded `--type lai` NetCDF input instead infers its source cadence and is
+  warped directly onto the DEM grid.
 - QGIS-specific layer selection, materialization, logging, output placement,
   and geology parameter metadata remain in `mhm_qgis`. See `src/mhm_qgis/AGENTS.md` for
   the detailed contract and current caveats.

@@ -42,7 +42,7 @@ class LatLonProcessingMixin(MaskingMixin):
         output_file = os.path.join(output_folder, "latlon.nc")
 
         try:
-            from ...mhm_tools_adapter import create_latlon_file
+            from ...applications.mhm_tools_handler import create_latlon_file
 
             level0 = headers["L0"]
             level1 = headers["L1"]["cellsize"]

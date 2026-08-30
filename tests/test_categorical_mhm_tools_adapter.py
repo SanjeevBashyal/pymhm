@@ -8,7 +8,7 @@ from types import ModuleType
 import pytest
 import pandas as pd
 
-from mhm_qgis import mhm_tools_adapter as categorical
+from mhm_qgis.applications import mhm_tools_handler as categorical
 
 
 def _touch(path: Path) -> Path:

@@ -2,8 +2,13 @@
 
 import pandas as pd
 
-from mhm_qgis.Morphology.layers.land_cover_class_names import \
-    LandCoverClassNameMixin
+from mhm_qgis import standalone
+
+standalone.install(force=True)
+
+from mhm_qgis.Morphology.layers.land_cover_class_names import (  # noqa: E402
+    LandCoverClassNameMixin,
+)
 
 
 class _Dialog:
@@ -23,7 +28,10 @@ class _Reader(LandCoverClassNameMixin):
 
 
 def test_names_are_keyed_by_formatted_class_field(monkeypatch):
-    from mhm_tools.common import format_data
+    # Patch the handler, which is the boundary the code under test crosses.
+    # Reaching into mhm_tools.common directly coupled this to where mhm-tools
+    # happened to keep read_lookup_table, and it moved.
+    from mhm_qgis.applications import mhm_tools_handler
 
     table = pd.DataFrame(
         {
@@ -32,7 +40,9 @@ def test_names_are_keyed_by_formatted_class_field(monkeypatch):
             "name": ["Forest", "Urban"],
         }
     )
-    monkeypatch.setattr(format_data, "read_lookup_table", lambda _path: table)
+    monkeypatch.setattr(
+        mhm_tools_handler, "read_categorical_lookup_table", lambda _path: table
+    )
 
     assert _Reader()._read_land_cover_class_names() == {
         1: "Forest",

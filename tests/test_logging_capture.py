@@ -8,7 +8,7 @@ from mhm_qgis import standalone
 
 standalone.install(force=True)
 
-from mhm_qgis.mhm_tools_adapter import capture_messages  # noqa: E402
+from mhm_qgis.applications.mhm_tools_handler import capture_messages  # noqa: E402
 from mhm_qgis.utils import DialogUtils  # noqa: E402
 
 

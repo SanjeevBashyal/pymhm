@@ -2,7 +2,6 @@
 """LAI NetCDF preparation."""
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 from ..common import (
@@ -13,23 +12,15 @@ from ..common import (
 from ..watershed.dem_fill import DemFillMixin
 from ..core.predecessors import PredecessorMixin
 from ..core.layer_preparation import LayerPreparationMixin
-from ...grid_resolution import header_bounds, write_header_file
+from ...grid_resolution import write_header_file
+from ...applications.mhm_tools_handler import (
+    copy_lai_file_to_grid,
+    lai_time_step,
+    prepare_lai_file,
+)
 from ...project_layout import (
-    geometry_folder,
     lai_dem_staging_path,
     lai_folder,
-)
-from ...lai_temporal import lai_time_step, prepare_lai_temporal
-from .lai_source import (
-    LAI_ASSUMED_COMPRESSION,
-    LAI_MAX_BYTES_ENV,
-    assert_lai_output_fits,
-    lai_grid_byte_size,
-    resample_lai_file_to_grid,
-    run_lai_resample,
-    target_grid_from_header,
-    target_grid_from_raster,
-    window_copy_lai_file,
 )
 
 
@@ -105,7 +96,6 @@ class LaiProcessingMixin(
             self._write_resampled_lai_netcdf(
                 source_path,
                 source_variable,
-                filled_dem_layer,
                 output_path,
             )
         except ImportError as e:
@@ -169,7 +159,7 @@ class LaiProcessingMixin(
             f"LAI L0 grid: {int(l0_header['ncols'])} x {int(l0_header['nrows'])} cells")
 
         try:
-            window_copy_lai_file(
+            copy_lai_file_to_grid(
                 staged_path,
                 crop_path,
                 l0_header,
@@ -229,7 +219,7 @@ class LaiProcessingMixin(
 
         self.log_message("\n--- Writing LAI NetCDF on the L0 grid (unmasked) ---")
         try:
-            window_copy_lai_file(
+            copy_lai_file_to_grid(
                 crop_path,
                 final_path,
                 l0_header,
@@ -365,8 +355,7 @@ class LaiProcessingMixin(
             "source_variable": source_variable,
             "output_path": str(output_path),
             "filled_dem": str(self.filled_dem_path),
-            "crs_string": self._qgis_crs_to_pyproj(self.dialog.get_crs()) or "",
-            "input_resolution": config.get("input_resolution") or "Monthly",
+            "dem_crs": self._qgis_crs_to_pyproj(self.dialog.get_crs()) or "",
             "target_timestep": (
                 config.get("target_timestep")
                 or "Long Term Mean Monthly Gridded Data"
@@ -377,28 +366,22 @@ class LaiProcessingMixin(
             self,
             source_path: str,
             source_variable: str | None,
-            filled_dem_layer,
             output_path: str) -> None:
-        """Resample LAI onto the filled DEM grid through the QGIS-free pipeline."""
-        options = self.lai_task_options(output_path)
-        if options is None:
-            raise ValueError("LAI NetCDF input is not selected.")
-        run_lai_resample(options, log=self.log_message)
-
-    def _find_lai_month_dimension(self, data_array, lat_dim: str, lon_dim: str) -> str | None:
-        """Find the 12-value monthly dimension in the LAI variable."""
-        non_spatial_dims = [
-            dim for dim in data_array.dims if dim not in (lat_dim, lon_dim)
-        ]
-        preferred_dims = [
-            dim for dim in non_spatial_dims
-            if dim.lower() in ("time", "month", "months", "mon", "t")
-        ]
-
-        for dim in preferred_dims + non_spatial_dims:
-            if data_array.sizes.get(dim) == 12:
-                return dim
-        return None
+        """Resample LAI onto the filled DEM grid through mHM-tools."""
+        getter = getattr(self.dialog, "lai_netcdf_config", None)
+        config = getter() if callable(getter) else {}
+        prepare_lai_file(
+            source_path,
+            self.filled_dem_path,
+            output_path,
+            source_variable=source_variable,
+            output_temporal_resolution=(
+                config.get("target_timestep")
+                or "Long Term Mean Monthly Gridded Data"
+            ),
+            dem_crs=self._qgis_crs_to_pyproj(self.dialog.get_crs()),
+            log=self.log_message,
+        )
 
     def _qgis_crs_to_pyproj(self, crs) -> str | None:
         """Return a pyproj-readable CRS string from a QGIS CRS."""
@@ -411,12 +394,6 @@ class LaiProcessingMixin(
         if hasattr(crs, "toWkt"):
             return crs.toWkt()
         return None
-
-    def _lai_time_attrs(time_step: int) -> dict:
-        """Return the time-axis attributes for a prepared LAI time step."""
-        if time_step == 1:
-            return {"long_name": "month", "units": "month"}
-        return {"standard_name": "time", "axis": "T"}
 
     def _record_lai_nml(self, output_path, source_path, source_variable):
         from ...nml_settings import relative_workspace_path, update_section
@@ -431,7 +408,6 @@ class LaiProcessingMixin(
                 "mode": "netcdf",
                 "source_path": str(Path(source_path).resolve()),
                 "source_variable": str(source_variable or ""),
-                "input_resolution": config.get("input_resolution") or "Monthly",
                 "target_timestep": target,
                 "time_step": lai_time_step(target),
                 "output_path": relative_workspace_path(
@@ -440,89 +416,6 @@ class LaiProcessingMixin(
                 "variable": "lai",
             },
         )
-
-    def _lai_watershed_mask_array(
-            self,
-            l0_header: dict,
-            input_crs,
-            merged_watershed_path: str):
-        """Rasterize the merged watershed to a boolean array on the L0 grid."""
-        import numpy as np
-        from osgeo import gdal, osr
-
-        ncols = int(l0_header["ncols"])
-        nrows = int(l0_header["nrows"])
-        cellsize = float(l0_header["cellsize"])
-        xmin, xmax, ymin, ymax = header_bounds(l0_header)
-        mask_path = os.path.join(
-            geometry_folder(self.dialog.project_folder),
-            "lai_watershed_mask.tif",
-        )
-        os.makedirs(os.path.dirname(mask_path), exist_ok=True)
-        if os.path.exists(mask_path):
-            os.remove(mask_path)
-
-        driver = gdal.GetDriverByName("GTiff")
-        dataset = driver.Create(
-            mask_path,
-            ncols,
-            nrows,
-            1,
-            gdal.GDT_Byte,
-            options=["COMPRESS=LZW"],
-        )
-        if dataset is None:
-            raise RuntimeError(f"Could not create LAI watershed mask: {mask_path}")
-
-        dataset.SetGeoTransform((xmin, cellsize, 0.0, ymax, 0.0, -cellsize))
-        spatial_ref = osr.SpatialReference()
-        if input_crs is not None and input_crs.isValid():
-            if input_crs.postgisSrid():
-                spatial_ref.ImportFromEPSG(int(input_crs.postgisSrid()))
-            elif input_crs.authid().upper().startswith("EPSG:"):
-                spatial_ref.ImportFromEPSG(int(input_crs.authid().split(":")[1]))
-            elif hasattr(input_crs, "toWkt"):
-                spatial_ref.ImportFromWkt(input_crs.toWkt())
-            dataset.SetProjection(spatial_ref.ExportToWkt())
-
-        band = dataset.GetRasterBand(1)
-        band.SetNoDataValue(0)
-        band.Fill(0)
-
-        vector_dataset = gdal.OpenEx(merged_watershed_path, gdal.OF_VECTOR)
-        if vector_dataset is None:
-            dataset = None
-            raise RuntimeError(
-                f"Could not open merged watershed for LAI masking: {merged_watershed_path}")
-        vector_layer = vector_dataset.GetLayer(0)
-        if vector_layer is None:
-            dataset = None
-            vector_dataset = None
-            raise RuntimeError("Merged watershed has no readable vector layer.")
-
-        error_code = gdal.RasterizeLayer(
-            dataset,
-            [1],
-            vector_layer,
-            burn_values=[1],
-        )
-        if error_code != 0:
-            dataset = None
-            vector_dataset = None
-            raise RuntimeError("GDAL failed to rasterize merged watershed for LAI masking.")
-
-        band.FlushCache()
-        mask = band.ReadAsArray()
-        band = None
-        dataset = None
-        vector_dataset = None
-
-        if mask is None:
-            raise RuntimeError("Could not read LAI watershed mask array.")
-        if mask.shape != (nrows, ncols):
-            raise ValueError(
-                f"LAI mask shape {mask.shape} does not match L0 shape {(nrows, ncols)}.")
-        return np.asarray(mask) > 0
 
     def _write_lai_l0_header(self, l0_header: dict) -> None:
         """Write the LAI L0 header required by mHM."""
@@ -533,4 +426,3 @@ class LaiProcessingMixin(
         header["nodata_value"] = -9999.0
         write_header_file(header_path, header)
         self.mark_output_prepared(header_path, name="header.txt", loaded=False)
-

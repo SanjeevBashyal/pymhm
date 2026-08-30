@@ -166,17 +166,18 @@ def align_dataset_to_header(
         integer: bool = False):
     """Return a dataset sampled on the exact grid described by ``header``."""
     import xarray as xr
-    from mhm_tools.common.xarray_utils import get_coord_key, get_single_data_var
+    from ...applications.mhm_tools_handler import (xarray_coord_key,
+                                                   xarray_single_data_var)
 
     header = _normalise_header(header)
     var_name = data_var
     if var_name is None:
-        var_name = get_single_data_var(dataset)
+        var_name = xarray_single_data_var(dataset)
     if var_name is None or var_name not in dataset:
         raise ValueError("Cannot determine a single raster data variable for ASCII export.")
 
-    x_key = get_coord_key(dataset, lon=True)
-    y_key = get_coord_key(dataset, lat=True)
+    x_key = xarray_coord_key(dataset, lon=True)
+    y_key = xarray_coord_key(dataset, lat=True)
     source = dataset.sortby(x_key).sortby(y_key)
     _assert_source_covers_header(source, header, x_key, y_key)
 
@@ -234,17 +235,18 @@ def pad_dataset_to_header(
     or ``nodata_value`` when no pad value is given. Non-spatial dimensions such
     as time or soil horizon are preserved.
     """
-    from mhm_tools.common.xarray_utils import get_coord_key, get_single_data_var
+    from ...applications.mhm_tools_handler import (xarray_coord_key,
+                                                   xarray_single_data_var)
 
     header = _standardize_header(header)
     var_name = data_var
     if var_name is None:
-        var_name = get_single_data_var(dataset)
+        var_name = xarray_single_data_var(dataset)
     if var_name is None or var_name not in dataset:
         raise ValueError("Cannot determine a single raster data variable for L0 padding.")
 
-    x_key = get_coord_key(dataset, lon=True)
-    y_key = get_coord_key(dataset, lat=True)
+    x_key = xarray_coord_key(dataset, lon=True)
+    y_key = xarray_coord_key(dataset, lat=True)
     source = dataset.sortby(x_key).sortby(y_key)
     _assert_cells_align(source, x_key, y_key, header)
 
@@ -311,10 +313,10 @@ def pad_l0_file_to_header(
 def _grid_matches_header(dataset, header: Mapping[str, Any]) -> bool:
     """Return True when a dataset already sits exactly on the header grid."""
     import numpy as np
-    from mhm_tools.common.xarray_utils import get_coord_key
+    from ...applications.mhm_tools_handler import xarray_coord_key
 
-    x_key = get_coord_key(dataset, lon=True)
-    y_key = get_coord_key(dataset, lat=True)
+    x_key = xarray_coord_key(dataset, lon=True)
+    y_key = xarray_coord_key(dataset, lat=True)
     target_x, target_y = _target_coordinates(header)
     if (
             dataset.sizes.get(x_key) != len(target_x)
@@ -341,9 +343,9 @@ def _assert_cells_align(dataset, x_key, y_key, header) -> None:
 
 
 def _read_raster(path: Path, data_var: str | None):
-    from mhm_tools.common.file_handler import get_xarray_ds_from_file
+    from ...applications.mhm_tools_handler import read_xarray_dataset
 
-    return get_xarray_ds_from_file(
+    return read_xarray_dataset(
         path,
         var_name=data_var,
         force_decending_y=True,
@@ -352,12 +354,12 @@ def _read_raster(path: Path, data_var: str | None):
 
 def _write_ascii(dataset, output_path: Path, header: Mapping[str, Any],
                  nodata_value: float | int) -> None:
-    from mhm_tools.common.file_handler import write_xarray_to_ascii
-    from mhm_tools.common.xarray_utils import get_single_data_var
+    from ...applications.mhm_tools_handler import (write_xarray_ascii,
+                                                   xarray_single_data_var)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    data_var = get_single_data_var(dataset)
-    write_xarray_to_ascii(
+    data_var = xarray_single_data_var(dataset)
+    write_xarray_ascii(
         dataset,
         output_path,
         data_var=data_var,

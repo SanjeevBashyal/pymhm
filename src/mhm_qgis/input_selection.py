@@ -83,10 +83,9 @@ class SingleLayerLookupConfig:
 
 @dataclass(frozen=True)
 class LaiNetcdfConfig:
-    """LAI NetCDF source and temporal conversion choices."""
+    """LAI NetCDF source and output temporal resolution."""
 
     input_path: str
-    input_resolution: str
     target_timestep: str
 
 
@@ -416,7 +415,7 @@ class InputComboAdapter(QtCore.QObject):
 
 def read_lookup_fields(lookup_table) -> list[str]:
     """Return fields using the same table reader as mHM-tools formatting."""
-    from .mhm_tools_adapter import read_categorical_lookup_table
+    from .applications.mhm_tools_handler import read_categorical_lookup_table
 
     table = read_categorical_lookup_table(lookup_table)
     return [
@@ -683,27 +682,28 @@ class LaiNetcdfInputDialog(QtWidgets.QDialog, Ui_LaiNetcdfInputDialog):
             "lai",
             initial.get("input_path", "") if isinstance(initial, dict) else "",
         )
-        for combo, key in (
-            (self.comboBox_inputTemporalResolution, "input_resolution"),
-            (self.comboBox_timestepLAIInput, "target_timestep"),
-        ):
-            index = combo.findText(str(initial.get(key, "")))
-            combo.setCurrentIndex(index)
+        index = self.comboBox_timestepLAIInput.findText(
+            str(initial.get("target_timestep", ""))
+        )
+        self.comboBox_timestepLAIInput.setCurrentIndex(index)
         bind_lai_netcdf(self)
 
     def selected_config(self) -> LaiNetcdfConfig | None:
         source = _combo_path(self.comboBox_laiNetCDFInput)
-        input_resolution = self.comboBox_inputTemporalResolution.currentText().strip()
         target = self.comboBox_timestepLAIInput.currentText().strip()
         if not source or Path(source).suffix.lower() != ".nc" or not Path(source).is_file():
             return None
-        if not input_resolution or not target:
+        if not target:
             return None
-        return LaiNetcdfConfig(source, input_resolution, target)
+        return LaiNetcdfConfig(source, target)
 
     def accept(self):
         if self.selected_config() is None:
-            QtWidgets.QMessageBox.warning(self, "Missing Input", "Select a NetCDF file and both temporal resolutions.")
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Missing Input",
+                "Select a NetCDF file and output temporal resolution.",
+            )
             return
         super().accept()
 

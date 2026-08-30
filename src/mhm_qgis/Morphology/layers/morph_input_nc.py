@@ -195,12 +195,10 @@ def _write_lonlat(handle, x_values, y_values, crs_string, chunks) -> None:
 
 def _to_wgs84(block_x, block_y, crs_string):
     """Return WGS84 lon/lat for one block, identity for a geographic CRS."""
-    from ...grid_resolution import is_geographic_unit  # noqa: F401
-    from .lai_source import is_geographic_crs_string
+    from pyproj import CRS, Transformer
 
-    if not crs_string or is_geographic_crs_string(crs_string):
+    if not crs_string or CRS.from_user_input(crs_string).is_geographic:
         return block_x, block_y
-    from pyproj import Transformer
 
     transform = Transformer.from_crs(crs_string, "EPSG:4326", always_xy=True)
     return transform.transform(block_x, block_y)

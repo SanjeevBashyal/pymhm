@@ -53,14 +53,15 @@ class ConfigurationProcessor:
             ensure_project_structure(project_folder, version)
             configure_qtpy_api()
 
-            from nml_tools.gui import launch_gui
+            from .applications.nml_tools_handler import launch_profile_editor
 
             self.log_message(f"Opening namelist editor for mHM {version}...")
-            launch_gui(
+            launch_profile_editor(
                 schemas_dir=schemas_dir,
                 output_dir=workspace,
                 initial_values=build_initial_values(version, self.dialog),
                 initial_dimensions=build_dimensions(version, self.dialog),
+                log=self.log_message,
             )
             return True
         except Exception as exc:

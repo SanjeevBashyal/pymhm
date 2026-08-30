@@ -16,7 +16,7 @@ class LandCoverClassNameMixin:
         if not config:
             return {}
 
-        from ...mhm_tools_adapter import read_categorical_lookup_table
+        from ...applications.mhm_tools_handler import read_categorical_lookup_table
 
         try:
             table = read_categorical_lookup_table(config["lookup_table"])

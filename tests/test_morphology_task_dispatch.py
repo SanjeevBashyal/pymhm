@@ -135,8 +135,7 @@ def test_lai_stage_submits_a_background_task_when_selected(tmp_path):
         "source_variable": None,
         "output_path": str(tmp_path / "staged" / "lai_dem.nc"),
         "filled_dem": "/tmp/dem.tif",
-        "crs_string": "EPSG:4326",
-        "input_resolution": "Biweekly",
+        "dem_crs": "EPSG:4326",
         "target_timestep": "Monthly Gridded Data",
     }
 
@@ -174,8 +173,7 @@ def test_unchanged_lai_inputs_reuse_the_staged_file(tmp_path):
         "source_variable": None,
         "output_path": str(staged),
         "filled_dem": str(dem),
-        "crs_string": "EPSG:4326",
-        "input_resolution": "Biweekly",
+        "dem_crs": "EPSG:4326",
         "target_timestep": "Monthly Gridded Data",
     }
     processor = dialog.morphology_processor
@@ -187,7 +185,6 @@ def test_unchanged_lai_inputs_reuse_the_staged_file(tmp_path):
         (options["source_path"], options["filled_dem"]),
         {
             "source_variable": None,
-            "input_resolution": "Biweekly",
             "target_timestep": "Monthly Gridded Data",
             "method": "bilinear",
             "output_path": str(staged),
@@ -227,7 +224,7 @@ def test_a_missing_staged_file_forces_the_lai_resample(tmp_path):
     options = {
         "source_path": str(source), "source_variable": None,
         "output_path": str(staged), "filled_dem": str(dem),
-        "crs_string": "EPSG:4326", "input_resolution": "Monthly",
+        "dem_crs": "EPSG:4326",
         "target_timestep": "Long Term Mean Monthly Gridded Data",
     }
     processor = dialog.morphology_processor
@@ -237,7 +234,6 @@ def test_a_missing_staged_file_forces_the_lai_resample(tmp_path):
         (options["source_path"], options["filled_dem"]),
         {
             "source_variable": None,
-            "input_resolution": "Monthly",
             "target_timestep": "Long Term Mean Monthly Gridded Data",
             "method": "bilinear",
             "output_path": str(staged),

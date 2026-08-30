@@ -243,10 +243,8 @@ def test_lai_netcdf_dialog_returns_temporal_choices(tmp_path):
         tmp_path,
         initial={
             "input_path": str(source),
-            "input_resolution": "Daily",
             "target_timestep": "Monthly Gridded Data",
         },
     )
 
-    assert dialog.selected_config().input_resolution == "Daily"
     assert dialog.selected_config().target_timestep == "Monthly Gridded Data"

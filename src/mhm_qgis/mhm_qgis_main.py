@@ -2079,11 +2079,10 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         if "netcdf" in normalized:
             self._lai_input_config = {
                 "input_path": config.input_path,
-                "input_resolution": config.input_resolution,
                 "target_timestep": config.target_timestep,
             }
             self._categorical_lookup_configs.pop("lai", None)
-            from .lai_temporal import lai_time_step
+            from .applications.mhm_tools_handler import lai_time_step
             from .nml_settings import update_section
 
             update_section(
@@ -2093,7 +2092,6 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
                     "mode": "netcdf",
                     "source_path": config.input_path,
                     "source_variable": "",
-                    "input_resolution": config.input_resolution,
                     "target_timestep": config.target_timestep,
                     "time_step": lai_time_step(config.target_timestep),
                     "output_path": "data/master/lai/lai.nc",
