@@ -18,7 +18,8 @@ from ...Meteorology.display import (
     step_count,
     step_for_date,
 )
-from .canvas import show_raster
+from ...core.handlers.netcdf import grid_variables, read_slice
+from .canvas import show_dataarray
 
 _DATE_FORMAT = "yyyy-MM-dd"
 
@@ -130,13 +131,18 @@ def display_selected_layer(dialog, checked=False) -> None:
             f"{variable} has no data for {when.isoformat()}.",
         )
         return
-    show_raster(
-        dialog,
-        output.path,
-        output.name,
-        variable=output.variable,
-        band=output.band,
+    # Same render path as the model-output display: one georeferenced slice.
+    # Prepared forcing carries its own CRS, so none has to be supplied.
+    grid = next(
+        (v for v in grid_variables(output.path) if v.name == output.variable), None
     )
+    if grid is None:
+        QMessageBox.warning(
+            dialog, "Display Meteorology", f"{variable} is not a gridded variable."
+        )
+        return
+    data = read_slice(output.path, grid, output.band - 1)
+    show_dataarray(dialog, data, output.name)
 
 
 __all__ = ["date_changed", "display_selected_layer", "refresh", "slider_moved"]

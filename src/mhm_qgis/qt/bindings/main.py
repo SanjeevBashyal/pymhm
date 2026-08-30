@@ -18,6 +18,7 @@ except ImportError:
 
 from ...qgis_bridge.display import meteo as meteo_display
 from ...qgis_bridge.display import morphology as morphology_display
+from ...qgis_bridge.display import output as output_display
 
 
 def _bind_input_sources(dialog):
@@ -77,7 +78,7 @@ def bind(dialog):
 
     # Project management
     dialog.pushButton_BrowseProjectFolder.clicked.connect(dialog.select_project_folder)
-    dialog.tabWidget.currentChanged.connect(dialog.on_tab_changed)
+    dialog.tabWidget_steps.currentChanged.connect(dialog.on_tab_changed)
     _bind_input_sources(dialog)
     dialog.pushButton_threads.clicked.connect(dialog.open_thread_display)
 
@@ -200,6 +201,17 @@ def bind(dialog):
     )
     dialog.dateTimeEdit_meteoVarDisplay.dateChanged.connect(
         lambda value=None: meteo_display.date_changed(dialog, value)
+    )
+
+    # Model output display: same three controls over an irregular step list.
+    dialog.pushButton_outputVarDisplay.clicked.connect(
+        lambda checked=False: output_display.display_selected_layer(dialog)
+    )
+    dialog.horizontalSlider_ouputTimeSelector.valueChanged.connect(
+        lambda value: output_display.slider_moved(dialog, value)
+    )
+    dialog.dateTimeEdit_outputVarDisplay.dateTimeChanged.connect(
+        lambda value=None: output_display.date_changed(dialog, value)
     )
 
     # Reset geometry

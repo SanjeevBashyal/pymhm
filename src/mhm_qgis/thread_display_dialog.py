@@ -10,7 +10,7 @@ except ImportError:
     from qgis.PyQt import QtWidgets
 
 from .qt.bindings.thread_display import bind as bind_thread_display
-from .ui.pyui.ui_thread_display_dialog import Ui_ThreadDisplayDialog
+from .qt.ui.pyui.ui_thread_display_dialog import Ui_ThreadDisplayDialog
 
 
 class ThreadDisplayDialog(QtWidgets.QDialog, Ui_ThreadDisplayDialog):

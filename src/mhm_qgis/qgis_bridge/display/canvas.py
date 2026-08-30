@@ -2,6 +2,8 @@
 """Put a prepared raster into the QGIS map canvas."""
 from __future__ import annotations
 
+import hashlib
+import tempfile
 from pathlib import Path
 
 
@@ -60,4 +62,50 @@ def show_raster(dialog, path, name, *, variable=None, band=None, is_raster=True)
     return layer
 
 
-__all__ = ["existing_layer", "raster_source", "select_band", "show_raster"]
+def _materialised_path(name: str) -> Path:
+    """Return a stable scratch path for one layer name.
+
+    Reusing the same file per layer keeps the scratch directory bounded while a
+    slider is scrubbed, instead of leaving one raster behind per step.
+    """
+    digest = hashlib.sha1(name.encode("utf-8")).hexdigest()[:12]
+    folder = Path(tempfile.gettempdir()) / "mhm_qgis_display"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / f"{digest}.tif"
+
+
+def show_dataarray(dialog, data, name: str):
+    """Show a georeferenced DataArray, reusing the loaded layer by name.
+
+    mHM output carries no CRS, so it cannot be addressed through a
+    ``NETCDF:"path":var`` URI the way prepared forcing can -- GDAL would place it
+    at the origin with unit pixels. The caller attaches a CRS and the array is
+    written to a scratch raster instead.
+    """
+    log = getattr(dialog, "log_message", None)
+    if data.rio.crs is None and log is not None:
+        log(f"WARNING: {name} has no CRS; the raster cannot be placed correctly.")
+    target = _materialised_path(name)
+    try:
+        data.rio.to_raster(target)
+    except Exception as error:
+        if log is not None:
+            log(f"ERROR: Could not prepare {name} for display: {error}")
+        return None
+
+    layer = existing_layer(name)
+    if layer is None:
+        return dialog.load_layer(str(target), name, True)
+    # The file behind the layer was just rewritten in place.
+    layer.dataProvider().reloadData()
+    layer.triggerRepaint()
+    return layer
+
+
+__all__ = [
+    "existing_layer",
+    "raster_source",
+    "select_band",
+    "show_dataarray",
+    "show_raster",
+]

@@ -18,10 +18,10 @@ from qgis.PyQt.QtWidgets import (
 )
 from qgis.core import QgsMapLayer, QgsProject, QgsVectorLayer
 
-from ...ui.pyui.ui_discharge_table_assignment_dialog import (
+from ...qt.ui.pyui.ui_discharge_table_assignment_dialog import (
     Ui_DischargeTableAssignmentDialog,
 )
-from ...ui.pyui.ui_domain_and_discharge_table_assignment_dialog import (
+from ...qt.ui.pyui.ui_domain_and_discharge_table_assignment_dialog import (
     Ui_DischargeTableAssignmentDialog as Ui_DomainAndDischargeTableAssignmentDialog,
 )
 

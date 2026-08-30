@@ -47,7 +47,7 @@ from .Morphology.file_tasks import (
 from .project_layout import geometry_folder
 from .project_layout import domain_data_folder, domain_dem_path
 from .qt.bindings.domain_delineator import bind as bind_domain_delineator
-from .ui.pyui.ui_domain_delineator_dialog import Ui_DomainDelineatorDialog
+from .qt.ui.pyui.ui_domain_delineator_dialog import Ui_DomainDelineatorDialog
 from .viewport_raster_range import ViewportRasterRangeController
 
 

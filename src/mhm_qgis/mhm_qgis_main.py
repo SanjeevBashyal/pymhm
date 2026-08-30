@@ -71,7 +71,7 @@ from .terminal_dialog import ProjectTerminalDialog
 from .task_coordinator import TaskCoordinator
 from .thread_display_dialog import ThreadDisplayDialog
 from .morphology_task_bridge import MorphologyTaskBridge
-from .ui.pyui.ui_mhm_qgis_main import Ui_MhmQgisDialog
+from .qt.ui.pyui.ui_mhm_qgis_main import Ui_MhmQgisDialog
 # Import utility mixin and processors
 from .utils import DialogUtils
 
@@ -195,6 +195,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         bind_main_form(self)
         self.refresh_input_sources()
         self.refresh_meteo_display()
+        self.refresh_output_display()
         self.refresh_meteo_folder_sources()
         self.refresh_grid_resolution_controls()
 
@@ -229,6 +230,12 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         from .qgis_bridge.display import meteo as meteo_display
 
         meteo_display.refresh(self)
+
+    def refresh_output_display(self):
+        """Re-read the mHM output and re-range the display controls."""
+        from .qgis_bridge.display import output as output_display
+
+        output_display.refresh(self)
 
     def configure_morphology_display(self):
         """Attach stable keys to the morphology display choices."""
@@ -1806,7 +1813,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
     def set_meteo_setup_controls_enabled(self, enabled):
         """Freeze all run-affecting dialog controls during the combined run."""
         self.pushButton_BrowseProjectFolder.setEnabled(enabled)
-        self.tabWidget.setEnabled(enabled)
+        self.tabWidget_steps.setEnabled(enabled)
         self.stackedWidget.setEnabled(enabled)
 
     def closeEvent(self, event):
@@ -3079,6 +3086,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             self.refresh_input_sources()
             self.refresh_meteo_folder_sources()
             self.refresh_meteo_display()
+            self.refresh_output_display()
             self.load_input_state()
             self.morphology_processor.update_gauged_outlet_count()
 
@@ -3095,28 +3103,25 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             self.stackedWidget.setCurrentWidget(page)
         else:
             self.stackedWidget.setCurrentIndex(index)
-        self.log_message(f"Switched to '{self.tabWidget.tabText(index)}' tab.")
+        self.log_message(f"Switched to '{self.tabWidget_steps.tabText(index)}' tab.")
+        # mHM reports nothing when it finishes, so the Outputs tab re-reads the
+        # output folder each time it is shown.
+        if self.tabWidget_steps.widget(index) is self.tab_outputs:
+            self.refresh_output_display()
 
     def page_for_tab_index(self, index):
-        """Return the stacked page associated with a tab widget index."""
-        tab = self.tabWidget.widget(index)
+        """Return the stacked page associated with a tab widget index.
+
+        The tabs and the stacked pages are not a one-to-one set: `tab_outputs`
+        has no page of its own, so it falls through and the caller keeps the
+        index-based mapping.
+        """
+        tab = self.tabWidget_steps.widget(index)
         page_pairs = (
             (self.tab_geometry, self.page_geometry),
             (self.tab_meteo, self.page_meteo),
             (self.tab_hydro, self.page_hydro),
-            (
-                self.tab_configuration,
-                self.page_configuration,
-            ),
-            (
-                self.tab_execution,
-                self.page_execution,
-            ),
-            (
-                self.tab_calibration,
-                self.page_calibration,
-            ),
-            (self.tab_outputs, self.page_outputs),
+            (self.tab_execution, self.page_execution),
         )
         for tab_widget, page_widget in page_pairs:
             if tab_widget is tab:

@@ -20,7 +20,7 @@ recursive-include src/mhm_qgis *.yml
 recursive-include src/mhm_qgis i18n/*
 graft src/mhm_qgis/nml-schemas
 graft project-template
-graft src/mhm_qgis/ui/forms/Resources
+graft src/mhm_qgis/qt/ui/forms/Resources
 
 # Include documentation
 recursive-include docs *.rst

@@ -33,8 +33,8 @@ from qgis.PyQt import QtWidgets  # noqa: E402
 
 from .qt.bindings.advanced_inputs import (bind_historical_land_use,
                                           bind_multi_horizon_soil)
-from .ui.pyui.ui_land_use_historical_input import Ui_Dialog as Ui_LandUse  # noqa: E402
-from .ui.pyui.ui_soil_multi_horizon_input import Ui_Dialog as Ui_Soil  # noqa: E402
+from .qt.ui.pyui.ui_land_use_historical_input import Ui_Dialog as Ui_LandUse  # noqa: E402
+from .qt.ui.pyui.ui_soil_multi_horizon_input import Ui_Dialog as Ui_Soil  # noqa: E402
 
 
 @dataclass

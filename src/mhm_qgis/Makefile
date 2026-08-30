@@ -46,7 +46,7 @@ PY_FILES = \
 	__init__.py \
 	mhm_qgis.py mhm_qgis_main.py
 
-UI_FILES = ui/forms/mhm_qgis_main.ui
+UI_FILES = qt/ui/forms/mhm_qgis_main.ui
 
 EXTRAS = metadata.txt
 
@@ -75,7 +75,7 @@ HELP = help/build/html
 
 PLUGIN_UPLOAD = $(c)/plugin_upload.py
 
-RESOURCE_SRC=$(shell grep '^ *<file' ui/forms/resources.qrc | sed 's@</file>@@g;s/.*>//g' | tr '\n' ' ')
+RESOURCE_SRC=$(shell grep '^ *<file' qt/ui/forms/resources.qrc | sed 's@</file>@@g;s/.*>//g' | tr '\n' ' ')
 
 .PHONY: default
 default:

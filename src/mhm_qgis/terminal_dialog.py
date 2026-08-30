@@ -8,7 +8,7 @@ import shlex
 from qgis.PyQt import QtCore, QtGui, QtWidgets
 
 from .qt.bindings.terminal import bind as bind_terminal
-from .ui.pyui.ui_project_terminal_dialog import Ui_ProjectTerminalDialog
+from .qt.ui.pyui.ui_project_terminal_dialog import Ui_ProjectTerminalDialog
 
 
 class ProjectTerminalDialog(QtWidgets.QDialog, Ui_ProjectTerminalDialog):

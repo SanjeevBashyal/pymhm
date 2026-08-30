@@ -23,9 +23,9 @@ from .project_layout import WORKSPACE_FOLDER_NAME
 from .qt.bindings.input_selection import (bind_lai_netcdf, bind_lookup_config,
                                           bind_mhm_ready,
                                           bind_single_layer_lookup)
-from .ui.pyui.ui_lai_netcdf_input_dialog import Ui_SingleLayerInputDialog as Ui_LaiNetcdfInputDialog
-from .ui.pyui.ui_mhm_ready_dialog import Ui_SingleLayerInputDialog as Ui_MhmReadyInputDialog
-from .ui.pyui.ui_single_layer_input_with_lookup_config_dialog import (
+from .qt.ui.pyui.ui_lai_netcdf_input_dialog import Ui_SingleLayerInputDialog as Ui_LaiNetcdfInputDialog
+from .qt.ui.pyui.ui_mhm_ready_dialog import Ui_SingleLayerInputDialog as Ui_MhmReadyInputDialog
+from .qt.ui.pyui.ui_single_layer_input_with_lookup_config_dialog import (
     Ui_SingleLayerInputDialog as Ui_SingleLayerLookupDialog,
 )
 
