@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from ..common import QMessageBox
-from ...project_layout import data_folder
+from ...core.handlers.store.paths import data_folder
 from ..layers.masking import MaskingMixin
 
 

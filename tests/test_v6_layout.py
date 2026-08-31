@@ -18,14 +18,10 @@ from mhm_qgis.Meteorology.paths import (  # noqa: E402
     expected_meteo_outputs,
     meteo_mask_path,
 )
-from mhm_qgis.project_layout import (  # noqa: E402
-    domain_dem_path,
-    lai_folder,
-    morph_folder,
-    project_version,
-    streamflow_observation_folder,
-    workspace_folder,
-)
+from mhm_qgis.core.handlers.store.paths import workspace_folder
+from mhm_qgis.core.handlers.store.layout import (  # noqa: E402
+    domain_dem_path, lai_folder, morph_folder, project_version,
+    streamflow_observation_folder)
 
 xr = pytest.importorskip("xarray")
 

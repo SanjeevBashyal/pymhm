@@ -18,10 +18,8 @@ from ...applications.mhm_tools_handler import (
     lai_time_step,
     prepare_lai_file,
 )
-from ...project_layout import (
-    lai_dem_staging_path,
-    lai_folder,
-)
+from ...core.handlers.store.paths import lai_dem_staging_path
+from ...core.handlers.store.layout import lai_folder
 
 
 class LaiProcessingMixin(

@@ -19,7 +19,7 @@ from ..handlers.file.netcdf import (
     read_slice,
     time_axis,
 )
-from ...project_layout import output_folder
+from ...core.handlers.store.paths import output_folder
 
 
 @dataclass(frozen=True)

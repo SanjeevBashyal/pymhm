@@ -6,12 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from .dependency_bootstrap import configure_qtpy_api
-from .project_layout import (
-    ensure_project_structure,
-    plugin_root,
-    version_key,
-    workspace_folder,
-)
+from .core.handlers.store.paths import plugin_root, version_key, workspace_folder
+from .core.handlers.store.layout import ensure_project_structure
 
 
 class ConfigurationProcessor:

@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Union
 
 from ..file import json as jsonio
-from ....project_layout import workspace_folder
+from ..store.registry import key_for, register
+from ....core.handlers.store.paths import workspace_folder
 from ....time_utils import utc_timestamp
 
 
@@ -54,32 +55,17 @@ class MeteorologyOutputState:
                 f"WARNING: Could not save processing state: {error}")
 
     def output_key(self, path: Path) -> str:
-        try:
-            return os.path.relpath(
-                str(path),
-                workspace_folder(self.dialog.project_folder),
-            ).replace("\\", "/")
-        except ValueError:
-            return str(path.resolve()).replace("\\", "/")
+        """Return the registry key recorded for one output."""
+        return key_for(self.dialog.project_folder, path)
+
 
     def mark_prepared(self, path: PathInput, name: str | None = None) -> None:
-        path = Path(path)
-        if not path.exists():
-            return
+        """Record one prepared forcing file.
 
-        state = self.load()
-        key = self.output_key(path)
-        entry = state.setdefault("outputs", {}).get(key, {})
-        entry.update({
-            "path": key,
-            "absolute_path": str(path.resolve()),
-            "exists": True,
-            "loaded": False,
-            "category": "meteorology",
-            "updated_at": utc_timestamp(),
-        })
-        if name:
-            entry["name"] = name
-
-        state["outputs"][key] = entry
-        self.save(state)
+        Goes through the store registry so the `outputs` section has a single
+        owner; this class keeps only the meteorology-specific label.
+        """
+        register(
+            self.dialog.project_folder, path,
+            name=name, category="meteorology",
+        )

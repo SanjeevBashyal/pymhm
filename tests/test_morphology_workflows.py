@@ -8,10 +8,8 @@ standalone.install(force=True)
 
 # isort: off
 from mhm_qgis.Morphology.orchestration.execute_all import ExecuteAllMixin  # noqa: E402
-from mhm_qgis.project_layout import (  # noqa: E402
-    geometry_folder,
-    morph_staging_folder,
-)
+from mhm_qgis.core.handlers.store.paths import morph_staging_folder
+from mhm_qgis.core.handlers.store.layout import geometry_folder  # noqa: E402
 # isort: on
 
 

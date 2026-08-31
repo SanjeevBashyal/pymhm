@@ -13,7 +13,7 @@ from qgis.PyQt.QtWidgets import QApplication, QPushButton  # noqa: E402
 from mhm_qgis.qt.dialogs.mhm_qgis_main import MhmQgisDialog  # noqa: E402
 from mhm_qgis.morphology_task_bridge import _saved_categorical_outputs  # noqa: E402
 from mhm_qgis.core.handlers.state.nml_settings import update_section  # noqa: E402
-from mhm_qgis.project_layout import ensure_project_structure  # noqa: E402
+from mhm_qgis.core.handlers.store.layout import ensure_project_structure  # noqa: E402
 
 
 _APPLICATION = None

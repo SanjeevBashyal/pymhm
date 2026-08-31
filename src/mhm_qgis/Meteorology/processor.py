@@ -17,7 +17,7 @@ from .reuse import required_meteo_variables, stale_meteo_variables
 from ..core.handlers.state.meteo_outputs import MeteorologyOutputState
 from .mask import write_meteo_mask
 from ..grid_resolution import save_meteo_grid_metadata
-from ..project_layout import is_v6
+from ..core.handlers.store.layout import is_v6
 
 
 @dataclass(frozen=True)

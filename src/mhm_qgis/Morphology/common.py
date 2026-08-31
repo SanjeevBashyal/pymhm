@@ -40,12 +40,8 @@ except ImportError:
 import processing
 
 from ..utils import DialogUtils
-from ..project_layout import (
-    geometry_folder,
-    geometry_folder as project_geometry_folder,
-    morph_folder,
-    morph_staging_folder,
-)
+from ..core.handlers.store.paths import geometry_folder, geometry_folder as project_geometry_folder, morph_staging_folder
+from ..core.handlers.store.layout import morph_folder
 
 
 def _qmeta_type(type_name):

@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .core.handlers.state.nml_settings import load_settings
-from .project_layout import geometry_folder, morph_folder, workspace_folder
+from .core.handlers.store.paths import geometry_folder, workspace_folder
+from .core.handlers.store.layout import morph_folder
 
 
 DISPLAY_KEYS = (

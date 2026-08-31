@@ -15,8 +15,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-
-from ....project_layout import workspace_folder
+from ....core.handlers.store.paths import workspace_folder
 from ....time_utils import utc_timestamp
 
 

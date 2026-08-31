@@ -20,7 +20,7 @@ from mhm_qgis.core.handlers.state.domain_state import (  # noqa: E402
     load_state,
     save_state,
 )
-from mhm_qgis.project_layout import geometry_folder  # noqa: E402
+from mhm_qgis.core.handlers.store.layout import geometry_folder  # noqa: E402
 from mhm_qgis.vSpecific.common import domain_count  # noqa: E402
 # isort: on
 

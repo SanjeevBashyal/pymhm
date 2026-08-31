@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Union
-
-from ..project_layout import is_v6, meteo_folder
+from ..core.handlers.store.paths import meteo_folder
+from ..core.handlers.store.layout import is_v6
 
 
 METEO_VARIABLES = ("pre", "tavg", "tmin", "tmax", "pet")

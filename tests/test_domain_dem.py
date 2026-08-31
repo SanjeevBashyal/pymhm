@@ -229,7 +229,7 @@ def test_the_state_records_the_domain_plan(tmp_path):
 
 
 def _master_inputs(project, names):
-    from mhm_qgis.project_layout import morph_folder
+    from mhm_qgis.core.handlers.store.layout import morph_folder
 
     master = Path(morph_folder(project))
     master.mkdir(parents=True, exist_ok=True)
@@ -352,7 +352,7 @@ def test_a_published_advanced_soil_raster_reaches_the_domain(tmp_path):
     """
     from mhm_qgis.Morphology.layers.advanced_l0 import publish_model_inputs
     from mhm_qgis.Morphology.layers.domain_dem import copy_master_inputs
-    from mhm_qgis.project_layout import morph_staging_folder
+    from mhm_qgis.core.handlers.store.paths import morph_staging_folder
 
     staging = Path(morph_staging_folder(tmp_path))
     staging.mkdir(parents=True, exist_ok=True)

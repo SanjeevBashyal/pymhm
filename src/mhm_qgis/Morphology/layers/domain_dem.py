@@ -20,12 +20,8 @@ from ...core.handlers.state.domain_state import (
     load_state as load_domain_state,
     resolve_output_path,
 )
-from ...project_layout import (
-    domain_data_folder,
-    domain_dem_path,
-    is_v6,
-    morph_folder,
-)
+from ...core.handlers.store.paths import domain_data_folder
+from ...core.handlers.store.layout import domain_dem_path, is_v6, morph_folder
 
 
 # mHM reads its morphology per domain from `dir_Morpho`, so each domain needs
@@ -146,7 +142,7 @@ def domain_dem_plan(project_folder) -> list[dict[str, Any]]:
 def _domain_polygon(project_folder, record) -> str:
     """Return the delineated polygon path for one domain."""
     if record.get("is_dem_domain"):
-        from ...project_layout import geometry_folder
+        from ...core.handlers.store.paths import geometry_folder
 
         return os.path.join(
             geometry_folder(project_folder),

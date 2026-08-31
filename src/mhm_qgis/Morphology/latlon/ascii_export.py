@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """ASCII export of masked morphology rasters."""
 from __future__ import annotations
-
-from ...project_layout import is_v6
+from ...core.handlers.store.layout import is_v6
 from ..common import (
     os,
     QMessageBox,

@@ -18,8 +18,7 @@ except ImportError:
     from qgis.core import (QgsMapLayer, QgsProject, QgsRasterLayer,
                            QgsVectorLayer)
     from qgis.PyQt import QtCore, QtWidgets
-
-from ...project_layout import WORKSPACE_FOLDER_NAME
+from ...core.handlers.store.paths import WORKSPACE_FOLDER_NAME
 from ...qt.controllers import single_layer_input as single_layer_controller
 from ...qt.controllers import single_layer_lookup as lookup_controller
 from ...qt.bindings.lai_netcdf_input import bind_lai_netcdf

@@ -31,7 +31,7 @@ from ...Meteorology.forcing import MeteoFolderSpec, resolution_in_crs
 from ...Meteorology.inspection_cache import inspect_meteo_folder_cached
 from ...morphology_display import DISPLAY_KEYS
 from ...Morphology.hydrology.outlets import StationIdError, outlet_ids_from_layer
-from ...project_layout import data_folder
+from ...core.handlers.store.paths import data_folder
 
 def configure_input_adapters(dialog):
     """Wrap each plain input combo in the layer-combo interface the code uses."""

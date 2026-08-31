@@ -44,8 +44,9 @@ from ...Morphology.file_tasks import (
     delineate_domains_file,
     delineate_outlet_file,
 )
-from ...project_layout import geometry_folder
-from ...project_layout import domain_data_folder, domain_dem_path
+from ...core.handlers.store.paths import geometry_folder
+from ...core.handlers.store.paths import domain_data_folder
+from ...core.handlers.store.layout import domain_dem_path
 from ...qt.controllers import domain_delineator as domain_delineator_controller
 from ...qt.bindings.domain_delineator import bind as bind_domain_delineator
 from ...qt.ui.pyui.ui_domain_delineator_dialog import Ui_DomainDelineatorDialog

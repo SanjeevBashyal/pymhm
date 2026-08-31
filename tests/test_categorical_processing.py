@@ -14,11 +14,8 @@ from qgis.core import (  # noqa: E402
 )
 
 from mhm_qgis.Morphology.layers import categorical  # noqa: E402
-from mhm_qgis.project_layout import (
-    geometry_folder,
-    morph_folder,
-    morph_staging_folder,
-)  # noqa: E402
+from mhm_qgis.core.handlers.store.paths import geometry_folder, morph_staging_folder
+from mhm_qgis.core.handlers.store.layout import morph_folder  # noqa: E402
 # isort: on
 
 

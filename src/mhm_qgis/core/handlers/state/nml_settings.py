@@ -7,8 +7,7 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Any
-
-from ....project_layout import workspace_folder
+from ....core.handlers.store.paths import workspace_folder
 
 
 def settings_path(project_folder: str | Path) -> Path:

@@ -28,11 +28,8 @@ from mhm_qgis.grid_resolution import (  # noqa: E402
     LAI_PAD_VALUE,
 )
 from mhm_qgis.core.handlers.state.nml_settings import update_section  # noqa: E402
-from mhm_qgis.project_layout import (  # noqa: E402
-    morph_folder,
-    morph_staging_folder,
-    workspace_folder,
-)
+from mhm_qgis.core.handlers.store.paths import morph_staging_folder, workspace_folder
+from mhm_qgis.core.handlers.store.layout import morph_folder  # noqa: E402
 
 xr = pytest.importorskip("xarray")
 

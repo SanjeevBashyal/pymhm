@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-
-from ...project_layout import streamflow_observation_folder as project_streamflow_observation_folder
+from ...core.handlers.store.layout import streamflow_observation_folder as project_streamflow_observation_folder
 
 
 def streamflow_observation_folder(project_folder) -> Path:

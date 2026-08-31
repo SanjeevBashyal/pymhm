@@ -20,7 +20,8 @@ from qgis.core import (QgsCoordinateReferenceSystem,  # noqa: E402
 from qgis.PyQt.QtWidgets import QApplication  # noqa: E402
 
 from mhm_qgis.qt.dialogs.input_selection import InputComboAdapter  # noqa: E402
-from mhm_qgis.project_layout import data_folder, workspace_folder  # noqa: E402
+from mhm_qgis.core.handlers.store.paths import data_folder
+from mhm_qgis.core.handlers.store.layout import workspace_folder  # noqa: E402
 from mhm_qgis.qt.dialogs.mhm_qgis_main import MhmQgisDialog  # noqa: E402
 # isort: on
 

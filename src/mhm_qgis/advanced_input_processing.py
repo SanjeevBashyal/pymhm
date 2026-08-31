@@ -15,7 +15,7 @@ from .advanced_input_manifests import (
 )
 from .applications.mhm_tools_handler import prepare_land_cover_periods, prepare_soil_horizons
 from .core.handlers.state.nml_settings import relative_workspace_path, update_section
-from .project_layout import geometry_folder, morph_staging_folder
+from .core.handlers.store.paths import geometry_folder, morph_staging_folder
 
 
 def process_land_cover_input(

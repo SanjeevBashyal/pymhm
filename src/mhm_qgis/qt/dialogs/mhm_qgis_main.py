@@ -52,10 +52,8 @@ from ...Morphology.hydrology.outlets import (
     StationIdError,
     outlet_ids_from_layer,
 )
-from ...project_layout import (data_folder, data_raw_folder,
-                             ensure_project_structure, geometry_folder,
-                             output_folder, restart_folder,
-                             workspace_folder, z_temp_folder)
+from ...core.handlers.store.paths import data_folder, data_raw_folder, geometry_folder, output_folder, restart_folder, workspace_folder, z_temp_folder
+from ...core.handlers.store.layout import ensure_project_structure
 from ...morphology_display import DISPLAY_KEYS
 from ...standalone import is_active as standalone_is_active
 from ...qt.bindings.main import bind as bind_main_form

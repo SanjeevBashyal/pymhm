@@ -10,7 +10,7 @@ from mhm_qgis.advanced_input_manifests import (
     SoilInput,
 )
 from mhm_qgis.core.handlers.state.nml_settings import load_settings
-from mhm_qgis.project_layout import ensure_project_structure
+from mhm_qgis.core.handlers.store.layout import ensure_project_structure
 from mhm_qgis.vSpecific import build_initial_values
 
 

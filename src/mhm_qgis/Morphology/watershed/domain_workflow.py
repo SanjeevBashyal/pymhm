@@ -17,12 +17,8 @@ from qgis.core import (
     QgsRasterLayer,
     QgsVectorLayer,
 )
-
-from ...project_layout import (
-    domain_data_folder,
-    domain_dem_path,
-    geometry_folder,
-)
+from ...core.handlers.store.paths import domain_data_folder, geometry_folder
+from ...core.handlers.store.layout import domain_dem_path
 from ...qt.dialogs.discharge_assignment import OutletAssignment
 from ..hydrology.discharge_writer import (
     local_source_path,

@@ -17,7 +17,7 @@ from nml_tools.gui.model import (
     render_profile,
 )
 
-from mhm_qgis.project_layout import geometry_folder
+from mhm_qgis.core.handlers.store.paths import geometry_folder
 from mhm_qgis.vSpecific import build_dimensions, build_initial_values
 
 

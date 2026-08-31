@@ -10,7 +10,7 @@ standalone.install(force=True)
 # isort: off
 from mhm_qgis.core.handlers.state.meteo_outputs import MeteorologyOutputState  # noqa: E402
 from mhm_qgis.Morphology.core.processing_state import ProcessingStateMixin  # noqa: E402
-from mhm_qgis.project_layout import workspace_folder  # noqa: E402
+from mhm_qgis.core.handlers.store.layout import workspace_folder  # noqa: E402
 # isort: on
 
 

@@ -14,7 +14,7 @@ from mhm_qgis.dependency_bootstrap import (
     configure_qtpy_api,
     dependency_from_requirement_line,
 )
-from mhm_qgis.project_layout import workspace_folder
+from mhm_qgis.core.handlers.store.paths import workspace_folder
 
 
 class ComboBox:

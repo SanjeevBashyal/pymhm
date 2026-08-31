@@ -5,7 +5,8 @@ from ..common import (
     json,
     processing,
 )
-from ...project_layout import workspace_folder
+from ...core.handlers.store.paths import workspace_folder
+from ...core.handlers.store.registry import available, key_for, register
 from ...time_utils import utc_timestamp
 
 
@@ -81,64 +82,23 @@ class ProcessingStateMixin:
 
     def output_state_key(self, path):
         """Return a stable registry key for an output path."""
-        if not path:
-            return ""
-        try:
-            if self.dialog.project_folder:
-                return os.path.relpath(
-                    path,
-                    workspace_folder(self.dialog.project_folder),
-                ).replace("\\", "/")
-        except ValueError:
-            pass
-        return os.path.abspath(path).replace("\\", "/")
+        return key_for(self.dialog.project_folder, path)
+
 
     def mark_output_prepared(self, path, name=None, loaded=False, algorithm=None):
         """Record that an output file has been prepared."""
-        if not path:
-            return
+        entry = register(
+            self.dialog.project_folder, path,
+            name=name, loaded=loaded, algorithm=algorithm,
+        )
+        if entry is not None:
+            self.processing_state.setdefault("outputs", {})[entry["path"]] = entry
 
-        if not os.path.exists(path):
-            return
-
-        key = self.output_state_key(path)
-        if not key:
-            return
-
-        outputs = self.processing_state.setdefault("outputs", {})
-        entry = outputs.get(key, {})
-        entry.update({
-            "path": key,
-            "absolute_path": os.path.abspath(path),
-            "exists": True,
-            "loaded": bool(loaded),
-            "updated_at": utc_timestamp(),
-        })
-        if name:
-            entry["name"] = name
-        if algorithm:
-            entry["algorithm"] = algorithm
-
-        outputs[key] = entry
-        self.save_processing_state()
 
     def is_output_prepared(self, path):
         """Return True when an output is recorded and present on disk."""
-        if not path:
-            return False
+        return available(self.dialog.project_folder, path)
 
-        if os.path.exists(path):
-            key = self.output_state_key(path)
-            if key not in self.processing_state.get("outputs", {}):
-                self.mark_output_prepared(path, name=os.path.basename(path))
-            return True
-
-        key = self.output_state_key(path)
-        entry = self.processing_state.get("outputs", {}).get(key)
-        if entry:
-            entry["exists"] = False
-            self.save_processing_state()
-        return False
 
     def record_processing_outputs(self, algorithm, params, result):
         """Record file outputs declared by a processing call."""

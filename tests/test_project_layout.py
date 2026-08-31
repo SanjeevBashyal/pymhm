@@ -3,26 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mhm_qgis.project_layout import (
-    data_folder,
-    data_raw_folder,
-    domain_data_folder,
-    domain_dem_path,
-    ensure_project_structure,
-    geometry_folder,
-    lai_folder,
-    master_data_folder,
-    meteo_folder,
-    morph_folder,
-    output_folder,
-    raw_meteo_folder,
-    relative_project_path,
-    restart_folder,
-    static_folder,
-    streamflow_observation_folder,
-    workspace_folder,
-    z_temp_folder,
-)
+from mhm_qgis.core.handlers.store.paths import data_folder, data_raw_folder, domain_data_folder, geometry_folder, master_data_folder, meteo_folder, output_folder, raw_meteo_folder, relative_project_path, restart_folder, static_folder, workspace_folder, z_temp_folder
+from mhm_qgis.core.handlers.store.layout import domain_dem_path, ensure_project_structure, lai_folder, morph_folder, streamflow_observation_folder
 
 
 def test_all_generated_paths_are_inside_plugin_workspace(tmp_path: Path) -> None:
@@ -63,7 +45,7 @@ def test_ensure_project_structure_does_not_create_outputs_at_outer_root(
 ) -> None:
     project = tmp_path / "project"
 
-    ensure_project_structure(project, "6.0")
+    ensure_project_structure(project, "5.13")
 
     workspace = project / "mhm-plugin"
     assert (workspace / "Z Temp" / "Geometry").is_dir()
@@ -74,6 +56,26 @@ def test_ensure_project_structure_does_not_create_outputs_at_outer_root(
     assert (workspace / "restart").is_dir()
     for name in ("Z Temp", "data", "data_raw", "output", "restart"):
         assert not (project / name).exists()
+
+
+def test_ensure_project_structure_honours_the_requested_version(
+    tmp_path: Path,
+) -> None:
+    """The caller's version decides the tree, not the saved state.
+
+    A new project has no input state yet, so reading the version back always
+    answered v5.13 -- and asking for 6.0 still built the v5.13 folders.
+    """
+    project = tmp_path / "project"
+
+    ensure_project_structure(project, "6.0")
+
+    master = project / "mhm-plugin" / "data" / "master"
+    assert (master / "morph").is_dir()
+    assert (master / "gauge" / "streamflow").is_dir()
+    # v6 keeps morphology in one input.nc, so these v5.13 folders are not made.
+    assert not (master / "static" / "morph").exists()
+    assert not (master / "observation").exists()
 
 
 def test_generated_path_is_relative_to_outer_project(tmp_path: Path) -> None:

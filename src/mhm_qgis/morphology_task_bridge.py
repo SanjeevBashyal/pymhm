@@ -28,12 +28,7 @@ from .core.handlers.state.cache import (
     outputs_present,
     store_payload,
 )
-from .project_layout import (
-    geometry_folder,
-    lai_dem_staging_path,
-    morph_staging_folder,
-    workspace_folder,
-)
+from .core.handlers.store.paths import geometry_folder, lai_dem_staging_path, morph_staging_folder, workspace_folder
 
 
 def _saved_categorical_outputs(project_folder, kind):

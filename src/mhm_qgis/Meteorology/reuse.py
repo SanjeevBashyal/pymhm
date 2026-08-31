@@ -13,7 +13,7 @@ from typing import Any, Iterable, Mapping
 
 from .l2_grid import assert_header_file_matches, assert_netcdf_matches_header
 from .paths import expected_meteo_outputs
-from ..project_layout import workspace_folder
+from ..core.handlers.store.registry import key_for
 
 
 BASE_VARIABLES = ("pre", "tavg", "tmin", "tmax")
@@ -28,12 +28,7 @@ def required_meteo_variables(include_pet: bool) -> tuple[str, ...]:
 
 def output_state_key(project_folder, path) -> str:
     """Return the processing-state key recorded for a meteorology output."""
-    try:
-        return os.path.relpath(
-            str(path), workspace_folder(project_folder)
-        ).replace("\\", "/")
-    except ValueError:
-        return str(Path(path).resolve()).replace("\\", "/")
+    return key_for(project_folder, path)
 
 
 def stale_meteo_variables(

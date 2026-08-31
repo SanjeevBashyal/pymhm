@@ -7,8 +7,7 @@ import math
 import os
 from decimal import Decimal, ROUND_FLOOR
 from pathlib import Path
-
-from .project_layout import geometry_folder, meteo_folder
+from .core.handlers.store.paths import geometry_folder, meteo_folder
 
 
 METEO_GRID_METADATA = "meteo_grid_metadata.json"
