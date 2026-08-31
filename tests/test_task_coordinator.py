@@ -11,7 +11,7 @@ standalone.install(force=True)
 from qgis.PyQt import QtCore, QtWidgets  # noqa: E402
 
 from mhm_qgis.task_coordinator import TaskCoordinator  # noqa: E402
-from mhm_qgis.thread_display_dialog import ThreadDisplayDialog  # noqa: E402
+from mhm_qgis.qt.dialogs.thread_display import ThreadDisplayDialog  # noqa: E402
 
 
 _APPLICATION = None

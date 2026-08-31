@@ -11,7 +11,7 @@ from mhm_qgis import standalone  # noqa: E402
 
 standalone.install(force=True)
 
-from mhm_qgis.state_cache import (  # noqa: E402
+from mhm_qgis.core.handlers.state.cache import (  # noqa: E402
     cached_payload,
     fingerprint,
     load_state,
@@ -87,7 +87,7 @@ def test_an_existing_state_file_is_preserved(tmp_path):
     store_payload(tmp_path, "stages", "geology", "d1", {"outputs": ["g"]})
     state = load_state(tmp_path)
     state["outputs"] = {"keep/me": {"exists": True}}
-    from mhm_qgis.state_cache import save_state
+    from mhm_qgis.core.handlers.state.cache import save_state
 
     save_state(tmp_path, state)
     store_payload(tmp_path, "stages", "lai", "d2", {"outputs": ["l"]})
@@ -118,7 +118,7 @@ def test_a_corrupt_state_file_is_treated_as_empty(tmp_path):
 
 
 def test_outputs_are_adoptable_only_when_they_postdate_their_inputs(tmp_path):
-    from mhm_qgis.state_cache import outputs_newer_than_inputs
+    from mhm_qgis.core.handlers.state.cache import outputs_newer_than_inputs
 
     source = _input(tmp_path, "in.tif")
     output = _input(tmp_path, "out.asc")
@@ -139,7 +139,7 @@ def test_outputs_are_adoptable_only_when_they_postdate_their_inputs(tmp_path):
 
 
 def test_the_oldest_output_decides_adoptability(tmp_path):
-    from mhm_qgis.state_cache import outputs_newer_than_inputs
+    from mhm_qgis.core.handlers.state.cache import outputs_newer_than_inputs
 
     source = _input(tmp_path, "in.tif")
     fresh = _input(tmp_path, "fresh.asc")

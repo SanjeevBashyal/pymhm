@@ -149,7 +149,7 @@ def test_source_nodata_becomes_the_ascii_nodata(tmp_path):
 
 
 def _domain_state(project, outlets, dem_domain=False):
-    from mhm_qgis.Morphology.watershed.domain_state import save_state
+    from mhm_qgis.core.handlers.state.domain_state import save_state
 
     save_state(project, {
         "definition_mode": "snapped_pour_points",
@@ -207,7 +207,7 @@ def test_no_active_domains_is_a_no_op(tmp_path):
 
 def test_the_state_records_the_domain_plan(tmp_path):
     from mhm_qgis.Morphology.core.processing_state import ProcessingStateMixin
-    from mhm_qgis.state_cache import load_state
+    from mhm_qgis.core.handlers.state.cache import load_state
 
     class _State(ProcessingStateMixin):
         def __init__(self, project):

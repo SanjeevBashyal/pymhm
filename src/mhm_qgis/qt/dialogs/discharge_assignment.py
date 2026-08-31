@@ -18,6 +18,7 @@ from qgis.PyQt.QtWidgets import (
 )
 from qgis.core import QgsMapLayer, QgsProject, QgsVectorLayer
 
+from ...qt.controllers import discharge_assignment as discharge_controller
 from ...qt.ui.pyui.ui_discharge_table_assignment_dialog import (
     Ui_DischargeTableAssignmentDialog,
 )
@@ -143,63 +144,14 @@ class _OutletAssignmentRows:
             browse=browse,
         )
 
-    def _configure_row(self, row: _AssignmentRow) -> None:
-        record = self._initial_records.get(row.outlet_id, {})
-        row.id_value.setText(row.outlet_id)
-        self._populate_discharge_layers(row.discharge)
+    def _configure_row(self, *args, **kwargs):
+        return discharge_controller._configure_row(self, *args, **kwargs)
 
-        is_gauge = bool(
-            record.get(
-                "is_gauged",
-                record.get("gauged", self.default_is_gauge),
-            )
-        )
-        row.gauge.setChecked(is_gauge)
-        if row.domain is not None:
-            row.domain.setChecked(
-                bool(record.get("is_domain", record.get("domain", False)))
-            )
+    def _populate_discharge_layers(self, *args, **kwargs):
+        return discharge_controller._populate_discharge_layers(self, *args, **kwargs)
 
-        source = str(record.get("discharge_file", "") or "")
-        if source:
-            self._select_discharge_source(row.discharge, source)
-        row.gauge.toggled.connect(
-            lambda enabled, current=row: self._set_discharge_enabled(
-                current, enabled
-            )
-        )
-        row.browse.clicked.connect(
-            lambda checked=False, current=row: self._browse_discharge(current)
-        )
-        self._set_discharge_enabled(row, is_gauge)
-
-    def _populate_discharge_layers(self, combo: QComboBox) -> None:
-        combo.clear()
-        combo.addItem("", None)
-        try:
-            layers = QgsProject.instance().mapLayers().values()
-        except Exception:
-            layers = ()
-        for layer in layers:
-            try:
-                if layer.isValid() and layer.type() == QgsMapLayer.VectorLayer:
-                    combo.addItem(layer.name(), layer)
-            except Exception:
-                continue
-
-    def _select_discharge_source(self, combo: QComboBox, source: str) -> None:
-        resolved = self._resolve_input_source(source)
-        target = self._normal_source(resolved)
-        for index in range(combo.count()):
-            layer = combo.itemData(index)
-            if layer is not None and self._normal_source(layer.source()) == target:
-                combo.setCurrentIndex(index)
-                return
-        if os.path.isfile(resolved):
-            layer = QgsVectorLayer(resolved, Path(resolved).name, "ogr")
-            if layer.isValid():
-                combo.addItem(layer.name(), layer)
-                combo.setCurrentIndex(combo.count() - 1)
+    def _select_discharge_source(self, *args, **kwargs):
+        return discharge_controller._select_discharge_source(self, *args, **kwargs)
 
     def _resolve_input_source(self, source: str) -> str:
         path = str(source).split("|", 1)[0]
@@ -214,39 +166,11 @@ class _OutletAssignmentRows:
         return os.path.normcase(os.path.abspath(path)) if path else ""
 
     @staticmethod
-    def _set_discharge_enabled(row: _AssignmentRow, enabled: bool) -> None:
-        row.discharge.setEnabled(bool(enabled))
-        row.browse.setEnabled(bool(enabled))
+    def _set_discharge_enabled(*args, **kwargs):
+        return discharge_controller._set_discharge_enabled(*args, **kwargs)
 
-    def _browse_discharge(self, row: _AssignmentRow) -> None:
-        project_folder = getattr(self.parent(), "project_folder", "") or ""
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select discharge data",
-            str(project_folder),
-            "Discharge data (*.csv *.txt);;All files (*)",
-        )
-        if not path:
-            return
-        layer = QgsVectorLayer(path, Path(path).name, "ogr")
-        if not layer.isValid():
-            QMessageBox.warning(
-                self,
-                "Invalid discharge table",
-                f"Could not read the selected table:\n{path}",
-            )
-            return
-        target = self._normal_source(path)
-        for index in range(row.discharge.count()):
-            candidate = row.discharge.itemData(index)
-            if (
-                candidate is not None
-                and self._normal_source(candidate.source()) == target
-            ):
-                row.discharge.setCurrentIndex(index)
-                return
-        row.discharge.addItem(layer.name(), layer)
-        row.discharge.setCurrentIndex(row.discharge.count() - 1)
+    def _browse_discharge(self, *args, **kwargs):
+        return discharge_controller._browse_discharge(self, *args, **kwargs)
 
     def selected_assignments(self) -> list[OutletAssignment]:
         """Return one typed assignment for every displayed outlet."""

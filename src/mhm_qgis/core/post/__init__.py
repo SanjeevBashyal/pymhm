@@ -2,7 +2,7 @@
 """Post-processing: turn a finished mHM run into something displayable.
 
 Owns the question "what did this run produce, and what does one timestep of it
-look like". Reads through :mod:`mhm_qgis.core.handlers.netcdf`; the answer is
+look like". Reads through :mod:`mhm_qgis.core.handlers.file.netcdf`; the answer is
 handed to :mod:`mhm_qgis.qgis_bridge.display` to put on the canvas.
 """
 from __future__ import annotations
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from ..handlers.netcdf import (
+from ..handlers.file.netcdf import (
     GridVariable,
     grid_variables,
     output_files,

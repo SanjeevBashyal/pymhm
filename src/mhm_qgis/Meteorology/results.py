@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, TYPE_CHECKING
 
-from .state import MeteorologyOutputState
+from ..core.handlers.state.meteo_outputs import MeteorologyOutputState
 
 if TYPE_CHECKING:
     from .ERA5Land.mhm.types import MeteoForcingResult

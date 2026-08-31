@@ -18,7 +18,7 @@ from ...Meteorology.display import (
     step_count,
     step_for_date,
 )
-from ...core.handlers.netcdf import grid_variables, read_slice
+from ...core.handlers.file.netcdf import grid_variables, read_slice
 from .canvas import show_dataarray
 
 _DATE_FORMAT = "yyyy-MM-dd"

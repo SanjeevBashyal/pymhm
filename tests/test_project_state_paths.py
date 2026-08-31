@@ -8,7 +8,7 @@ from mhm_qgis import standalone
 standalone.install(force=True)
 
 # isort: off
-from mhm_qgis.Meteorology.state import MeteorologyOutputState  # noqa: E402
+from mhm_qgis.core.handlers.state.meteo_outputs import MeteorologyOutputState  # noqa: E402
 from mhm_qgis.Morphology.core.processing_state import ProcessingStateMixin  # noqa: E402
 from mhm_qgis.project_layout import workspace_folder  # noqa: E402
 # isort: on
@@ -99,7 +99,7 @@ def test_an_inconsistent_saved_grid_contract_is_discarded(tmp_path: Path) -> Non
 
 def test_saving_the_registry_preserves_sections_other_writers_own(tmp_path: Path) -> None:
     """Wholesale writes used to erase the reuse fingerprints, disabling reuse."""
-    from mhm_qgis.state_cache import cached_payload, load_state, store_payload
+    from mhm_qgis.core.handlers.state.cache import cached_payload, load_state, store_payload
 
     state = _MorphologyState(_Dialog(tmp_path))
     state.load_processing_state()
@@ -121,7 +121,7 @@ def test_saving_the_registry_preserves_sections_other_writers_own(tmp_path: Path
 
 
 def test_a_corrupt_registry_file_does_not_lose_the_new_write(tmp_path: Path) -> None:
-    from mhm_qgis.state_cache import load_state
+    from mhm_qgis.core.handlers.state.cache import load_state
 
     state = _MorphologyState(_Dialog(tmp_path))
     state.load_processing_state()

@@ -10,9 +10,9 @@ standalone.install(force=True)
 
 from qgis.PyQt.QtWidgets import QApplication, QPushButton  # noqa: E402
 
-from mhm_qgis.mhm_qgis_main import MhmQgisDialog  # noqa: E402
+from mhm_qgis.qt.dialogs.mhm_qgis_main import MhmQgisDialog  # noqa: E402
 from mhm_qgis.morphology_task_bridge import _saved_categorical_outputs  # noqa: E402
-from mhm_qgis.nml_settings import update_section  # noqa: E402
+from mhm_qgis.core.handlers.state.nml_settings import update_section  # noqa: E402
 from mhm_qgis.project_layout import ensure_project_structure  # noqa: E402
 
 
@@ -151,7 +151,7 @@ def test_lai_stage_submits_a_background_task_when_selected(tmp_path):
 
 def test_unchanged_lai_inputs_reuse_the_staged_file(tmp_path):
     """The 153 GiB staged LAI must not be regenerated when nothing changed."""
-    from mhm_qgis.state_cache import fingerprint, store_payload
+    from mhm_qgis.core.handlers.state.cache import fingerprint, store_payload
 
     _app()
     dialog = MhmQgisDialog()
@@ -206,7 +206,7 @@ def test_unchanged_lai_inputs_reuse_the_staged_file(tmp_path):
 
 
 def test_a_missing_staged_file_forces_the_lai_resample(tmp_path):
-    from mhm_qgis.state_cache import fingerprint, store_payload
+    from mhm_qgis.core.handlers.state.cache import fingerprint, store_payload
 
     _app()
     dialog = MhmQgisDialog()
@@ -299,7 +299,7 @@ def test_geology_outputs_already_on_disk_are_adopted_not_rebuilt(tmp_path):
     assert any("Adopted the existing geology output" in m for m in messages)
 
     # The adoption is recorded, so the next run reuses without re-adopting.
-    from mhm_qgis.state_cache import load_state
+    from mhm_qgis.core.handlers.state.cache import load_state
 
     assert "geology" in load_state(tmp_path)["stages"]
     messages.clear()

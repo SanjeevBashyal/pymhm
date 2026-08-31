@@ -11,7 +11,7 @@ from mhm_qgis import standalone
 standalone.install(force=True)
 
 # isort: off
-from mhm_qgis.Morphology.watershed.domain_state import (
+from mhm_qgis.core.handlers.state.domain_state import (
     DEM_DOMAIN_ID,
     active_domain_records,
     default_state,

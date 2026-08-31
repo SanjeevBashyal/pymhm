@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from ...grid_resolution import CATEGORICAL_PAD_VALUE, LAI_PAD_VALUE
-from ...nml_settings import load_settings, relative_workspace_path, save_settings
+from ...core.handlers.state.nml_settings import load_settings, relative_workspace_path, save_settings
 from ...project_layout import morph_folder, morph_staging_folder, workspace_folder
 from ..latlon.ascii_morphology import pad_l0_file_to_header
 

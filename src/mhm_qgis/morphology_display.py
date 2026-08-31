@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .nml_settings import load_settings
+from .core.handlers.state.nml_settings import load_settings
 from .project_layout import geometry_folder, morph_folder, workspace_folder
 
 

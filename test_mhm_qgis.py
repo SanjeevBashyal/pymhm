@@ -193,7 +193,7 @@ def main():
     print("QGIS Initialized.")
 
     # Import plugin UI after QGIS has a prefix path and provider registry.
-    from mhm_qgis.mhm_qgis_main import MhmQgisDialog
+    from mhm_qgis.qt.dialogs.mhm_qgis_main import MhmQgisDialog
 
     # 2. Get a reference to the project instance. This is where layers are managed.
     project = QgsProject.instance()

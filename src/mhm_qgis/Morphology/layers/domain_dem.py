@@ -15,7 +15,7 @@ from typing import Any, Mapping
 
 from ..file_tasks import write_domain_dem_ascii
 from .domain_dem_nc import write_domain_dem_netcdf
-from ..watershed.domain_state import (
+from ...core.handlers.state.domain_state import (
     active_domain_records,
     load_state as load_domain_state,
     resolve_output_path,

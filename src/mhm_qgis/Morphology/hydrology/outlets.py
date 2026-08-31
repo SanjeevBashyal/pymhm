@@ -2,7 +2,7 @@
 """Gauge outlet helpers for the Hydrology page."""
 from __future__ import annotations
 
-from ..watershed.domain_state import gauged_outlet_ids, load_state, state_path
+from ...core.handlers.state.domain_state import gauged_outlet_ids, load_state, state_path
 
 STATION_ID_FIELD = "STATION_ID"
 

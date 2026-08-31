@@ -12,20 +12,23 @@ try:
                            QgsVectorLayer)
     from qgis.PyQt import QtCore, QtWidgets
 except ImportError:
-    from .standalone import install
+    from ...standalone import install
 
     install(force=True)
     from qgis.core import (QgsMapLayer, QgsProject, QgsRasterLayer,
                            QgsVectorLayer)
     from qgis.PyQt import QtCore, QtWidgets
 
-from .project_layout import WORKSPACE_FOLDER_NAME
-from .qt.bindings.input_selection import (bind_lai_netcdf, bind_lookup_config,
-                                          bind_mhm_ready,
-                                          bind_single_layer_lookup)
-from .qt.ui.pyui.ui_lai_netcdf_input_dialog import Ui_SingleLayerInputDialog as Ui_LaiNetcdfInputDialog
-from .qt.ui.pyui.ui_mhm_ready_dialog import Ui_SingleLayerInputDialog as Ui_MhmReadyInputDialog
-from .qt.ui.pyui.ui_single_layer_input_with_lookup_config_dialog import (
+from ...project_layout import WORKSPACE_FOLDER_NAME
+from ...qt.controllers import single_layer_input as single_layer_controller
+from ...qt.controllers import single_layer_lookup as lookup_controller
+from ...qt.bindings.lai_netcdf_input import bind_lai_netcdf
+from ...qt.bindings.mhm_ready_input import bind_mhm_ready
+from ...qt.bindings.single_layer_input import bind_single_layer_lookup
+from ...qt.bindings.single_layer_lookup import bind_lookup_config
+from ...qt.ui.pyui.ui_lai_netcdf_input_dialog import Ui_SingleLayerInputDialog as Ui_LaiNetcdfInputDialog
+from ...qt.ui.pyui.ui_mhm_ready_dialog import Ui_SingleLayerInputDialog as Ui_MhmReadyInputDialog
+from ...qt.ui.pyui.ui_single_layer_input_with_lookup_config_dialog import (
     Ui_SingleLayerInputDialog as Ui_SingleLayerLookupDialog,
 )
 
@@ -415,7 +418,7 @@ class InputComboAdapter(QtCore.QObject):
 
 def read_lookup_fields(lookup_table) -> list[str]:
     """Return fields using the same table reader as mHM-tools formatting."""
-    from .applications.mhm_tools_handler import read_categorical_lookup_table
+    from ...applications.mhm_tools_handler import read_categorical_lookup_table
 
     table = read_categorical_lookup_table(lookup_table)
     return [
@@ -494,39 +497,11 @@ class LookupConfigDialog(QtWidgets.QDialog, Ui_SingleLayerLookupDialog):
             return self._initial.get(name)
         return getattr(self._initial, name, None)
 
-    def _refresh_fields(self, _index=None):
-        self.mapping_field_combo.clear()
-        self.class_field_combo.clear()
-        error_label = getattr(self, "error_label", None)
-        if error_label is not None:
-            error_label.clear()
-        path = self.lookup_table_combo.currentData()
-        if not path:
-            self._update_ok()
-            return
-        try:
-            fields = read_lookup_fields(path)
-        except Exception as error:
-            if error_label is not None:
-                error_label.setText(str(error))
-            self._update_ok()
-            return
+    def _refresh_fields(self, *args, **kwargs):
+        return lookup_controller._refresh_fields(self, *args, **kwargs)
 
-        self.mapping_field_combo.addItems(fields)
-        self.class_field_combo.addItems(fields)
-        for combo, name in (
-            (self.mapping_field_combo, "mapping_field"),
-            (self.class_field_combo, "class_field"),
-        ):
-            preferred = self._initial_value(name)
-            index = combo.findText(str(preferred)) if preferred else -1
-            combo.setCurrentIndex(index)
-        self._update_ok()
-
-    def _update_ok(self, _index=None):
-        button = self.buttons.button(QtWidgets.QDialogButtonBox.Ok)
-        if button is not None:
-            button.setEnabled(self.selected_config() is not None)
+    def _update_ok(self, *args, **kwargs):
+        return lookup_controller._update_ok(self, *args, **kwargs)
 
     def selected_config(self) -> LookupConfig | None:
         path = self.lookup_table_combo.currentData()
@@ -623,33 +598,11 @@ class SingleLayerInputDialog(QtWidgets.QDialog, Ui_SingleLayerLookupDialog):
         bind_single_layer_lookup(self, title)
         self._refresh_fields()
 
-    def _browse_lookup(self):
-        _browse_into_combo(
-            self,
-            self.lookup_table_combo,
-            "Select lookup table",
-            "Lookup tables (*.csv *.txt);;All files (*)",
-        )
-        self._refresh_fields()
+    def _browse_lookup(self, *args, **kwargs):
+        return single_layer_controller._browse_lookup(self, *args, **kwargs)
 
-    def _refresh_fields(self, _index=None):
-        self.mapping_field_combo.clear()
-        self.class_field_combo.clear()
-        path = _combo_path(self.lookup_table_combo)
-        if not path:
-            return
-        try:
-            fields = read_lookup_fields(path)
-        except Exception:
-            return
-        self.mapping_field_combo.addItems(fields)
-        self.class_field_combo.addItems(fields)
-        for combo, key in (
-            (self.mapping_field_combo, "mapping_field"),
-            (self.class_field_combo, "class_field"),
-        ):
-            index = combo.findText(str(self._initial.get(key, "")))
-            combo.setCurrentIndex(index)
+    def _refresh_fields(self, *args, **kwargs):
+        return single_layer_controller._refresh_fields(self, *args, **kwargs)
 
     def selected_config(self) -> SingleLayerLookupConfig | None:
         source = _combo_path(self.comboBox_inputLayer)

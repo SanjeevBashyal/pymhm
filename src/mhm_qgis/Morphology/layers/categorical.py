@@ -349,7 +349,7 @@ class CategoricalProcessingMixin(
 
     def _record_categorical_nml(self, kind, output, definition=None):
         """Record a prepared categorical input for the namelist handoff."""
-        from ...nml_settings import relative_workspace_path, update_section
+        from ...core.handlers.state.nml_settings import relative_workspace_path, update_section
 
         section = "land_cover" if kind == "lc" else kind
         value = {

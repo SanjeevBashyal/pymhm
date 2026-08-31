@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .project_layout import workspace_folder
+from ....project_layout import workspace_folder
 
 
 def settings_path(project_folder: str | Path) -> Path:
@@ -65,7 +65,7 @@ def relative_workspace_path(project_folder: str | Path, value: str | Path) -> st
 
 def sync_domain_settings(project_folder: str | Path) -> Path:
     """Project saved domain and gauge records into the namelist handoff."""
-    from .Morphology.watershed.domain_state import (
+    from .domain_state import (
         active_domain_records,
         gauge_records,
         load_state as load_domain_state,

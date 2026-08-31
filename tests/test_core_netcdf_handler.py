@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mhm_qgis.core.handlers import netcdf as nch
+from mhm_qgis.core.handlers.file import netcdf as nch
 
 # Real mHM output, deliberately different from each other in every way that
 # a naive reader would get wrong.

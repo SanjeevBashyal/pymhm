@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from ..common import QMessageBox
 from ..core.base import BaseProcessingMixin
-from .discharge_dialog import DischargeTableAssignmentDialog
+from ...qt.dialogs.discharge_assignment import DischargeTableAssignmentDialog
 from .outlets import (
     StationIdError,
     selected_outlet_id_field,
     station_ids_from_layer,
 )
-from ..watershed.domain_state import (
+from ...core.handlers.state.domain_state import (
     active_domain_records,
     load_state,
     save_state,

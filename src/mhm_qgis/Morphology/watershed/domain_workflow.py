@@ -23,7 +23,7 @@ from ...project_layout import (
     domain_dem_path,
     geometry_folder,
 )
-from ..hydrology.discharge_dialog import OutletAssignment
+from ...qt.dialogs.discharge_assignment import OutletAssignment
 from ..hydrology.discharge_writer import (
     local_source_path,
     records_from_layer,
@@ -37,7 +37,7 @@ from ..hydrology.outlets import (
     station_id_int,
     station_id_text,
 )
-from .domain_state import (
+from ...core.handlers.state.domain_state import (
     DOMAIN_MODE_DEM_EXTENT,
     DOMAIN_MODE_SNAPPED,
     active_domain_records,

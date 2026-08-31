@@ -16,7 +16,7 @@ from mhm_qgis.Morphology.hydrology.outlets import OutletCountMixin  # noqa: E402
 from mhm_qgis.Morphology.orchestration.reset_geometry import (  # noqa: E402
     ResetGeometryMixin,
 )
-from mhm_qgis.Morphology.watershed.domain_state import (  # noqa: E402
+from mhm_qgis.core.handlers.state.domain_state import (  # noqa: E402
     load_state,
     save_state,
 )

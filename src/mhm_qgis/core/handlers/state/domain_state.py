@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Union
 
-from ...project_layout import workspace_folder
+from ....project_layout import workspace_folder
 
 
 STATE_FILENAME = "mhm_qgis_domain_delineation_state.json"

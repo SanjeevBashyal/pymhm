@@ -12,7 +12,7 @@ standalone.install(force=True)
 # isort: off
 from qgis.PyQt.QtWidgets import QApplication  # noqa: E402
 
-from mhm_qgis.Morphology.hydrology.discharge_dialog import (  # noqa: E402
+from mhm_qgis.qt.dialogs.discharge_assignment import (  # noqa: E402
     DischargeTableAssignmentDialog,
     DomainAndDischargeTableAssignmentDialog,
     OutletAssignment,

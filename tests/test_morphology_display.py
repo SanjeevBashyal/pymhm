@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from mhm_qgis.morphology_display import land_cover_periods, resolve_display_output
-from mhm_qgis.nml_settings import update_section
+from mhm_qgis.core.handlers.state.nml_settings import update_section
 from mhm_qgis.project_layout import ensure_project_structure, morph_folder
 
 

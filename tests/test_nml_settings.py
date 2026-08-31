@@ -4,8 +4,8 @@ from mhm_qgis import standalone
 
 standalone.install(force=True)
 
-from mhm_qgis.Morphology.watershed.domain_state import save_state
-from mhm_qgis.nml_settings import load_settings, sync_domain_settings, update_section
+from mhm_qgis.core.handlers.state.domain_state import save_state
+from mhm_qgis.core.handlers.state.nml_settings import load_settings, sync_domain_settings, update_section
 from mhm_qgis.vSpecific import build_initial_values
 
 

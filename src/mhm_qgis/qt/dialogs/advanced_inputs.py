@@ -8,8 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from . import resources_rc as _resources_rc  # noqa: F401
-from .advanced_input_manifests import (
+from ...advanced_input_manifests import (
     LandUseInput,
     LandUsePeriod,
     MAX_LAND_USE_PERIODS,
@@ -27,14 +26,15 @@ from .input_selection import (
     scan_project_inputs,
 )
 
-sys.modules.setdefault("resources_rc", _resources_rc)
 
 from qgis.PyQt import QtWidgets  # noqa: E402
 
-from .qt.bindings.advanced_inputs import (bind_historical_land_use,
-                                          bind_multi_horizon_soil)
-from .qt.ui.pyui.ui_land_use_historical_input import Ui_Dialog as Ui_LandUse  # noqa: E402
-from .qt.ui.pyui.ui_soil_multi_horizon_input import Ui_Dialog as Ui_Soil  # noqa: E402
+from ...qt.controllers import land_use_historical as land_use_controller
+from ...qt.controllers import soil_multi_horizon as soil_controller
+from ...qt.bindings.land_use_historical import bind_historical_land_use
+from ...qt.bindings.soil_multi_horizon import bind_multi_horizon_soil
+from ...qt.ui.pyui.ui_land_use_historical_input import Ui_Dialog as Ui_LandUse  # noqa: E402
+from ...qt.ui.pyui.ui_soil_multi_horizon_input import Ui_Dialog as Ui_Soil  # noqa: E402
 
 
 @dataclass
@@ -206,29 +206,11 @@ class HistoricalLandUseDialog(_DynamicInputDialogMixin, QtWidgets.QDialog, Ui_La
         self.verticalLayout_4.insertLayout(self.verticalLayout_4.count() - 1, layout)
         return _LandUseRow(layout, start, end, combo, browse, adapter)
 
-    def set_layer_count(self, count: int) -> None:
-        count = min(MAX_LAND_USE_PERIODS, max(1, int(count)))
-        self.spinBox_nLandUseLayers.setValue(count)
-        self.tableWidget_landUseTimeInputs.setRowCount(count)
-        while len(self._rows) < count:
-            self._rows.append(self._new_land_use_row(len(self._rows) + 1))
-        while len(self._rows) > count:
-            self._delete_row(self._rows.pop())
-        for index in range(count):
-            self.tableWidget_landUseTimeInputs.setVerticalHeaderItem(
-                index, QtWidgets.QTableWidgetItem(f"Layer {index + 1}")
-            )
-        self._update_bounds()
+    def set_layer_count(self, *args, **kwargs):
+        return land_use_controller.set_layer_count(self, *args, **kwargs)
 
-    def set_all_time(self) -> None:
-        """Configure the same form for one all-time land-use layer."""
-        self.set_layer_count(1)
-        self._set_cell(self.tableWidget_landUseTimeInputs, 0, 0, 1900)
-        self._set_cell(self.tableWidget_landUseTimeInputs, 0, 1, 2100)
-        self.spinBox_nLandUseLayers.setEnabled(False)
-        self.pushButton_addLandUseInputWidgets.setEnabled(False)
-        self.tableWidget_landUseTimeInputs.setEnabled(False)
-        self._update_bounds()
+    def set_all_time(self, *args, **kwargs):
+        return land_use_controller.set_all_time(self, *args, **kwargs)
 
     def selected_input(self) -> LandUseInput:
         if self._lookup_error:
@@ -251,83 +233,20 @@ class HistoricalLandUseDialog(_DynamicInputDialogMixin, QtWidgets.QDialog, Ui_La
         validate_land_use_input(value)
         return value
 
-    def set_input(self, value) -> None:
-        data = value.as_dict() if isinstance(value, LandUseInput) else value
-        periods = list(data.get("periods", ()))
-        if len(periods) > MAX_LAND_USE_PERIODS:
-            raise ValueError(
-                f"Land use supports at most {MAX_LAND_USE_PERIODS} periods."
-            )
-        self.set_layer_count(len(periods) or 1)
-        for index, period in enumerate(periods):
-            self._set_cell(
-                self.tableWidget_landUseTimeInputs,
-                index,
-                0,
-                period.get("start_year"),
-            )
-            self._set_cell(
-                self.tableWidget_landUseTimeInputs,
-                index,
-                1,
-                period.get("end_year"),
-            )
-            self._select_path(self._rows[index].adapter, period.get("file_path"))
-        lookup = str(data.get("lookup_table", "") or "")
-        if lookup:
-            self._select_combo_path(self.comboBox_lookupTableInput, lookup)
-        self._lookup_changed()
-        self.comboBox_mappingFieldInput.setCurrentText(
-            str(data.get("mapping_field", "") or "")
-        )
-        self.comboBox_classFieldInput.setCurrentText(
-            str(data.get("class_field", "") or "")
-        )
-        self._update_bounds()
+    def set_input(self, *args, **kwargs):
+        return land_use_controller.set_input(self, *args, **kwargs)
 
-    def _update_bounds(self, *_args) -> None:
-        for index, row in enumerate(self._rows):
-            row.start_label.setText(
-                self._cell_text(self.tableWidget_landUseTimeInputs, index, 0)
-            )
-            row.end_label.setText(
-                self._cell_text(self.tableWidget_landUseTimeInputs, index, 1)
-            )
+    def _update_bounds(self, *args, **kwargs):
+        return land_use_controller._update_bounds(self, *args, **kwargs)
 
-    def _populate_lookup(self) -> None:
-        self.comboBox_lookupTableInput.clear()
-        for item in scan_project_inputs(self.project_folder, "lookup"):
-            self.comboBox_lookupTableInput.addItem(item.label, item.data["path"])
-        self.comboBox_lookupTableInput.setCurrentIndex(-1)
+    def _populate_lookup(self, *args, **kwargs):
+        return land_use_controller._populate_lookup(self, *args, **kwargs)
 
-    def _lookup_changed(self, *_args) -> None:
-        path = self.comboBox_lookupTableInput.currentData()
-        self._lookup_path = str(path or "")
-        self._lookup_error = ""
-        mapping = self.comboBox_mappingFieldInput.currentText()
-        class_field = self.comboBox_classFieldInput.currentText()
-        self.comboBox_mappingFieldInput.clear()
-        self.comboBox_classFieldInput.clear()
-        if self._lookup_path:
-            try:
-                fields = read_lookup_fields(self._lookup_path)
-            except Exception as error:
-                self._lookup_error = f"Could not read land-use lookup table: {error}"
-                fields = []
-            self.comboBox_mappingFieldInput.addItems(fields)
-            self.comboBox_classFieldInput.addItems(fields)
-        self.comboBox_mappingFieldInput.setCurrentText(mapping)
-        self.comboBox_classFieldInput.setCurrentText(class_field)
+    def _lookup_changed(self, *args, **kwargs):
+        return land_use_controller._lookup_changed(self, *args, **kwargs)
 
-    def _browse_lookup(self) -> None:
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self,
-            "Select Land-use Lookup Table",
-            str(self.project_folder),
-            "Lookup tables (*.csv *.txt);;All files (*)",
-        )
-        if path:
-            self._select_combo_path(self.comboBox_lookupTableInput, path)
+    def _browse_lookup(self, *args, **kwargs):
+        return land_use_controller._browse_lookup(self, *args, **kwargs)
 
     def _accept(self) -> None:
         try:
@@ -412,27 +331,8 @@ class MultiHorizonSoilDialog(_DynamicInputDialogMixin, QtWidgets.QDialog, Ui_Soi
         if initial:
             self.set_input(initial)
 
-    def set_horizon_count(self, count: int) -> None:
-        count = min(MAX_SOIL_HORIZONS, max(1, int(count)))
-        self.spinBox_nSoilHorizons.setValue(count)
-        self.tableWidget_soilHorizonDepthInputs.setRowCount(count)
-        for component, parent_name, _, _, _, tab_name in self._COMPONENTS:
-            rows = self._soil_rows[component]
-            while len(rows) < count:
-                rows.append(
-                    self._new_soil_row(
-                        component,
-                        len(rows) + 1,
-                        getattr(self, parent_name),
-                        getattr(self, tab_name),
-                    )
-                )
-            while len(rows) > count:
-                self._delete_row(rows.pop())
-        for index in range(count):
-            self.tableWidget_soilHorizonDepthInputs.setVerticalHeaderItem(
-                index, QtWidgets.QTableWidgetItem(f"Horizon {index + 1}")
-            )
+    def set_horizon_count(self, *args, **kwargs):
+        return soil_controller.set_horizon_count(self, *args, **kwargs)
 
     def _new_soil_row(self, component, number, parent_layout, parent_widget):
         layout = QtWidgets.QHBoxLayout()
@@ -472,38 +372,8 @@ class MultiHorizonSoilDialog(_DynamicInputDialogMixin, QtWidgets.QDialog, Ui_Soi
         validate_soil_input(value)
         return value
 
-    def set_input(self, value) -> None:
-        data = value.as_dict() if isinstance(value, SoilInput) else value
-        horizons = list(data.get("horizons", ()))
-        if len(horizons) > MAX_SOIL_HORIZONS:
-            raise ValueError(f"Soil supports at most {MAX_SOIL_HORIZONS} horizons.")
-        self.set_horizon_count(len(horizons) or 1)
-        self.comboBox_bulkDensityUnit.setCurrentText(
-            str(data.get("bulk_density_unit", "") or "")
-        )
-        path_keys = {
-            "clay": "clay_layer",
-            "sand": "sand_layer",
-            "silt": "silt_layer",
-            "bulk_density": "bulk_density_layer",
-        }
-        for index, horizon in enumerate(horizons):
-            self._set_cell(
-                self.tableWidget_soilHorizonDepthInputs,
-                index,
-                0,
-                horizon.get("upper_depth"),
-            )
-            self._set_cell(
-                self.tableWidget_soilHorizonDepthInputs,
-                index,
-                1,
-                horizon.get("lower_depth"),
-            )
-            for component, key in path_keys.items():
-                self._select_path(
-                    self._soil_rows[component][index].adapter, horizon.get(key)
-                )
+    def set_input(self, *args, **kwargs):
+        return soil_controller.set_input(self, *args, **kwargs)
 
     def _accept(self) -> None:
         try:

@@ -11,7 +11,7 @@ install(force=True)
 
 from qgis.PyQt import QtWidgets  # noqa: E402
 
-from mhm_qgis.advanced_input_dialogs import (  # noqa: E402
+from mhm_qgis.qt.dialogs.advanced_inputs import (  # noqa: E402
     HistoricalLandUseDialog,
     MultiHorizonSoilDialog,
 )

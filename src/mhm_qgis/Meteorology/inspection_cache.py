@@ -18,7 +18,7 @@ from .forcing import (
     _files_for_spec,
     inspect_meteo_folder,
 )
-from ..state_cache import cached_payload, fingerprint, store_payload
+from ..core.handlers.state.cache import cached_payload, fingerprint, store_payload
 
 
 SECTION = "meteo_inspection"

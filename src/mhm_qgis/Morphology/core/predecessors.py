@@ -285,7 +285,7 @@ class PredecessorMixin(BaseProcessingMixin, NamingAndRangeMixin):
         # Once the new domain workflow is configured, only its explicitly saved
         # merged mask is valid. Do not silently replace it with the legacy
         # all-pour-point delineation.
-        from ..watershed.domain_state import load_state, state_path
+        from ...core.handlers.state.domain_state import load_state, state_path
 
         project_folder = getattr(self.dialog, "project_folder", None)
         state = load_state(project_folder) if project_folder else {}

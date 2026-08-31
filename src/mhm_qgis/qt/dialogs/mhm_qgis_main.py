@@ -14,7 +14,7 @@ try:
     from qgis.PyQt import QtCore
     from qgis.PyQt.QtWidgets import QComboBox, QDialog, QFileDialog, QMessageBox
 except ImportError:
-    from .standalone import install
+    from ...standalone import install
 
     install(force=True)
     from qgis.core import (QgsApplication, QgsMapLayer, QgsProject,
@@ -22,17 +22,10 @@ except ImportError:
     from qgis.PyQt import QtCore
     from qgis.PyQt.QtWidgets import QComboBox, QDialog, QFileDialog, QMessageBox
 
-# UI class from the compiled .ui file. The generated module imports
-# ``resources_rc`` as a top-level module, so expose the packaged resource module
-# under that name when importing through PyPI/package paths.
-try:
-    from . import resources_rc as _resources_rc  # noqa: F401
-    sys.modules.setdefault("resources_rc", _resources_rc)
-except Exception:
-    pass
 
-from .configuration_processor import ConfigurationProcessor
-from .grid_resolution import (build_meteo_l2_grid, ceil_cellsize,
+from ..threads.meteo_workflow import MeteorologyWorkflowWorker
+from ...configuration_processor import ConfigurationProcessor
+from ...grid_resolution import (build_meteo_l2_grid, ceil_cellsize,
                               display_precision_for_unit, format_resolution,
                               header_bounds, header_for_existing_bounds,
                               is_geographic_unit, l0_header_from_l2,
@@ -49,73 +42,34 @@ from .input_selection import (
     scan_project_folders,
     scan_project_inputs,
 )
-from .Meteorology import MeteorologyProcessor
-from .Meteorology.forcing import (MeteoFolderSpec, TargetGrid,
+from ...Meteorology import MeteorologyProcessor
+from ...Meteorology.forcing import (MeteoFolderSpec, TargetGrid,
                                   inspect_meteo_inputs, resolution_in_crs)
-from .Meteorology.inspection_cache import inspect_meteo_folder_cached
-from .Meteorology.processor import MeteorologyRun
-from .Morphology import MorphologyProcessor
-from .Morphology.hydrology.outlets import (
+from ...Meteorology.inspection_cache import inspect_meteo_folder_cached
+from ...Meteorology.processor import MeteorologyRun
+from ...Morphology import MorphologyProcessor
+from ...Morphology.hydrology.outlets import (
     StationIdError,
     outlet_ids_from_layer,
 )
-from .project_layout import (data_folder, data_raw_folder,
+from ...project_layout import (data_folder, data_raw_folder,
                              ensure_project_structure, geometry_folder,
                              output_folder, restart_folder,
                              workspace_folder, z_temp_folder)
-from .morphology_display import DISPLAY_KEYS
-from .standalone import is_active as standalone_is_active
-from .qt.bindings.main import bind as bind_main_form
-from .qgis_compat import map_layer_filters
-from .terminal_dialog import ProjectTerminalDialog
-from .task_coordinator import TaskCoordinator
-from .thread_display_dialog import ThreadDisplayDialog
-from .morphology_task_bridge import MorphologyTaskBridge
-from .qt.ui.pyui.ui_mhm_qgis_main import Ui_MhmQgisDialog
+from ...morphology_display import DISPLAY_KEYS
+from ...standalone import is_active as standalone_is_active
+from ...qt.bindings.main import bind as bind_main_form
+from ...qt.controllers import main as main_controller
+from ...qgis_compat import map_layer_filters
+from .project_terminal import ProjectTerminalDialog
+from ...task_coordinator import TaskCoordinator
+from .thread_display import ThreadDisplayDialog
+from ...morphology_task_bridge import MorphologyTaskBridge
+from ...qt.ui.pyui.ui_mhm_qgis_main import Ui_MhmQgisDialog
 # Import utility mixin and processors
-from .utils import DialogUtils
+from ...utils import DialogUtils
 
 
-class MeteorologyWorkflowWorker(QtCore.QObject):
-    """Run only the QGIS-free meteorology phase in a worker thread."""
-
-    log_message = QtCore.pyqtSignal(str)
-    finished = QtCore.pyqtSignal(str, bool, str)
-
-    def __init__(
-            self,
-            workflow_key,
-            workflow_label,
-            meteorology_processor,
-            meteorology_run):
-        super().__init__()
-        self.workflow_key = workflow_key
-        self.workflow_label = workflow_label
-        self.meteorology_processor = meteorology_processor
-        self.meteorology_run = meteorology_run
-        self._original_meteo_log_message = None
-
-    @QtCore.pyqtSlot()
-    def run(self):
-        """Execute meteorology and hand morphology back to the GUI thread."""
-        self._original_meteo_log_message = self.meteorology_processor.log_message
-        self.meteorology_processor.log_message = self.log_message.emit
-        try:
-            ok = self.meteorology_processor.process_meteo_forcing(
-                self.meteorology_run,
-                show_dialog=False,
-            )
-            self.finished.emit(self.workflow_key, ok, "")
-        except Exception as exc:
-            self.log_message.emit(
-                f"\nERROR: {self.workflow_label} worker failed: {exc}"
-            )
-            self.log_message.emit(f"Traceback: {traceback.format_exc()}")
-            self.finished.emit(self.workflow_key, False, str(exc))
-        finally:
-            self.meteorology_processor.log_message = (
-                self._original_meteo_log_message
-            )
 
 
 class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
@@ -199,163 +153,50 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         self.refresh_meteo_folder_sources()
         self.refresh_grid_resolution_controls()
 
-    def configure_input_adapters(self):
-        """Wrap each plain input combo in the layer-combo interface the code uses."""
+    def configure_input_adapters(self, *args, **kwargs):
+        return main_controller.configure_input_adapters(self, *args, **kwargs)
 
-        input_widgets = {
-            "dem": "comboBox_demInput",
-            "pour_points": "comboBox_pourPointInput",
-            "land_cover": "comboBox_landUseInput",
-            "soil": "comboBox_soilInput",
-            "geology": "comboBox_geologyInput",
-            "lai": "comboBox_laiInput",
-        }
-        for kind, combo_name in input_widgets.items():
-            combo = getattr(self, combo_name, None)
-            if combo is None:
-                if kind not in {"land_cover", "soil", "geology", "lai"}:
-                    continue
-                combo = QComboBox(self)
-                combo.setObjectName(combo_name)
-                combo.hide()
-                setattr(self, combo_name, combo)
-            self._input_adapters[kind] = InputComboAdapter(combo, kind, self)
-
-    def input_combo(self, kind):
-        """Return the layer-combo adapter for one input kind, or None."""
-        return self._input_adapters.get(kind)
+    def input_combo(self, *args, **kwargs):
+        return main_controller.input_combo(self, *args, **kwargs)
 
     def refresh_meteo_display(self):
         """Re-read the prepared forcing and re-range the display controls."""
-        from .qgis_bridge.display import meteo as meteo_display
+        from ...qgis_bridge.display import meteo as meteo_display
 
         meteo_display.refresh(self)
 
+    def refresh_morphology_date_control(self):
+        """Re-evaluate the historical-land-cover date selector."""
+        from ...qgis_bridge.display import morphology as morphology_display
+
+        morphology_display.update_date_control(self)
+
     def refresh_output_display(self):
         """Re-read the mHM output and re-range the display controls."""
-        from .qgis_bridge.display import output as output_display
+        from ...qgis_bridge.display import output as output_display
 
         output_display.refresh(self)
 
-    def configure_morphology_display(self):
-        """Attach stable keys to the morphology display choices."""
-        combo = self.comboBox_morphVariableToDisplay
-        if combo is not None:
-            for index, key in enumerate(DISPLAY_KEYS[: combo.count()]):
-                combo.setItemData(index, key)
-        editor = self.dateTimeEdit_forHistoricalInputs
-        if editor is not None:
-            editor.setEnabled(False)
+    def configure_morphology_display(self, *args, **kwargs):
+        return main_controller.configure_morphology_display(self, *args, **kwargs)
 
-    def configure_input_layer_combo_boxes(self):
-        """Allow input layer boxes to start empty so layers are chosen deliberately."""
+    def configure_input_layer_combo_boxes(self, *args, **kwargs):
+        return main_controller.configure_input_layer_combo_boxes(self, *args, **kwargs)
 
-        for adapter in self._input_adapters.values():
-            adapter.setAllowEmptyLayer(True)
-            adapter.setLayer(None)
+    def refresh_input_sources(self, *args, **kwargs):
+        return main_controller.refresh_input_sources(self, *args, **kwargs)
 
-    def refresh_input_sources(self):
-        """Populate input boxes from QGIS and, when enabled, the project folder."""
-        include_files = bool(
-            self.project_folder and self.checkBox_enableFolderSearch.isChecked()
-        )
-        for kind, adapter in self._input_adapters.items():
-            combo = adapter.combo_box
-            previous = combo.currentData()
-            combo.blockSignals(True)
-            combo.clear()
-            for item in loaded_qgis_items(kind):
-                combo.addItem(item.label, item.data)
-            if include_files:
-                for item in scan_project_inputs(self.project_folder, kind):
-                    combo.addItem(item.label, item.data)
-            index = self._matching_input_index(combo, previous)
-            if (
-                index < 0
-                and isinstance(previous, dict)
-                and previous.get("origin") == "file"
-                and previous.get("manual")
-                and os.path.isfile(previous.get("path", ""))
-            ):
-                combo.addItem(
-                    previous.get("label") or previous["path"],
-                    previous,
-                )
-                index = combo.count() - 1
-            combo.setCurrentIndex(index)
-            combo.blockSignals(False)
-            if isinstance(previous, dict) and index < 0:
-                adapter.layerChanged.emit(adapter.currentLayer())
+    def populate_pour_point_outlet_fields(self, *args, **kwargs):
+        return main_controller.populate_pour_point_outlet_fields(self, *args, **kwargs)
 
-    def populate_pour_point_outlet_fields(self, layer=None, preferred=None):
-        """Populate the outlet ID field selector from the pour-point layer."""
-        combo = self.comboBox_pourPointOutletID
-        previous = str(preferred or combo.currentText() or "").strip()
-        if layer is None:
-            layer = self.input_combo("pour_points").currentLayer()
+    def selected_outlet_id_field(self, *args, **kwargs):
+        return main_controller.selected_outlet_id_field(self, *args, **kwargs)
 
-        names = []
-        try:
-            if layer and layer.isValid():
-                names = list(layer.fields().names())
-        except Exception:
-            names = []
+    def selected_outlet_ids(self, *args, **kwargs):
+        return main_controller.selected_outlet_ids(self, *args, **kwargs)
 
-        combo.blockSignals(True)
-        combo.clear()
-        combo.addItem("")
-        combo.addItems(names)
-        index = combo.findText(previous) if previous else -1
-        if index < 0:
-            for candidate in range(1, combo.count()):
-                if combo.itemText(candidate).casefold() == previous.casefold():
-                    index = candidate
-                    break
-        if index < 0:
-            for candidate in range(1, combo.count()):
-                if combo.itemText(candidate).casefold() == "station_id":
-                    index = candidate
-                    break
-        combo.setCurrentIndex(index if index >= 0 else 0)
-        combo.blockSignals(False)
-
-    def selected_outlet_id_field(self):
-        """Return the selected pour-point unique ID field."""
-        return self.comboBox_pourPointOutletID.currentText().strip()
-
-    def selected_outlet_ids(self):
-        """Return validated unique outlet IDs from the selected field."""
-        layer = self.input_combo("pour_points").currentLayer()
-        field_name = self.selected_outlet_id_field()
-        if not field_name:
-            raise StationIdError("Select the pour-point outlet ID field.")
-        return outlet_ids_from_layer(layer, field_name)
-
-    def selected_input_file_paths(self):
-        """Return local files already selected elsewhere in the plugin."""
-        paths = set()
-        for _, widget in self.input_layer_widgets():
-            source = getattr(widget, "source_path", lambda: "")()
-            source = str(source or "").split("|", 1)[0]
-            if os.path.isfile(source):
-                paths.add(os.path.normcase(os.path.abspath(source)))
-        for config in self._categorical_lookup_configs.values():
-            path = str(config.get("lookup_table", "") or "")
-            if os.path.isfile(path):
-                paths.add(os.path.normcase(os.path.abspath(path)))
-        for _, widget in self.input_text_widgets():
-            path = widget.text().strip()
-            if os.path.isfile(path):
-                paths.add(os.path.normcase(os.path.abspath(path)))
-        for value in self._advanced_inputs.values():
-            data = value.as_dict() if hasattr(value, "as_dict") else value
-            for path in self._nested_existing_paths(data):
-                paths.add(os.path.normcase(os.path.abspath(path)))
-        if os.path.isfile(self._land_cover_ready_source):
-            paths.add(
-                os.path.normcase(os.path.abspath(self._land_cover_ready_source))
-            )
-        return paths
+    def selected_input_file_paths(self, *args, **kwargs):
+        return main_controller.selected_input_file_paths(self, *args, **kwargs)
 
     @classmethod
     def _nested_existing_paths(cls, value):
@@ -368,350 +209,71 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         elif isinstance(value, str) and os.path.isfile(value):
             yield value
 
-    def meteo_input_widgets(self):
-        """Return folder/source widgets for the three meteorology inputs."""
-        return (
-            (
-                "precipitation",
-                self.comboBox_precipitationFile,
-                self.comboBox_precipitationDataSource,
-            ),
-            (
-                "temperature",
-                self.comboBox_temperatureFile,
-                self.comboBox_temperatureDataSource,
-            ),
-            ("pet", self.comboBox_petFile, self.comboBox_petDataSource),
-        )
+    def meteo_input_widgets(self, *args, **kwargs):
+        return main_controller.meteo_input_widgets(self, *args, **kwargs)
 
-    def refresh_meteo_folder_sources(self):
-        """Populate meteo folder boxes from the outer project directory."""
-        available = (
-            scan_project_folders(self.project_folder)
-            if self.project_folder else ()
-        )
-        for _, combo, _ in self.meteo_input_widgets():
-            previous = self.selected_folder_path(combo)
-            combo.blockSignals(True)
-            combo.clear()
-            combo.addItem("", None)
-            for item in available:
-                combo.addItem(item.label, item.data)
-            index = self._folder_combo_index(combo, previous)
-            if index < 0 and previous and os.path.isdir(previous):
-                self._add_folder_combo_item(combo, previous)
-                index = combo.count() - 1
-            combo.setCurrentIndex(index if index >= 0 else 0)
-            combo.blockSignals(False)
+    def refresh_meteo_folder_sources(self, *args, **kwargs):
+        return main_controller.refresh_meteo_folder_sources(self, *args, **kwargs)
 
-    def selected_meteo_folder(self, kind):
-        """Return the selected absolute folder path for one meteo input."""
-        for input_kind, combo, _ in self.meteo_input_widgets():
-            if input_kind == kind:
-                return self.selected_folder_path(combo)
-        return ""
+    def selected_meteo_folder(self, *args, **kwargs):
+        return main_controller.selected_meteo_folder(self, *args, **kwargs)
 
-    def selected_meteo_source(self, kind):
-        """Return a stable internal source token for one meteo input."""
-        for input_kind, _, combo in self.meteo_input_widgets():
-            if input_kind != kind:
-                continue
-            text = combo.currentText().strip().lower()
-            if text.replace("_", " ") == "mhm ready":
-                return "mhm_ready"
-            if text.replace("-", "").replace("_", "") == "era5land":
-                return "era5land"
-        return ""
+    def selected_meteo_source(self, *args, **kwargs):
+        return main_controller.selected_meteo_source(self, *args, **kwargs)
 
     @staticmethod
-    def selected_folder_path(combo):
-        data = combo.currentData()
-        if isinstance(data, dict):
-            path = data.get("path", "")
-        else:
-            path = data if isinstance(data, str) else ""
-        return os.path.abspath(path) if path else ""
+    def selected_folder_path(*args, **kwargs):
+        return main_controller.selected_folder_path(*args, **kwargs)
 
     @staticmethod
-    def _folder_combo_index(combo, path):
-        if not path:
-            return -1
-        normalized = os.path.normcase(os.path.abspath(path))
-        for index in range(combo.count()):
-            data = combo.itemData(index)
-            candidate = data.get("path", "") if isinstance(data, dict) else data
-            if candidate and os.path.normcase(os.path.abspath(candidate)) == normalized:
-                return index
-        return -1
+    def _folder_combo_index(*args, **kwargs):
+        return main_controller._folder_combo_index(*args, **kwargs)
 
-    def _add_folder_combo_item(self, combo, folder):
-        folder = os.path.abspath(folder)
-        label = folder
-        if self.project_folder:
-            try:
-                relative = os.path.relpath(folder, self.project_folder)
-                if relative != ".." and not relative.startswith(f"..{os.sep}"):
-                    label = relative.replace("\\", "/")
-            except ValueError:
-                pass
-        combo.addItem(label, {"origin": "folder", "path": folder, "manual": True})
+    def _add_folder_combo_item(self, *args, **kwargs):
+        return main_controller._add_folder_combo_item(self, *args, **kwargs)
 
-    def browse_meteo_input_folder(self, kind):
-        """Browse for, add, and select one meteorology input folder."""
-        folder = QFileDialog.getExistingDirectory(
-            self,
-            f"Select {kind.title()} Data Folder",
-            self.selected_meteo_folder(kind) or self.project_folder or "",
-        )
-        if not folder:
-            return
-        for input_kind, combo, _ in self.meteo_input_widgets():
-            if input_kind != kind:
-                continue
-            index = self._folder_combo_index(combo, folder)
-            if index < 0:
-                self._add_folder_combo_item(combo, folder)
-                index = combo.count() - 1
-            combo.setCurrentIndex(index)
-            self.log_message(
-                f"{kind.title()} data folder selected: {os.path.abspath(folder)}"
-            )
-            return
+    def browse_meteo_input_folder(self, *args, **kwargs):
+        return main_controller.browse_meteo_input_folder(self, *args, **kwargs)
 
-    def handle_meteo_input_changed(self, kind):
-        """Persist and inspect a changed meteorology folder/source pair."""
-        if self._loading_input_state:
-            return
-        self.save_input_state()
-        self.invalidate_meteo_morph_setup()
-        self.inspect_meteo_selection(kind, show_errors=True)
+    def handle_meteo_input_changed(self, *args, **kwargs):
+        return main_controller.handle_meteo_input_changed(self, *args, **kwargs)
 
-    def selected_meteo_crs(self):
-        """Return the selected CRS in a form accepted by pyproj."""
-        crs = self.get_crs()
-        if crs is None or not crs.isValid():
-            return ""
-        authid = crs.authid()
-        if authid:
-            return authid
-        to_wkt = getattr(crs, "toWkt", None)
-        return to_wkt() if callable(to_wkt) else ""
+    def selected_meteo_crs(self, *args, **kwargs):
+        return main_controller.selected_meteo_crs(self, *args, **kwargs)
 
-    def meteo_folder_spec(self, kind, required=True):
-        """Return one validated folder/source selection."""
-        folder = self.selected_meteo_folder(kind)
-        source = self.selected_meteo_source(kind)
-        if not folder and not required:
-            return None
-        if not folder:
-            raise ValueError(f"Select the {kind} data folder.")
-        if not source:
-            raise ValueError(f"Select the {kind} data source.")
-        if not os.path.isdir(folder):
-            raise ValueError(f"The {kind} data folder does not exist:\n{folder}")
-        return MeteoFolderSpec(
-            kind=kind,
-            folder=Path(folder),
-            source=source,
-            crs=(
-                self.selected_meteo_crs()
-                if source == "mhm_ready" else None
-            ),
-        )
+    def meteo_folder_spec(self, *args, **kwargs):
+        return main_controller.meteo_folder_spec(self, *args, **kwargs)
 
-    def selected_meteo_specs(self):
-        """Return required precipitation/temperature and optional PET inputs."""
-        precipitation = self.meteo_folder_spec("precipitation")
-        temperature = self.meteo_folder_spec("temperature")
-        pet = self.meteo_folder_spec("pet", required=False)
-        return precipitation, temperature, pet
+    def selected_meteo_specs(self, *args, **kwargs):
+        return main_controller.selected_meteo_specs(self, *args, **kwargs)
 
-    def clear_precipitation_resolution_labels(self):
-        """Clear the raw precipitation resolution display."""
-        for name in (
-                "label_precipitationResolutionValue",
-                "label_precipitationResolutionUnit",
-                "label_precipitationResolutionMultiplier"):
-            label = getattr(self, name, None)
-            if label is not None:
-                label.setText("")
+    def clear_precipitation_resolution_labels(self, *args, **kwargs):
+        return main_controller.clear_precipitation_resolution_labels(self, *args, **kwargs)
 
-    def inspect_meteo_selection(self, kind, show_errors=False):
-        """Validate one selected meteo folder and refresh its metadata."""
-        folder = self.selected_meteo_folder(kind)
-        source = self.selected_meteo_source(kind)
-        if not folder or not source:
-            self._meteo_inspections.pop(kind, None)
-            if kind == "precipitation":
-                self.clear_precipitation_resolution_labels()
-            return None
-
-        try:
-            metadata = inspect_meteo_folder_cached(
-                self.project_folder,
-                folder,
-                kind,
-                source,
-                crs_fallback=(
-                    self.selected_meteo_crs()
-                    if source == "mhm_ready" else None
-                ),
-                log=self.log_message,
-            )
-            self._meteo_inspections[kind] = metadata
-            if kind == "precipitation":
-                converted = resolution_in_crs(
-                    metadata,
-                    self.selected_meteo_crs() or None,
-                )
-                self.label_precipitationResolutionValue.setText(
-                    format_resolution(converted.resolution, converted.unit)
-                )
-                self.label_precipitationResolutionUnit.setText(converted.unit)
-                l0_resolution = self.current_l0_resolution()
-                multiplier = (
-                    f"{converted.resolution / l0_resolution:.1f}"
-                    if l0_resolution else ""
-                )
-                self.label_precipitationResolutionMultiplier.setText(multiplier)
-            self.log_message(
-                f"{kind.title()} metadata: {len(metadata.files)} NetCDF file(s), "
-                f"{metadata.shape[1]} x {metadata.shape[0]} cells."
-            )
-            return metadata
-        except Exception as error:
-            self._meteo_inspections.pop(kind, None)
-            if kind == "precipitation":
-                self.clear_precipitation_resolution_labels()
-            self.log_message(f"ERROR: Invalid {kind} meteorology input: {error}")
-            if show_errors:
-                QMessageBox.warning(
-                    self,
-                    f"Invalid {kind.title()} Data",
-                    str(error),
-                )
-            return None
+    def inspect_meteo_selection(self, *args, **kwargs):
+        return main_controller.inspect_meteo_selection(self, *args, **kwargs)
 
     @staticmethod
-    def _matching_input_index(combo, previous):
-        if not isinstance(previous, dict):
-            return -1
-        origin = previous.get("origin")
-        identity = (
-            previous.get("path")
-            if origin == "file"
-            else previous.get("layer_id") or previous.get("source")
-        )
-        for index in range(combo.count()):
-            data = combo.itemData(index)
-            if not isinstance(data, dict) or data.get("origin") != origin:
-                continue
-            candidate = (
-                data.get("path")
-                if origin == "file"
-                else data.get("layer_id") or data.get("source")
-            )
-            if candidate == identity:
-                return index
-        return -1
+    def _matching_input_index(*args, **kwargs):
+        return main_controller._matching_input_index(*args, **kwargs)
 
-    def browse_input_file(self, kind):
-        """Add a manually selected file to one input box."""
-        patterns = " ".join(
-            f"*{suffix}" for suffix in sorted(INPUT_EXTENSIONS[kind])
-        )
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            f"Select {kind.replace('_', ' ').title()} Input",
-            self.project_folder or "",
-            f"Supported files ({patterns});;All files (*)",
-        )
-        if not path:
-            return
-        path = os.path.abspath(path)
-        if os.path.splitext(path)[1].lower() not in INPUT_EXTENSIONS[kind]:
-            QMessageBox.warning(
-                self,
-                "Unsupported Input",
-                f"Select a {kind.replace('_', ' ')} file with one of these "
-                f"extensions: {', '.join(sorted(INPUT_EXTENSIONS[kind]))}.",
-            )
-            return
-        label = path
-        if self.project_folder:
-            try:
-                relative = os.path.relpath(path, self.project_folder)
-                if relative != ".." and not relative.startswith(f"..{os.sep}"):
-                    label = relative.replace("\\", "/")
-            except ValueError:
-                pass
-        adapter = self._input_adapters[kind]
-        combo = adapter.combo_box
-        for index in range(combo.count()):
-            data = combo.itemData(index)
-            if isinstance(data, dict) and data.get("path") == path:
-                combo.setCurrentIndex(index)
-                return
-        combo.addItem(
-            label,
-            {
-                "origin": "file",
-                "kind": kind,
-                "path": path,
-                "label": label,
-                "manual": True,
-            },
-        )
-        combo.setCurrentIndex(combo.count() - 1)
+    def browse_input_file(self, *args, **kwargs):
+        return main_controller.browse_input_file(self, *args, **kwargs)
 
-    def connect_optional_processor_button(self, name, label, callback):
-        """Connect a processing control when it exists in the active UI."""
-        button = getattr(self, name, None)
-        if button is not None:
-            self.connect_processor_button(
-                button, label, callback, background=True
-            )
+    def connect_optional_processor_button(self, *args, **kwargs):
+        return main_controller.connect_optional_processor_button(self, *args, **kwargs)
 
-    def handle_l2_multiplier_changed(self, value=None):
-        """Invalidate prepared setup state when the requested L2 grid changes."""
-        if self._loading_input_state:
-            return
-        self.save_input_state()
-        self.invalidate_meteo_morph_setup()
+    def handle_l2_multiplier_changed(self, *args, **kwargs):
+        return main_controller.handle_l2_multiplier_changed(self, *args, **kwargs)
 
-    def handle_model_input_changed(self, value=None):
-        """Persist model inputs and invalidate a previously completed setup."""
-        if self._loading_input_state:
-            return
-        self.save_input_state()
-        self.invalidate_meteo_morph_setup()
+    def handle_model_input_changed(self, *args, **kwargs):
+        return main_controller.handle_model_input_changed(self, *args, **kwargs)
 
-    def refresh_grid_resolution_controls(self):
-        """Refresh L0, L2, L1, and L11 controls from current project state."""
-        self.update_l0_resolution_from_dem()
-        self.update_l2_resolution_from_metadata()
-        self.refresh_l1_l11_resolution_options()
+    def refresh_grid_resolution_controls(self, *args, **kwargs):
+        return main_controller.refresh_grid_resolution_controls(self, *args, **kwargs)
 
-    def update_l0_resolution_from_dem(self, layer=None):
-        """Prepare/read the filled DEM and show its resolution as L0."""
-        info = self.filled_dem_resolution_info()
-        self._grid_l0_info = info
-        if not info:
-            self._set_resolution_labels("L0", "", "")
-            self.refresh_l1_l11_resolution_options()
-            self.update_latlon_button_state()
-            return
-
-        self._set_resolution_labels(
-            "L0",
-            format_resolution(info["resolution"], info["unit"]),
-            info["unit"],
-        )
-        if abs(info["x_resolution"] - info["y_resolution"]) > max(info["resolution"], 1.0) * 1e-6:
-            self.log_message(
-                "WARNING: DEM pixels are not square. L0 uses the average of "
-                f"x={info['x_resolution']} and y={info['y_resolution']}.")
-        self.refresh_l1_l11_resolution_options()
+    def update_l0_resolution_from_dem(self, *args, **kwargs):
+        return main_controller.update_l0_resolution_from_dem(self, *args, **kwargs)
 
     def filled_dem_resolution_info(self):
         """Return L0 resolution from the prepared filled DEM raster."""
@@ -749,56 +311,11 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             return None
         return raster_resolution_info(filled_layer)
 
-    def update_l2_resolution_from_metadata(self, metadata=None):
-        """Show L2 resolution from saved meteo grid metadata or existing headers."""
-        if metadata is None and self.project_folder:
-            metadata = load_meteo_grid_metadata(self.project_folder)
+    def update_l2_resolution_from_metadata(self, *args, **kwargs):
+        return main_controller.update_l2_resolution_from_metadata(self, *args, **kwargs)
 
-        header = None
-        unit = ""
-        if metadata:
-            header = metadata.get("l2_header")
-            unit = metadata.get("l2_unit", "")
-            if not unit and self._grid_l0_info:
-                unit = self._grid_l0_info.get("unit", "")
-            if header:
-                # Keep the exact L2 cell size. It is n x the filled DEM cell
-                # size by construction, and re-rounding it here breaks that
-                # relationship for repeating values such as 120 x 1/1200 deg.
-                header = dict(header)
-                header["unit"] = unit
-                metadata["l2_header"] = header
-                metadata["l2_resolution"] = header["cellsize"]
-                metadata["l2_unit"] = unit
-        elif self.project_folder:
-            unit = self._grid_l0_info.get("unit", "") if self._grid_l0_info else ""
-            header = read_header_file(
-                os.path.join(data_folder(self.project_folder), "meteo", "pre", "header.txt"),
-                unit=unit,
-            )
-            if header:
-                metadata = {
-                    "l2_resolution": header["cellsize"],
-                    "l2_unit": unit,
-                    "l2_header": header,
-                }
-
-        self._grid_l2_metadata = metadata
-        self._grid_l2_header = header
-        if not metadata:
-            self.update_extent_labels()
-            self.refresh_l1_l11_resolution_options()
-            self.update_latlon_button_state()
-            return
-
-        self.update_extent_labels(metadata)
-        self.refresh_l1_l11_resolution_options()
-        self.update_latlon_button_state()
-
-    def set_meteo_l2_grid_metadata(self, metadata):
-        """Store freshly prepared L2 metadata and update resolution controls."""
-        self.update_l2_resolution_from_metadata(metadata)
-        self.save_input_state()
+    def set_meteo_l2_grid_metadata(self, *args, **kwargs):
+        return main_controller.set_meteo_l2_grid_metadata(self, *args, **kwargs)
 
     def prepare_meteo_l2_grid(self, precipitation_metadata=None):
         """Build the requested L2 grid used by meteorology processing."""
@@ -830,159 +347,41 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         )
         return grid
 
-    def refresh_l1_l11_resolution_options(self):
-        """Populate L1 and L11 resolution choices from L0/L2 compatibility."""
-        l0_resolution = self.current_l0_resolution()
-        l2_resolution = self.current_l2_resolution()
-        unit = self.current_grid_unit()
+    def refresh_l1_l11_resolution_options(self, *args, **kwargs):
+        return main_controller.refresh_l1_l11_resolution_options(self, *args, **kwargs)
 
-        if not self._grid_l2_header or not l2_resolution:
-            self.disable_l1_l11_resolution_options()
-            self.update_latlon_button_state()
-            return
+    def handle_l1_resolution_changed(self, *args, **kwargs):
+        return main_controller.handle_l1_resolution_changed(self, *args, **kwargs)
 
-        l1_values = []
-        if l0_resolution:
-            l1_values = possible_resolutions(l0_resolution, l2_resolution, unit)
+    def disable_l1_l11_resolution_options(self, *args, **kwargs):
+        return main_controller.disable_l1_l11_resolution_options(self, *args, **kwargs)
 
-        preferred_l1 = self._preferred_l1_resolution
-        matched_l1 = self._populate_resolution_combo(
-            self.comboBox_L1,
-            l1_values,
-            preferred_l1,
-            unit,
-        )
-        if preferred_l1 is not None and l1_values and l0_resolution and l2_resolution:
-            if not matched_l1:
-                self.log_resolution_preference_warning(
-                    "L1",
-                    preferred_l1,
-                    l1_values[0],
-                    unit,
-                )
-            self._preferred_l1_resolution = None
-        self.label_L1ResolutionUnit.setText(unit if l1_values else "")
+    def disable_l11_resolution_options(self, *args, **kwargs):
+        return main_controller.disable_l11_resolution_options(self, *args, **kwargs)
 
-        self.handle_l1_resolution_changed()
+    def disable_resolution_combo(self, *args, **kwargs):
+        return main_controller.disable_resolution_combo(self, *args, **kwargs)
 
-    def handle_l1_resolution_changed(self):
-        """Refresh L1 label and rebuild L11 choices for the selected L1."""
-        self.update_l1_resolution_label()
-        l1_resolution = self.current_l1_resolution()
-        l2_resolution = self.current_l2_resolution()
-        unit = self.current_grid_unit()
+    def update_l1_resolution_label(self, *args, **kwargs):
+        return main_controller.update_l1_resolution_label(self, *args, **kwargs)
 
-        if not self._grid_l2_header or not l2_resolution or not l1_resolution:
-            self.disable_l11_resolution_options()
-            self.update_latlon_button_state()
-            return
+    def update_l11_resolution_label(self, *args, **kwargs):
+        return main_controller.update_l11_resolution_label(self, *args, **kwargs)
 
-        l11_values = []
-        l11_values = possible_resolutions(l1_resolution, l2_resolution, unit)
+    def current_l0_resolution(self, *args, **kwargs):
+        return main_controller.current_l0_resolution(self, *args, **kwargs)
 
-        preferred_l11 = self._preferred_l11_resolution
-        matched_l11 = self._populate_resolution_combo(
-            self.comboBox_L11,
-            l11_values,
-            preferred_l11,
-            unit,
-        )
-        if preferred_l11 is not None and l11_values and l1_resolution and l2_resolution:
-            if not matched_l11:
-                self.log_resolution_preference_warning(
-                    "L11",
-                    preferred_l11,
-                    l11_values[0],
-                    unit,
-                )
-            self._preferred_l11_resolution = None
-        self.label_L11ResolutionUnit.setText(unit if l11_values else "")
-        self.update_l11_resolution_label()
-        self.update_latlon_button_state()
+    def current_l2_resolution(self, *args, **kwargs):
+        return main_controller.current_l2_resolution(self, *args, **kwargs)
 
-    def disable_l1_l11_resolution_options(self):
-        """Disable L1/L11 controls until meteo L2 grid metadata exists."""
-        self.disable_resolution_combo(self.comboBox_L1)
-        self.disable_l11_resolution_options()
-        self._set_resolution_labels("L1", "", "")
+    def current_l1_resolution(self, *args, **kwargs):
+        return main_controller.current_l1_resolution(self, *args, **kwargs)
 
-    def disable_l11_resolution_options(self):
-        """Disable L11 controls and clear its labels."""
-        self.disable_resolution_combo(self.comboBox_L11)
-        self._set_resolution_labels("L11", "", "")
+    def current_l11_resolution(self, *args, **kwargs):
+        return main_controller.current_l11_resolution(self, *args, **kwargs)
 
-    def disable_resolution_combo(self, combo_box):
-        """Clear and disable a grid-resolution combo box."""
-        if combo_box is None:
-            return
-        try:
-            combo_box.blockSignals(True)
-        except Exception:
-            pass
-        combo_box.clear()
-        combo_box.setEnabled(False)
-        try:
-            combo_box.blockSignals(False)
-        except Exception:
-            pass
-
-    def update_l1_resolution_label(self):
-        """Show the selected L1 relation to L0."""
-        value = self.current_l1_resolution()
-        l0_resolution = self.current_l0_resolution()
-        label = self.label_L1Resolution
-        if label is None:
-            return
-        if value and l0_resolution:
-            label.setText(f"{value / l0_resolution:g} x L0")
-        else:
-            label.setText("")
-
-    def update_l11_resolution_label(self):
-        """Show the selected L11 relation to L1."""
-        value = self.current_l11_resolution()
-        l1_resolution = self.current_l1_resolution()
-        label = self.label_L11Resolution
-        if label is None:
-            return
-        if value and l1_resolution:
-            label.setText(f"{value / l1_resolution:g} x L1")
-        else:
-            label.setText("")
-        self.update_latlon_button_state()
-
-    def current_l0_resolution(self):
-        """Return the current L0 cell size, unrounded when it is known."""
-        if self._grid_l0_info:
-            return float(
-                self._grid_l0_info.get("exact_resolution")
-                or self._grid_l0_info["resolution"]
-            )
-        return None
-
-    def current_l2_resolution(self):
-        """Return current L2 resolution."""
-        if self._grid_l2_metadata and self._grid_l2_metadata.get("l2_resolution"):
-            return float(self._grid_l2_metadata["l2_resolution"])
-        if self._grid_l2_header:
-            return float(self._grid_l2_header["cellsize"])
-        return None
-
-    def current_l1_resolution(self):
-        """Return selected L1 resolution."""
-        return self._current_combo_resolution(self.comboBox_L1)
-
-    def current_l11_resolution(self):
-        """Return selected L11 resolution."""
-        return self._current_combo_resolution(self.comboBox_L11)
-
-    def current_grid_unit(self):
-        """Return the unit shared by the derived grid-resolution controls."""
-        if self._grid_l2_metadata and self._grid_l2_metadata.get("l2_unit"):
-            return self._grid_l2_metadata["l2_unit"]
-        if self._grid_l0_info:
-            return self._grid_l0_info.get("unit", "")
-        return ""
+    def current_grid_unit(self, *args, **kwargs):
+        return main_controller.current_grid_unit(self, *args, **kwargs)
 
     def grid_level_headers(self):
         """Return compatible L0, L1, L11, and L2 headers for latlon.nc."""
@@ -1026,92 +425,17 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             snapshot["headers"] = {}
         return snapshot
 
-    def update_extent_labels(self, metadata=None):
-        """Show the final model extent from the prepared L2 grid header."""
-        label_names = (
-            "label_minimumEasting",
-            "label_maximumEasting",
-            "label_minimumNorthing",
-            "label_maximumNorthing",
-        )
-        labels = [getattr(self, name, None) for name in label_names]
-        if any(label is None for label in labels):
-            return
+    def update_extent_labels(self, *args, **kwargs):
+        return main_controller.update_extent_labels(self, *args, **kwargs)
 
-        header = None
-        if metadata:
-            header = metadata.get("l2_header")
-        if header is None:
-            header = self._grid_l2_header
+    def update_latlon_button_state(self, *args, **kwargs):
+        return main_controller.update_latlon_button_state(self, *args, **kwargs)
 
-        if not header:
-            for label in labels:
-                label.setText("")
-            return
+    def _set_resolution_labels(self, *args, **kwargs):
+        return main_controller._set_resolution_labels(self, *args, **kwargs)
 
-        unit = (
-            (metadata or {}).get("l2_unit")
-            or (self._grid_l2_metadata or {}).get("l2_unit")
-            or self.current_grid_unit()
-        )
-        precision = display_precision_for_unit(unit)
-        xmin, xmax, ymin, ymax = header_bounds(header)
-        values = (xmin, xmax, ymin, ymax)
-        for label, value in zip(labels, values):
-            label.setText(format_resolution(value, unit, precision=precision))
-
-    def update_latlon_button_state(self):
-        """Enable latlon creation once all derived grid levels are available."""
-        button = self.pushButton_createLatLon
-        if button is None:
-            return
-
-        enabled = bool(
-            self.current_l0_resolution()
-            and self.current_l1_resolution()
-            and self.current_l11_resolution()
-            and self._grid_l2_header
-        )
-        button.setEnabled(enabled)
-
-    def _set_resolution_labels(self, level, value_text, unit_text):
-        """Set value and unit labels for a grid level."""
-        value_label = getattr(self, f"label_{level}Resolution", None)
-        unit_label = getattr(self, f"label_{level}ResolutionUnit", None)
-        if value_label is not None:
-            value_label.setText(value_text or "")
-        if unit_label is not None:
-            unit_label.setText(unit_text or "")
-
-    def _populate_resolution_combo(self, combo_box, values, preferred_value=None, unit=None):
-        """Populate a resolution combo box while preserving a compatible selection."""
-        if combo_box is None:
-            return False
-        current_value = self._current_combo_resolution(combo_box)
-        preferred = preferred_value or current_value
-        try:
-            combo_box.blockSignals(True)
-        except Exception:
-            pass
-        combo_box.clear()
-        for value in values:
-            combo_box.addItem(format_resolution(value, unit), float(value))
-        matched_preferred = preferred is None
-        if values:
-            selected_index = 0
-            if preferred:
-                for index, value in enumerate(values):
-                    if self.resolution_values_match(value, preferred, unit):
-                        selected_index = index
-                        matched_preferred = True
-                        break
-            combo_box.setCurrentIndex(selected_index)
-        combo_box.setEnabled(True)
-        try:
-            combo_box.blockSignals(False)
-        except Exception:
-            pass
-        return matched_preferred
+    def _populate_resolution_combo(self, *args, **kwargs):
+        return main_controller._populate_resolution_combo(self, *args, **kwargs)
 
     def resolution_state_precision(self, unit):
         """Return precision used when restoring saved grid-resolution choices."""
@@ -1133,35 +457,11 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         tolerance = 10 ** (-self.resolution_state_precision(unit))
         return abs(available - preferred) <= tolerance
 
-    def log_resolution_preference_warning(
-            self,
-            level,
-            saved_value,
-            fallback_value,
-            unit):
-        """Log when a saved L1/L11 choice is no longer selectable."""
-        precision = self.resolution_state_precision(unit)
-        self.log_message(
-            "WARNING: Saved "
-            f"{level} resolution {format_resolution(saved_value, unit, precision)} "
-            f"{unit or ''} is not compatible with the current grid. "
-            f"Using {format_resolution(fallback_value, unit)} {unit or ''}."
-        )
+    def log_resolution_preference_warning(self, *args, **kwargs):
+        return main_controller.log_resolution_preference_warning(self, *args, **kwargs)
 
-    def _current_combo_resolution(self, combo_box):
-        """Return current numeric resolution from a combo box."""
-        if combo_box is None or combo_box.count() == 0:
-            return None
-        try:
-            data = combo_box.currentData()
-            if data is not None:
-                return float(data)
-        except Exception:
-            pass
-        try:
-            return float(combo_box.currentText())
-        except (TypeError, ValueError):
-            return None
+    def _current_combo_resolution(self, *args, **kwargs):
+        return main_controller._current_combo_resolution(self, *args, **kwargs)
 
     def connect_input_state_teardown_guards(self):
         """Avoid overwriting saved layer selections during QGIS teardown."""
@@ -1215,21 +515,8 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         if not self._suspend_input_state_saves:
             self._preserve_missing_layer_state = False
 
-    def connect_processor_button(
-        self, button, action_name, callback, *, background=False
-    ):
-        """Connect a button to a processor callback with input path logging."""
-        if background:
-            button.clicked.connect(
-                lambda checked=False, name=action_name, cb=callback, control=button:
-                self.run_background_processor_action(name, cb, control)
-            )
-        else:
-            button.clicked.connect(
-                lambda checked=False, name=action_name, cb=callback: self.run_processor_action(
-                    name, cb
-                )
-            )
+    def connect_processor_button(self, *args, **kwargs):
+        return main_controller.connect_processor_button(self, *args, **kwargs)
 
     def run_processor_action(self, action_name, callback):
         """Log current input selections before running a processor action."""
@@ -1313,39 +600,16 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
                 self, action_name, f"{action_name} is already running."
             )
 
-    def _background_processor_failed(self, action_name, message):
-        detail = str(message).split("\n", 1)[0]
-        self.log_message(f"ERROR: {action_name}: {detail}")
-        QMessageBox.critical(self, action_name, detail)
+    def _background_processor_failed(self, *args, **kwargs):
+        return main_controller._background_processor_failed(self, *args, **kwargs)
 
     def reset_geometry_processing(self):
         """Reset geometry outputs and refresh workflow UI state."""
         self.morphology_processor.resetGeometry()
         self.refresh_morphology_workflow_button_states()
 
-    def handle_domain_definition_type(self, index):
-        """Dispatch the selected domain-definition workflow."""
-        if self._loading_input_state:
-            return
-        previous = self._domain_definition_mode
-        previous_dem = self.checkBox_DEMdomain.isChecked()
-        if int(index) == 2:
-            self._domain_definition_mode = self.comboBox_domainDefinitionType.currentText()
-            self.save_input_state()
-            self.open_domain_delineator()
-            return
-        mode = "dem" if int(index) == 0 else "snapped"
-        self.checkBox_DEMdomain.setChecked(mode == "dem")
-        if self.open_domain_assignment(mode):
-            self._domain_definition_mode = self.comboBox_domainDefinitionType.currentText()
-            self.save_input_state()
-            return
-        self.checkBox_DEMdomain.setChecked(previous_dem)
-        combo = self.comboBox_domainDefinitionType
-        combo.blockSignals(True)
-        combo.setCurrentIndex(combo.findText(previous) if previous else -1)
-        combo.blockSignals(False)
-        self.save_input_state()
+    def handle_domain_definition_type(self, *args, **kwargs):
+        return main_controller.handle_domain_definition_type(self, *args, **kwargs)
 
     def open_domain_assignment(self, mode):
         """Open the non-interactive domain/gauge assignment workflow."""
@@ -1372,16 +636,16 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             )
             return False
         try:
-            from .Morphology.hydrology.discharge_dialog import (
+            from ...qt.dialogs.discharge_assignment import (
                 DischargeTableAssignmentDialog,
                 DomainAndDischargeTableAssignmentDialog,
             )
-            from .Morphology.watershed.domain_workflow import DomainWorkflow
-            from .Morphology.watershed.domain_state import (
+            from ...Morphology.watershed.domain_workflow import DomainWorkflow
+            from ...core.handlers.state.domain_state import (
                 DOMAIN_MODE_DEM_EXTENT,
                 DOMAIN_MODE_SNAPPED,
             )
-            from .nml_settings import sync_domain_settings
+            from ...core.handlers.state.nml_settings import sync_domain_settings
 
             layer = self.input_combo("pour_points").currentLayer()
             workflow = DomainWorkflow(
@@ -1454,7 +718,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             )
             return
 
-        from .domain_delineator_dialog import DomainDelineatorDialog
+        from .domain_delineator import DomainDelineatorDialog
 
         self.morphology_processor.load_project_state()
         layer = self.input_combo("pour_points").currentLayer()
@@ -1480,7 +744,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
     def _show_prepared_domain_delineator(
         self, context, pour_points_layer, outlet_id_field, outlet_ids
     ):
-        from .domain_delineator_dialog import DomainDelineatorDialog
+        from .domain_delineator import DomainDelineatorDialog
 
         try:
             dialog = DomainDelineatorDialog(
@@ -1501,7 +765,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         finally:
             self._domain_delineator_dialog = None
             try:
-                from .nml_settings import sync_domain_settings
+                from ...core.handlers.state.nml_settings import sync_domain_settings
 
                 sync_domain_settings(self.project_folder)
             except Exception as error:
@@ -1549,25 +813,11 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             },
         }
 
-    def _capture_workflow_button_default_styles(self):
-        """Remember original button styles so saved states can be cleared."""
-        for workflow_key in self.morphology_workflow_specs():
-            button = self.morphology_workflow_button(workflow_key)
-            if button is not None:
-                self._workflow_button_default_styles[workflow_key] = (
-                    button.styleSheet()
-                )
+    def _capture_workflow_button_default_styles(self, *args, **kwargs):
+        return main_controller._capture_workflow_button_default_styles(self, *args, **kwargs)
 
-    def morphology_workflow_button(self, workflow_key):
-        """Return the button associated with a morphology workflow."""
-        spec = self.morphology_workflow_specs().get(workflow_key, {})
-        for button_name in (spec.get("button"), spec.get("fallback_button")):
-            if not button_name:
-                continue
-            button = getattr(self, button_name, None)
-            if button is not None:
-                return button
-        return None
+    def morphology_workflow_button(self, *args, **kwargs):
+        return main_controller.morphology_workflow_button(self, *args, **kwargs)
 
     def running_morphology_workflow_key(self):
         """Return the first running morphology workflow key, if any."""
@@ -1810,11 +1060,8 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             self.morphology_processor.save_processing_state()
         self.set_morphology_workflow_button_state(workflow_key, "")
 
-    def set_meteo_setup_controls_enabled(self, enabled):
-        """Freeze all run-affecting dialog controls during the combined run."""
-        self.pushButton_BrowseProjectFolder.setEnabled(enabled)
-        self.tabWidget_steps.setEnabled(enabled)
-        self.stackedWidget.setEnabled(enabled)
+    def set_meteo_setup_controls_enabled(self, *args, **kwargs):
+        return main_controller.set_meteo_setup_controls_enabled(self, *args, **kwargs)
 
     def closeEvent(self, event):
         """Prevent closing the dialog while a morphology workflow is running."""
@@ -1833,84 +1080,20 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             return
         super().closeEvent(event)
 
-    def set_execute_all_button_state(self, status):
-        """Reflect execute-all state on the toolbar-style button."""
-        self.set_morphology_workflow_button_state("execute_all", status)
+    def set_execute_all_button_state(self, *args, **kwargs):
+        return main_controller.set_execute_all_button_state(self, *args, **kwargs)
 
-    def set_morphology_workflow_button_state(self, workflow_key, status):
-        """Reflect workflow state on its toolbar-style button."""
-        button = self.morphology_workflow_button(workflow_key)
-        if button is None:
-            return
+    def set_morphology_workflow_button_state(self, *args, **kwargs):
+        return main_controller.set_morphology_workflow_button_state(self, *args, **kwargs)
 
-        if status == "running":
-            button.setEnabled(False)
-            button.setStyleSheet(
-                "QPushButton {"
-                "text-align: left;"
-                "background-color: #f6c453;"
-                "border: 1px solid #a66f00;"
-                "border-radius: 3px;"
-                "}"
-            )
-            return
+    def refresh_execute_all_button_state(self, *args, **kwargs):
+        return main_controller.refresh_execute_all_button_state(self, *args, **kwargs)
 
-        button.setEnabled(True)
-        if status == "completed":
-            button.setStyleSheet(
-                "QPushButton {"
-                "text-align: left;"
-                "background-color: #2e7d32;"
-                "border: 1px solid #1b5e20;"
-                "border-radius: 3px;"
-                "}"
-            )
-        elif status == "failed":
-            button.setStyleSheet(
-                "QPushButton {"
-                "text-align: left;"
-                "background-color: #c62828;"
-                "border: 1px solid #8e0000;"
-                "border-radius: 3px;"
-                "}"
-            )
-        else:
-            button.setStyleSheet(
-                self._workflow_button_default_styles.get(workflow_key, "")
-            )
+    def refresh_morphology_workflow_button_states(self, *args, **kwargs):
+        return main_controller.refresh_morphology_workflow_button_states(self, *args, **kwargs)
 
-    def refresh_execute_all_button_state(self):
-        """Restore execute-all button styling from project processing state."""
-        self.refresh_morphology_workflow_button_state("execute_all")
-
-    def refresh_morphology_workflow_button_states(self):
-        """Restore all morphology workflow button styles from project state."""
-        for workflow_key in self.morphology_workflow_specs():
-            self.refresh_morphology_workflow_button_state(workflow_key)
-
-    def refresh_morphology_workflow_button_state(self, workflow_key):
-        """Restore one morphology workflow button style from project state."""
-        if self.running_morphology_workflow_key() == workflow_key:
-            return
-
-        workflow = self.morphology_processor.workflow_status(workflow_key)
-        if workflow.get("status") == "completed":
-            if (
-                    workflow_key == "meteo_morph_setup"
-                    and self.project_folder
-                    and not os.path.isfile(
-                        os.path.join(
-                            data_folder(self.project_folder),
-                            "latlon.nc",
-                        )
-                    )):
-                self.invalidate_meteo_morph_setup()
-                return
-            self.set_morphology_workflow_button_state(workflow_key, "completed")
-        elif workflow.get("status") == "failed":
-            self.set_morphology_workflow_button_state(workflow_key, "failed")
-        else:
-            self.set_morphology_workflow_button_state(workflow_key, "")
+    def refresh_morphology_workflow_button_state(self, *args, **kwargs):
+        return main_controller.refresh_morphology_workflow_button_state(self, *args, **kwargs)
 
     def project_terminal_dialog(self):
         """Return the persistent terminal dialog for this plugin dialog."""
@@ -1942,294 +1125,35 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         terminal.show_for_directory(workspace_folder(self.project_folder))
         return terminal
 
-    def categorical_type_combo(self, kind):
-        """Return the land-cover, soil, or geology input-type combo box."""
-        name = {
-            "lc": "comboBox_landUseInputType",
-            "soil": "comboBox_soil_inputType",
-            "geology": "comboBox_geology_inputType",
-            "lai": "comboBox_lai_inputType",
-        }[kind]
-        combo = getattr(self, name, None)
-        if combo is None and kind == "lc":
-            combo = self.comboBox_landUseInputType
-        return combo
+    def categorical_type_combo(self, *args, **kwargs):
+        return main_controller.categorical_type_combo(self, *args, **kwargs)
 
-    def categorical_input_mode(self, kind):
-        """Return the selected categorical input mode."""
-        return self.categorical_type_combo(kind).currentText().strip()
+    def categorical_input_mode(self, *args, **kwargs):
+        return main_controller.categorical_input_mode(self, *args, **kwargs)
 
-    def categorical_lookup_config(self, kind):
-        """Return the accepted lookup-table selection for one data type."""
-        config = self._categorical_lookup_configs.get(kind)
-        return dict(config) if config else None
+    def categorical_lookup_config(self, *args, **kwargs):
+        return main_controller.categorical_lookup_config(self, *args, **kwargs)
 
-    def categorical_source_config(self, kind):
-        """Return the dialog-owned source for a categorical workflow."""
-        if self.categorical_input_mode(kind).strip().lower() == "mhm ready":
-            config = self._categorical_ready_configs.get(kind)
-        else:
-            config = self._categorical_lookup_configs.get(kind)
-        return dict(config) if isinstance(config, dict) else None
+    def categorical_source_config(self, *args, **kwargs):
+        return main_controller.categorical_source_config(self, *args, **kwargs)
 
-    def lai_netcdf_config(self):
-        return dict(self._lai_input_config)
+    def lai_netcdf_config(self, *args, **kwargs):
+        return main_controller.lai_netcdf_config(self, *args, **kwargs)
 
-    def handle_categorical_type(self, kind, text):
-        """Open the lookup dialog immediately when lookup mode is selected."""
-        text = str(text or "").strip()
-        previous = self._categorical_modes.get(kind, "")
-        if self._loading_input_state:
-            self._categorical_modes[kind] = text
-            return
-        normalized = text.lower()
-        if kind == "lai":
-            self.handle_lai_input_type(text, previous)
-            return
-        if kind == "lc":
-            self.handle_land_use_input_type(text, previous)
-            return
-        if kind == "soil" and "multi-horizon" in normalized:
-            self.handle_multi_horizon_soil_input(text, previous)
-            return
-        if not self.project_folder:
-            QMessageBox.warning(
-                self,
-                "Project Folder Required",
-                "Select a project folder before configuring a lookup table.",
-            )
-            self._restore_categorical_mode(kind, previous)
-            return
+    def handle_categorical_type(self, *args, **kwargs):
+        return main_controller.handle_categorical_type(self, *args, **kwargs)
 
-        if normalized == "mhm ready":
-            dialog = MhmReadyInputDialog(
-                self.project_folder,
-                kind,
-                self,
-                initial=self._categorical_ready_configs.get(kind),
-            )
-        elif "lookup table" in normalized:
-            dialog = SingleLayerInputDialog(
-                self.project_folder,
-                kind,
-                self,
-                initial=self._categorical_lookup_configs.get(kind),
-            )
-        else:
-            self._categorical_modes[kind] = text
-            self.save_input_state()
-            self.invalidate_meteo_morph_setup()
-            return
-        execute = getattr(dialog, "exec", None) or dialog.exec_
-        if execute() != QDialog.Accepted or dialog.selected_config() is None:
-            self._restore_categorical_mode(kind, previous)
-            return
+    def handle_lai_input_type(self, *args, **kwargs):
+        return main_controller.handle_lai_input_type(self, *args, **kwargs)
 
-        config = dialog.selected_config()
-        if normalized == "mhm ready":
-            self._categorical_ready_configs[kind] = {
-                "input_path": config.input_path,
-                "classdefinition_path": config.classdefinition_path,
-            }
-            self._categorical_lookup_configs.pop(kind, None)
-        else:
-            self._categorical_lookup_configs[kind] = {
-                "input_path": config.input_path,
-                "lookup_table": config.lookup_table,
-                "mapping_field": config.mapping_field,
-                "class_field": config.class_field,
-            }
-            self._categorical_ready_configs.pop(kind, None)
-        self._categorical_modes[kind] = text
-        if kind == "soil":
-            self._advanced_inputs.pop("soil", None)
-            self._save_standard_soil_nml_input(
-                "mhm_ready" if normalized == "mhm ready" else "single_categorical"
-            )
-        self.save_input_state()
-        self.invalidate_meteo_morph_setup()
+    def handle_land_use_input_type(self, *args, **kwargs):
+        return main_controller.handle_land_use_input_type(self, *args, **kwargs)
 
-    def handle_lai_input_type(self, text, previous=""):
-        """Collect LAI NetCDF or future categorical input configuration."""
-        if not self.project_folder:
-            QMessageBox.warning(
-                self, "Project Folder Required", "Select a project folder first."
-            )
-            self._restore_categorical_mode("lai", previous)
-            return
-        normalized = str(text or "").strip().lower()
-        if "netcdf" in normalized:
-            dialog = LaiNetcdfInputDialog(
-                self.project_folder,
-                self,
-                initial=self._lai_input_config,
-            )
-        else:
-            dialog = SingleLayerInputDialog(
-                self.project_folder,
-                "lai",
-                self,
-                initial=self._categorical_lookup_configs.get("lai"),
-            )
-        execute = getattr(dialog, "exec", None) or dialog.exec_
-        if execute() != QDialog.Accepted or dialog.selected_config() is None:
-            self._restore_categorical_mode("lai", previous)
-            return
-        config = dialog.selected_config()
-        if "netcdf" in normalized:
-            self._lai_input_config = {
-                "input_path": config.input_path,
-                "target_timestep": config.target_timestep,
-            }
-            self._categorical_lookup_configs.pop("lai", None)
-            from .applications.mhm_tools_handler import lai_time_step
-            from .nml_settings import update_section
+    def handle_multi_horizon_soil_input(self, *args, **kwargs):
+        return main_controller.handle_multi_horizon_soil_input(self, *args, **kwargs)
 
-            update_section(
-                self.project_folder,
-                "lai",
-                {
-                    "mode": "netcdf",
-                    "source_path": config.input_path,
-                    "source_variable": "",
-                    "target_timestep": config.target_timestep,
-                    "time_step": lai_time_step(config.target_timestep),
-                    "output_path": "data/master/lai/lai.nc",
-                    "variable": "lai",
-                },
-            )
-        else:
-            self._categorical_lookup_configs["lai"] = {
-                "input_path": config.input_path,
-                "lookup_table": config.lookup_table,
-                "mapping_field": config.mapping_field,
-                "class_field": config.class_field,
-            }
-            self._lai_input_config = {}
-            from .nml_settings import update_section
-
-            update_section(
-                self.project_folder,
-                "lai",
-                {
-                    "mode": "single_categorical",
-                    **self._categorical_lookup_configs["lai"],
-                    "processing_status": "not_implemented",
-                },
-            )
-        self._categorical_modes["lai"] = str(text)
-        self.save_input_state()
-        self.invalidate_meteo_morph_setup()
-
-    def handle_land_use_input_type(self, text, previous=""):
-        """Collect the selected ready, single, or historical land-use input."""
-        if not self.project_folder:
-            QMessageBox.warning(
-                self,
-                "Project Folder Required",
-                "Select a project folder before configuring land use.",
-            )
-            self._restore_categorical_mode("lc", previous)
-            return
-        normalized = str(text).strip().lower()
-        if normalized == "mhm ready":
-            dialog = MhmReadyInputDialog(
-                self.project_folder,
-                "lc",
-                self,
-                initial=self._categorical_ready_configs.get("lc"),
-            )
-            execute = getattr(dialog, "exec", None) or dialog.exec_
-            if execute() != QDialog.Accepted or dialog.selected_config() is None:
-                self._restore_categorical_mode("lc", previous)
-                return
-            config = dialog.selected_config()
-            self._categorical_ready_configs["lc"] = {
-                "input_path": config.input_path,
-                "classdefinition_path": "",
-            }
-            self._categorical_lookup_configs.pop("lc", None)
-            self._advanced_inputs.pop("land_cover", None)
-            self._land_cover_ready_source = config.input_path
-        elif "single categorical" in normalized:
-            dialog = SingleLayerInputDialog(
-                self.project_folder,
-                "lc",
-                self,
-                initial=self._categorical_lookup_configs.get("lc"),
-            )
-            execute = getattr(dialog, "exec", None) or dialog.exec_
-            if execute() != QDialog.Accepted or dialog.selected_config() is None:
-                self._restore_categorical_mode("lc", previous)
-                return
-            config = dialog.selected_config()
-            self._categorical_lookup_configs["lc"] = {
-                "input_path": config.input_path,
-                "lookup_table": config.lookup_table,
-                "mapping_field": config.mapping_field,
-                "class_field": config.class_field,
-            }
-            self._categorical_ready_configs.pop("lc", None)
-            self._advanced_inputs.pop("land_cover", None)
-            self._land_cover_ready_source = ""
-        else:
-            from .advanced_input_dialogs import HistoricalLandUseDialog
-
-            initial = self._advanced_inputs.get("land_cover")
-            dialog = HistoricalLandUseDialog(
-                self.project_folder,
-                self,
-                initial=initial,
-                all_time="single layer" in str(text).lower(),
-            )
-            execute = getattr(dialog, "exec", None) or dialog.exec_
-            if execute() != QDialog.Accepted:
-                self._restore_categorical_mode("lc", previous)
-                return
-            value = dialog.selected_input()
-            self._advanced_inputs["land_cover"] = value
-            self._land_cover_ready_source = ""
-            self._save_land_cover_nml_input(value)
-        self._categorical_modes["lc"] = str(text)
-        self.save_input_state()
-        self.invalidate_meteo_morph_setup()
-        self.update_morphology_date_control()
-
-    def handle_multi_horizon_soil_input(self, text, previous=""):
-        """Collect and persist the multi-horizon soil source configuration."""
-        if not self.project_folder:
-            QMessageBox.warning(
-                self,
-                "Project Folder Required",
-                "Select a project folder before configuring soil inputs.",
-            )
-            self._restore_categorical_mode("soil", previous)
-            return
-        from .advanced_input_dialogs import MultiHorizonSoilDialog
-
-        dialog = MultiHorizonSoilDialog(
-            self.project_folder,
-            self,
-            initial=self._advanced_inputs.get("soil"),
-        )
-        execute = getattr(dialog, "exec", None) or dialog.exec_
-        if execute() != QDialog.Accepted:
-            self._restore_categorical_mode("soil", previous)
-            return
-        value = dialog.selected_input()
-        self._advanced_inputs["soil"] = value
-        self._categorical_modes["soil"] = str(text)
-        self._save_soil_nml_input(value)
-        self.save_input_state()
-        self.invalidate_meteo_morph_setup()
-
-    def uses_advanced_categorical_input(self, kind):
-        """Return whether processing should use the advanced input pipeline."""
-        text = self.categorical_input_mode(kind).lower()
-        return (
-            (kind == "lc" and "historical" in text)
-            or (kind == "soil" and "multi-horizon" in text)
-        )
+    def uses_advanced_categorical_input(self, *args, **kwargs):
+        return main_controller.uses_advanced_categorical_input(self, *args, **kwargs)
 
     def process_advanced_categorical_input(self, kind):
         """Prepare configured historical land use or multi-horizon soil."""
@@ -2242,7 +1166,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         version = self.comboBox_mHMversion.currentText().strip()
         try:
             if kind == "lc" and self.categorical_input_mode("lc").lower() == "mhm ready":
-                from .advanced_input_processing import configure_ready_land_cover
+                from ...advanced_input_processing import configure_ready_land_cover
 
                 if not self._land_cover_ready_source:
                     raise ValueError("Select an mHM-ready land-cover file first.")
@@ -2254,7 +1178,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
                     ),
                 )
             elif kind == "lc":
-                from .advanced_input_processing import process_land_cover_input
+                from ...advanced_input_processing import process_land_cover_input
 
                 value = self._land_use_input_value(
                     self._advanced_inputs.get("land_cover")
@@ -2267,7 +1191,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
                     log=self.log_message,
                 )
             else:
-                from .advanced_input_processing import process_soil_input
+                from ...advanced_input_processing import process_soil_input
 
                 value = self._soil_input_value(self._advanced_inputs.get("soil"))
                 outputs = process_soil_input(
@@ -2284,7 +1208,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             self.log_message(
                 f"Advanced {'land-cover' if kind == 'lc' else 'soil'} data prepared."
             )
-            self.update_morphology_date_control()
+            self.refresh_morphology_date_control()
             return True
         except Exception as error:
             self.log_message(f"ERROR preparing advanced {kind} data: {error}")
@@ -2292,7 +1216,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             return False
 
     def _save_land_cover_nml_input(self, value):
-        from .nml_settings import update_section
+        from ...core.handlers.state.nml_settings import update_section
 
         update_section(
             self.project_folder,
@@ -2315,7 +1239,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         )
 
     def _save_soil_nml_input(self, value):
-        from .nml_settings import update_section
+        from ...core.handlers.state.nml_settings import update_section
 
         data = value.as_dict()
         data.update(
@@ -2337,7 +1261,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
     ):
         if not self.project_folder:
             return
-        from .nml_settings import relative_workspace_path, update_section
+        from ...core.handlers.state.nml_settings import relative_workspace_path, update_section
 
         output = (
             relative_workspace_path(self.project_folder, output_path)
@@ -2385,7 +1309,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
 
     @staticmethod
     def _land_use_input_value(value):
-        from .advanced_input_manifests import LandUseInput, LandUsePeriod
+        from ...advanced_input_manifests import LandUseInput, LandUsePeriod
 
         if isinstance(value, LandUseInput):
             return value
@@ -2407,7 +1331,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
 
     @staticmethod
     def _soil_input_value(value):
-        from .advanced_input_manifests import SoilHorizon, SoilInput
+        from ...advanced_input_manifests import SoilHorizon, SoilInput
 
         if isinstance(value, SoilInput):
             return value
@@ -2429,12 +1353,8 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             str(value.get("bulk_density_unit", "")),
         )
 
-    def _restore_categorical_mode(self, kind, text):
-        combo = self.categorical_type_combo(kind)
-        combo.blockSignals(True)
-        index = combo.findText(text) if text else -1
-        combo.setCurrentIndex(index)
-        combo.blockSignals(False)
+    def _restore_categorical_mode(self, *args, **kwargs):
+        return main_controller._restore_categorical_mode(self, *args, **kwargs)
 
     def restore_lai_input_type(self, lai_input_type):
         """Restore the selected LAI input type by text when possible."""
@@ -2445,34 +1365,11 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         if index >= 0:
             combo_box.setCurrentIndex(index)
 
-    def input_layer_widgets(self):
-        """Return persistent layer input widgets and their state keys."""
-        widgets = []
-        for key, kind in (
-            ("dem", "dem"),
-            ("pour_points", "pour_points"),
-            ("soil", "soil"),
-            ("land_cover", "land_cover"),
-            ("geology", "geology"),
-            ("lai_class", "lai"),
-        ):
-            widget = self.input_combo(kind)
-            if widget is not None:
-                widgets.append((key, widget))
+    def input_layer_widgets(self, *args, **kwargs):
+        return main_controller.input_layer_widgets(self, *args, **kwargs)
 
-        return widgets
-
-    def input_text_widgets(self):
-        """Return persistent text/path input widgets and their state keys."""
-        widgets = []
-
-        for key, widget_name in (
-            ("lai_file", "lineEdit_lai_file"),
-        ):
-            widget = getattr(self, widget_name, None)
-            if widget is not None:
-                widgets.append((key, widget))
-        return widgets
+    def input_text_widgets(self, *args, **kwargs):
+        return main_controller.input_text_widgets(self, *args, **kwargs)
 
     def input_state_path(self):
         """Return the project-local input state file path."""
@@ -3094,64 +1991,19 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             self.meteorology_processor.load_project_state()
             self.refresh_grid_resolution_controls()
 
-    def on_tab_changed(self, index):
-        """Switches the stacked widget page when the tab is changed."""
-        page = self.page_for_tab_index(index)
-        if page is not None:
-            self.stackedWidget.setCurrentWidget(page)
-        else:
-            self.stackedWidget.setCurrentIndex(index)
-        self.log_message(f"Switched to '{self.tabWidget_steps.tabText(index)}' tab.")
-        # mHM reports nothing when it finishes, so the Outputs tab re-reads the
-        # output folder each time it is shown.
-        if self.tabWidget_steps.widget(index) is self.tab_outputs:
-            self.refresh_output_display()
+    def on_tab_changed(self, *args, **kwargs):
+        return main_controller.on_tab_changed(self, *args, **kwargs)
 
-    def page_for_tab_index(self, index):
-        """Return the stacked page associated with a tab widget index.
-
-        The tabs and the stacked pages are not a one-to-one set: `tab_outputs`
-        has no page of its own, so it falls through and the caller keeps the
-        index-based mapping.
-        """
-        tab = self.tabWidget_steps.widget(index)
-        page_pairs = (
-            (self.tab_geometry, self.page_geometry),
-            (self.tab_meteo, self.page_meteo),
-            (self.tab_hydro, self.page_hydro),
-            (self.tab_execution, self.page_execution),
-        )
-        for tab_widget, page_widget in page_pairs:
-            if tab_widget is tab:
-                return page_widget
-        return None
+    def page_for_tab_index(self, *args, **kwargs):
+        return main_controller.page_for_tab_index(self, *args, **kwargs)
 
     # --- UI Helper Methods ---
 
-    def browse_lai_file(self):
-        """Browse for Leaf Area Index file"""
-        if not hasattr(self, "lineEdit_lai_file"):
-            self.log_message("LAI input is now selected from the layer dropdown.")
-            return
+    def browse_lai_file(self, *args, **kwargs):
+        return main_controller.browse_lai_file(self, *args, **kwargs)
 
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Leaf Area Index File",
-            "",
-            "All Files (*);;GeoTIFF (*.tif *.tiff);;NetCDF (*.nc);;HDF5 (*.h5 *.hdf5)",
-        )
-        if file_path:
-            self.lineEdit_lai_file.setText(file_path)
-            self.log_message(f"LAI file selected: {file_path}")
-            self.save_input_state()
-            self.invalidate_meteo_morph_setup()
+    def get_lai_time_range(self, *args, **kwargs):
+        return main_controller.get_lai_time_range(self, *args, **kwargs)
 
-    def get_lai_time_range(self):
-        """Get the selected LAI time/date for extraction"""
-        if hasattr(self, "dateEdit") and self.dateEdit:
-            return self.dateEdit.dateTime()
-        return None
-
-    def get_crs(self):
-        """Get the selected CRS"""
-        return self.mProjectionSelectionWidget_crs.crs()
+    def get_crs(self, *args, **kwargs):
+        return main_controller.get_crs(self, *args, **kwargs)

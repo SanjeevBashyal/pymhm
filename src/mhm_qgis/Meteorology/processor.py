@@ -14,7 +14,7 @@ from .forcing import (MeteoFolderSpec, TargetGrid,
 from .paths import expected_meteo_outputs, meteo_mask_path, meteo_output_root
 from .results import log_result_summary, record_forcing_outputs
 from .reuse import required_meteo_variables, stale_meteo_variables
-from .state import MeteorologyOutputState
+from ..core.handlers.state.meteo_outputs import MeteorologyOutputState
 from .mask import write_meteo_mask
 from ..grid_resolution import save_meteo_grid_metadata
 from ..project_layout import is_v6

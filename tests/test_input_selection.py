@@ -20,7 +20,7 @@ from qgis.core import (  # noqa: E402
 )
 from qgis.PyQt import QtWidgets  # noqa: E402
 
-from mhm_qgis.input_selection import (  # noqa: E402
+from mhm_qgis.qt.dialogs.input_selection import (  # noqa: E402
     EXCLUDED_PROJECT_FOLDERS,
     InputComboAdapter,
     LaiNetcdfInputDialog,

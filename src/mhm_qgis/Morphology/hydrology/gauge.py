@@ -13,7 +13,7 @@ from ..common import (
 )
 from ..core.predecessors import PredecessorMixin
 from ..watershed.pour_point_workflow import PourPointWorkflowMixin
-from ..watershed.domain_state import load_state as load_domain_state
+from ...core.handlers.state.domain_state import load_state as load_domain_state
 from qgis.core import QgsCoordinateReferenceSystem, QgsGeometry, QgsPointXY
 from .outlets import (
     OutletCountMixin,

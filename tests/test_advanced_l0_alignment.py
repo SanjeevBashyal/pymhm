@@ -27,7 +27,7 @@ from mhm_qgis.grid_resolution import (  # noqa: E402
     CATEGORICAL_PAD_VALUE,
     LAI_PAD_VALUE,
 )
-from mhm_qgis.nml_settings import update_section  # noqa: E402
+from mhm_qgis.core.handlers.state.nml_settings import update_section  # noqa: E402
 from mhm_qgis.project_layout import (  # noqa: E402
     morph_folder,
     morph_staging_folder,
@@ -216,7 +216,7 @@ def test_publishing_repoints_the_namelist_handoff_at_data_master(tmp_path):
 
     publish_model_inputs(tmp_path, L0_TARGET)
 
-    from mhm_qgis.nml_settings import load_settings
+    from mhm_qgis.core.handlers.state.nml_settings import load_settings
 
     settings = load_settings(tmp_path)
     assert settings["soil"]["output_path"] == (
@@ -277,7 +277,7 @@ def test_a_path_left_pointing_at_staging_is_repointed_to_master(tmp_path):
 
     publish_model_inputs(tmp_path, L0_TARGET)      # nothing staged to move
 
-    from mhm_qgis.nml_settings import load_settings
+    from mhm_qgis.core.handlers.state.nml_settings import load_settings
 
     assert load_settings(tmp_path)["geology"]["classdefinition_path"] == (
         "data/master/static/morph/geology_classdefinition.txt"

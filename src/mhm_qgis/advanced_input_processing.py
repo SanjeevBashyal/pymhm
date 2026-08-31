@@ -14,7 +14,7 @@ from .advanced_input_manifests import (
     write_soil_manifest,
 )
 from .applications.mhm_tools_handler import prepare_land_cover_periods, prepare_soil_horizons
-from .nml_settings import relative_workspace_path, update_section
+from .core.handlers.state.nml_settings import relative_workspace_path, update_section
 from .project_layout import geometry_folder, morph_staging_folder
 
 

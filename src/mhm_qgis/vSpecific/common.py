@@ -13,7 +13,7 @@ from ..project_layout import (
     morph_folder,
     morph_staging_folder,
 )
-from ..nml_settings import load_settings
+from ..core.handlers.state.nml_settings import load_settings
 
 
 def repeat(value: Any, count: int) -> list[Any]:
@@ -33,7 +33,7 @@ def domain_count(dialog: Any) -> int:
         try:
             # Keep this QGIS-optional module importable before the standalone
             # shim is installed.
-            from ..Morphology.watershed.domain_state import (
+            from ..core.handlers.state.domain_state import (
                 domain_count as saved_domain_count,
                 load_state as load_domain_state,
                 state_path as domain_state_path,

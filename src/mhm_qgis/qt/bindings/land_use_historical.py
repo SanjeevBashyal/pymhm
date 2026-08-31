@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Widget wiring for `land_use_historical_input.ui` and `soil_multi_horizon_input.ui`.
+"""Widget wiring for `land_use_historical_input.ui`.
 
-Only the controls the form declares are wired here. The browse button of each
-land-use or soil row is connected where that row is built, since it closes over
-the row's own combo adapter.
+Each row's browse button is connected where the row is built, since it closes
+over that row's combo adapter.
 """
 from __future__ import annotations
 
@@ -18,11 +17,4 @@ def bind_historical_land_use(dialog) -> None:
     dialog.pushButton_browsecLookupTable.clicked.connect(dialog._browse_lookup)
 
 
-def bind_multi_horizon_soil(dialog) -> None:
-    """Wire the horizon-count control."""
-    dialog.pushButton_addHorizonInputWidgets.clicked.connect(
-        lambda: dialog.set_horizon_count(dialog.spinBox_nSoilHorizons.value())
-    )
-
-
-__all__ = ["bind_historical_land_use", "bind_multi_horizon_soil"]
+__all__ = ["bind_historical_land_use"]

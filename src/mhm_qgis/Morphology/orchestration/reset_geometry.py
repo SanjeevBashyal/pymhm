@@ -125,7 +125,7 @@ class ResetGeometryMixin(BaseProcessingMixin):
         if not project_folder:
             return
 
-        from ..watershed.domain_state import load_state, save_state, state_path
+        from ...core.handlers.state.domain_state import load_state, save_state, state_path
 
         if not state_path(project_folder).is_file():
             return

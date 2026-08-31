@@ -9,7 +9,7 @@ from mhm_qgis.advanced_input_manifests import (
     SoilHorizon,
     SoilInput,
 )
-from mhm_qgis.nml_settings import load_settings
+from mhm_qgis.core.handlers.state.nml_settings import load_settings
 from mhm_qgis.project_layout import ensure_project_structure
 from mhm_qgis.vSpecific import build_initial_values
 
@@ -120,7 +120,7 @@ def test_soil_processing_saves_v6_schema_values_and_units(tmp_path, monkeypatch)
 
 def test_soil_state_projects_horizons_to_v5_soildata(tmp_path):
     ensure_project_structure(tmp_path, "5.13")
-    from mhm_qgis.nml_settings import update_section
+    from mhm_qgis.core.handlers.state.nml_settings import update_section
 
     update_section(
         tmp_path,

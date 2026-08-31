@@ -7,8 +7,9 @@ import shlex
 
 from qgis.PyQt import QtCore, QtGui, QtWidgets
 
-from .qt.bindings.terminal import bind as bind_terminal
-from .qt.ui.pyui.ui_project_terminal_dialog import Ui_ProjectTerminalDialog
+from ...qt.controllers import project_terminal as terminal_controller
+from ...qt.bindings.project_terminal import bind as bind_terminal
+from ...qt.ui.pyui.ui_project_terminal_dialog import Ui_ProjectTerminalDialog
 
 
 class ProjectTerminalDialog(QtWidgets.QDialog, Ui_ProjectTerminalDialog):
@@ -147,21 +148,8 @@ class ProjectTerminalDialog(QtWidgets.QDialog, Ui_ProjectTerminalDialog):
     def _process_error(self, error) -> None:
         self._append_text(f"Shell error: {self._process.errorString()}\n")
 
-    def _append_text(self, text: str) -> None:
-        cursor = self.output.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.End)
-        cursor.insertText(text)
-        self.output.setTextCursor(cursor)
-        self.output.ensureCursorVisible()
+    def _append_text(self, *args, **kwargs):
+        return terminal_controller._append_text(self, *args, **kwargs)
 
-    def _show_history(self, offset: int) -> None:
-        if not self._history:
-            return
-        self._history_index = max(
-            0,
-            min(len(self._history), self._history_index + offset),
-        )
-        if self._history_index == len(self._history):
-            self.command_edit.clear()
-        else:
-            self.command_edit.setText(self._history[self._history_index])
+    def _show_history(self, *args, **kwargs):
+        return terminal_controller._show_history(self, *args, **kwargs)

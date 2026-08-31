@@ -396,7 +396,7 @@ class LaiProcessingMixin(
         return None
 
     def _record_lai_nml(self, output_path, source_path, source_variable):
-        from ...nml_settings import relative_workspace_path, update_section
+        from ...core.handlers.state.nml_settings import relative_workspace_path, update_section
 
         getter = getattr(self.dialog, "lai_netcdf_config", None)
         config = getter() if callable(getter) else {}
