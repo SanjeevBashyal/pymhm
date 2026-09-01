@@ -16,7 +16,7 @@ import os
 import tempfile
 from pathlib import Path
 from ....core.handlers.store.paths import workspace_folder
-from ....time_utils import utc_timestamp
+from ...utils.time import utc_timestamp
 
 
 STATE_FILENAME = "mhm_qgis_processing_state.json"

@@ -23,8 +23,8 @@ except ImportError:
 
 
 def _row_type():
-    """Import lazily: `discharge_dialog` imports this module at load time."""
-    from ...Morphology.hydrology.discharge_dialog import _AssignmentRow
+    """Import lazily: `dialogs.discharge_assignment` imports this module at load time."""
+    from ..dialogs.discharge_assignment import _AssignmentRow
 
     return _AssignmentRow
 

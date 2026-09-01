@@ -50,7 +50,7 @@ from ...core.handlers.store.layout import domain_dem_path
 from ...qt.controllers import domain_delineator as domain_delineator_controller
 from ...qt.bindings.domain_delineator import bind as bind_domain_delineator
 from ...qt.ui.pyui.ui_domain_delineator_dialog import Ui_DomainDelineatorDialog
-from ...viewport_raster_range import ViewportRasterRangeController
+from ..objects.viewport_raster_range import ViewportRasterRangeController
 
 
 def _run_outlet_task(task, options):

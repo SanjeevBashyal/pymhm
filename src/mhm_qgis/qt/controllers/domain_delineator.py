@@ -23,7 +23,7 @@ except ImportError:
     from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox
 
 from ..dialogs.input_selection import scan_project_inputs
-from ...Morphology.hydrology.discharge_dialog import OutletAssignment
+from ..dialogs.discharge_assignment import OutletAssignment
 from ...Morphology.hydrology.outlets import StationIdError
 
 def _load_outlet(dialog, outlet_id):

@@ -1200,7 +1200,7 @@ def handle_lai_input_type(dialog, text, previous=""):
             "target_timestep": config.target_timestep,
         }
         dialog._categorical_lookup_configs.pop("lai", None)
-        from .applications.mhm_tools_handler import lai_time_step
+        from ...applications.mhm_tools_handler import lai_time_step
         from ...core.handlers.state.nml_settings import update_section
 
         update_section(

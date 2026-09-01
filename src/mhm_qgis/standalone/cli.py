@@ -19,7 +19,7 @@ def launch_gui():
     if app is None:
         app = QApplication(sys.argv[:1])
 
-    from .qt.dialogs.mhm_qgis_main import MhmQgisDialog
+    from ..qt.dialogs.mhm_qgis_main import MhmQgisDialog
 
     dialog = MhmQgisDialog()
     dialog.setWindowTitle("mHM QGIS")

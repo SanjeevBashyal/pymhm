@@ -7,7 +7,7 @@ from ..common import (
 )
 from ...core.handlers.store.paths import workspace_folder
 from ...core.handlers.store.registry import available, key_for, register
-from ...time_utils import utc_timestamp
+from ...core.utils.time import utc_timestamp
 
 
 class ProcessingStateMixin:

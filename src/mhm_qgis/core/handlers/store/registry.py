@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from ....time_utils import utc_timestamp
+from ...utils.time import utc_timestamp
 from ..file import json as jsonio
 from .paths import workspace_folder
 
