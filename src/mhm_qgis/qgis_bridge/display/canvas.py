@@ -6,23 +6,7 @@ import hashlib
 import tempfile
 from pathlib import Path
 
-
-def raster_source(path, variable: str | None = None) -> str:
-    """Return the layer source, addressing a NetCDF variable when named."""
-    path = Path(path)
-    if variable and path.suffix.lower() == ".nc":
-        return f'NETCDF:"{path}":{variable}'
-    return str(path)
-
-
-def existing_layer(name: str):
-    """Return the loaded layer with this name, if the project already has one."""
-    try:
-        from qgis.core import QgsProject
-    except ImportError:
-        return None
-    matches = QgsProject.instance().mapLayersByName(name)
-    return matches[0] if matches else None
+from .. import layers
 
 
 def select_band(layer, band: int, log=None) -> bool:
@@ -50,13 +34,15 @@ def select_band(layer, band: int, log=None) -> bool:
 def show_raster(dialog, path, name, *, variable=None, band=None, is_raster=True):
     """Show one raster, reusing the loaded layer when the name already exists.
 
-    A time scrubber calls this on every step, and `load_layer` does not
+    A time scrubber calls this on every step, and `layers.load` does not
     uniquify names, so reloading would both stack duplicates in the layer tree
     and re-open the file each tick.
     """
-    layer = existing_layer(name)
+    layer = layers.find_by_name(name)
     if layer is None:
-        layer = dialog.load_layer(raster_source(path, variable), name, is_raster)
+        layer = layers.load(
+            layers.source_uri(path, variable), name,
+            is_raster=is_raster, log=getattr(dialog, "log_message", None))
     if layer is not None and band:
         select_band(layer, band, log=getattr(dialog, "log_message", None))
     return layer
@@ -93,9 +79,9 @@ def show_dataarray(dialog, data, name: str):
             log(f"ERROR: Could not prepare {name} for display: {error}")
         return None
 
-    layer = existing_layer(name)
+    layer = layers.find_by_name(name)
     if layer is None:
-        return dialog.load_layer(str(target), name, True)
+        return layers.load(str(target), name, log=log)
     # The file behind the layer was just rewritten in place.
     layer.dataProvider().reloadData()
     layer.triggerRepaint()
@@ -103,8 +89,6 @@ def show_dataarray(dialog, data, name: str):
 
 
 __all__ = [
-    "existing_layer",
-    "raster_source",
     "select_band",
     "show_dataarray",
     "show_raster",

@@ -14,7 +14,7 @@ except ImportError:
     install(force=True)
     from qgis.PyQt import QtWidgets
 
-from ...advanced_input_manifests import MAX_SOIL_HORIZONS, SoilInput
+from ...core.handlers.lookup import MAX_SOIL_HORIZONS, SoilInput
 
 def set_horizon_count(dialog, count: int) -> None:
     count = min(MAX_SOIL_HORIZONS, max(1, int(count)))

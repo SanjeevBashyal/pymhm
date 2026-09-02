@@ -1,43 +1,121 @@
 # AGENTS.md
 
-Guidance for coding agents working at the repository root of `mhm_qgis`.
+Guidance for coding agents working on `mhm_qgis`: a QGIS 3 plugin that prepares mHM
+model inputs, namelists, and supporting morphology/meteorology data, published as one
+Python distribution that also runs standalone.
 
 ## Repository Shape
 
-This repository publishes one Python distribution and also contains the QGIS
-plugin folder:
-
-- `src/mhm_qgis/`: QGIS plugin folder and Python package.
-- `src/mhm_qgis/metadata.txt`, `src/mhm_qgis/__init__.py`, `src/mhm_qgis/mhm_qgis.py`: QGIS plugin
-  entry points.
+- `src/mhm_qgis/`: the QGIS plugin folder **and** the Python package. Both at once --
+  QGIS loads this directory directly, and it is what the wheel ships.
+- `src/mhm_qgis/metadata.txt`, `__init__.py`, `mhm_qgis.py`: QGIS plugin entry points.
 - `src/mhm_qgis/standalone/cli.py`: PyPI console entry point. The command is
-  `mhm-qgis` and it opens the standalone GUI.
-- `src/mhm_qgis/standalone/qgis_shim.py`: Qt-backed fallback for opening the plugin
-  dialog without QGIS installed, installed via `mhm_qgis.standalone.install()`.
-- `src/mhm_qgis/applications/`: one handler per external package -- everything the
-  plugin asks of `mhm_tools` and `nml_tools` goes through these two modules.
-- `src/mhm_qgis/qt/`: Qt code split by role -- `ui/forms`, `ui/pyui`, `bindings`,
-  `controllers`. See `src/mhm_qgis/AGENTS.md` for the rule per layer.
-- `src/mhm_qgis/qgis_bridge/`: drives the QGIS application (canvas, layers).
-- `src/mhm_qgis/core/`: data handling that knows nothing about Qt or QGIS.
-- `src/mhm_qgis/Morphology/latlon/ascii_morphology.py`: reusable morphology ASCII
-  alignment and writing.
-- `src/mhm_qgis/Meteorology/ERA5Land/mhm/`: local ERA5-Land forcing preparation.
-- `setup.py`, `pyproject.toml`, `MANIFEST.in`: PyPI package metadata.
+  `mhm-qgis` (`mhm_qgis.standalone.cli:main` in both `setup.py` and `pyproject.toml`)
+  and it opens the standalone GUI.
+- `src/mhm_qgis/standalone/qgis_shim.py`: Qt-backed fallback for opening the dialog
+  without QGIS installed, activated by `mhm_qgis.standalone.install()`.
+- `src/mhm_qgis/nml-schemas/`: versioned by mHM version, currently `v5.13` and `v6`.
+- `setup.py`, `pyproject.toml`, `MANIFEST.in`: PyPI packaging metadata.
+- `tests/`: runs in plain system Python; each module installs the standalone shim.
 
-Read `src/mhm_qgis/AGENTS.md` before making plugin-internal changes. It contains the
-current morphology, meteorology, configuration, and QGIS reload conventions.
+A local QGIS install typically symlinks the plugin at
+`/usr/share/qgis/python/plugins/mhm_qgis -> src/mhm_qgis`, which is why a real-QGIS
+smoke test exercises the working tree rather than a copy. Check before relying on it.
+
+## Package Layout
+
+Paths in this section and below are relative to `src/mhm_qgis/` unless they start with
+`src/`, `tests/`, or a project-runtime folder (`data/`, `Z Temp/`, `output/`).
+
+Each package is an API with one job. The point of the split is that a change has exactly
+one obvious home; working out which package it belongs in is usually the whole design
+decision.
+
+- `qt/`: everything Qt, split by role -- see Qt Layering.
+- `qgis_bridge/`: drives the QGIS application itself.
+  - `display/`: puts a prepared raster on the map canvas (`canvas`, `morphology`,
+    `meteo`, `output`).
+  - `layers/`: the only place that knows the `QgsRasterLayer` / `QgsVectorLayer` /
+    `QgsProject` vocabulary -- `loader` (build + validate), `project` (register, find,
+    remove), `crs` (`crs_of`, `transform_to_raster`), `compat` (QGIS version shims).
+- `core/`: computes without knowing Qt or QGIS exist, which is what makes it testable.
+  - `handlers/file/json/`: atomic JSON read/write (`read`, `write`, `merge_sections`).
+  - `handlers/file/netcdf/`: grid variables, time axes, slices.
+  - `handlers/state/`: state persistence -- `cache` (fingerprints), `nml_settings`,
+    `domain_state`, `meteo_outputs`.
+  - `handlers/store/`: where a file is and whether it exists yet -- `paths` (pure
+    joins), `layout` (version branching, project structure), `registry` (what exists),
+    `state_link`.
+  - `handlers/lookup/`: CSV/TXT lookup tables and the manifests built from them --
+    `table`, `manifests`, `geology`, `job`.
+  - `post/`: mHM output discovery and variable/time resolution.
+  - `utils/`: dependency-free leaf helpers (`time`).
+- `applications/`: one handler per external package. Everything the plugin asks of
+  `mhm_tools` and `nml_tools` goes through `mhm_tools_handler.py` and
+  `nml_tools_handler.py`. (`pyflwdir_handler.py` is currently an empty placeholder.)
+- `Morphology/`: DEM, watershed, soil, geology, LAI, crop/mask/write-all, latlon,
+  observations, elevation bands.
+- `Meteorology/`: ERA5-Land to mHM forcing preparation.
+- `vSpecific/`: version-specific initial values handed to the namelist editor.
+- `standalone/`: the Qt-backed shim for running without QGIS, plus the console entry.
+
+Top-level modules that remain: `mhm_qgis.py` (plugin lifecycle, reload-safe imports),
+`morphology_task_bridge.py`, `grid_resolution.py`, `configuration_processor.py`,
+`advanced_input_processing.py`, `native_worker.py`, `utils.py` (the `DialogUtils`
+mixin), `dependency_bootstrap.py`.
+
+## Qt Layering
+
+A module belongs to exactly one layer.
+
+- `qt/ui/forms/`: Qt Designer source, one `.ui` per dialog.
+- `qt/ui/pyui/`: generated by `qt/ui/convert_ui_to_pyui.sh`. **Never hand-edit.** The
+  script globs `forms/*.ui`, so a new form needs no script change. The `resources_rc`
+  top-level-module shim lives in `qt/ui/pyui/__init__.py`.
+- `qt/bindings/`: connects a signal to a slot and nothing else.
+- `qt/controllers/`: what a widget shows and whether it is enabled -- reads and writes
+  widget values, populates combos, validates and warns.
+- `qt/dialogs/`: the dialog classes themselves, one module per form.
+- `qt/threads/`: `QThread` workers.
+- `qt/objects/`: a long-lived `QObject` attached to a widget rather than defined by one
+  -- `viewport_raster_range.py` watches a map canvas and keeps a renderer in step. Not
+  keyed to a single form, so it belongs in none of the three layers above.
+
+Rules that follow from it:
+
+- **One `bindings` and one `controllers` module per form, named after the form.** Two
+  exceptions, both because two forms share one implementation class rather than because
+  the rule bends: `discharge_assignment.py` covers the two discharge forms, and the
+  land-use/soil dialogs share `_DynamicInputDialogMixin` for row construction.
+- **Controllers take the dialog as their first argument**, so behaviour can be exercised
+  without building the dialog's whole collaborator graph.
+- **A dialog keeps a one-line method for any name another package calls.** The dialog is
+  the object processors, task bridges and the display bridge hold a reference to --
+  `input_combo` alone is called from 17 sites under `Morphology/`, and
+  `Morphology/core/base.py` binds `check_prerequisites`, `log_message` and
+  `get_dem_extent_and_resolution` as instance attributes at construction. Moving a body
+  into a controller must not move its name off the dialog.
+- **Wiring made against a runtime-built object stays where that object is built** -- a
+  per-row browse button, a `QProcess`, the task coordinator, a `QgsMapToolEmitPoint`.
+  Only wiring fixed by the form belongs in `qt/bindings/`.
+- The map canvas, its map tool and the vertex marker stay on
+  `DomainDelineatorDialog`: a tool belongs to the widget that owns the canvas.
+- **Dependencies point downward.** `qgis_bridge/` must not reach up into `qt/`. It used
+  to call `dialog.load_layer(...)`; that mechanic now lives in `qgis_bridge/layers`,
+  which both `display/` and the dialog call into.
+- `applications/` imports its external package **inside the functions**. `import
+  mhm_tools` costs ~850 ms and pulls in ~1480 modules (geopandas, pandas, rasterio,
+  scipy, xarray); at module level that lands on every plugin load. Importing `mhm_qgis`
+  must never import `mhm_tools`. `core/handlers/lookup` and `core/handlers/file/netcdf`
+  import their third-party libraries lazily for the same reason.
 
 ## Dual Runtime Contract
 
-The project supports two runtimes:
-
-- QGIS plugin runtime: QGIS loads `src/mhm_qgis/__init__.py` and `src/mhm_qgis/mhm_qgis.py`.
-  Real QGIS APIs, `QgsMapLayerComboBox`, QGIS Processing, and the QGIS project
-  are available.
-- Standalone PyPI runtime: the `mhm-qgis` command installs
-  `mhm_qgis.standalone` before importing the dialog. Layer selectors become
-  path selector widgets backed by lightweight layer objects.
+- **QGIS plugin runtime**: QGIS loads `__init__.py` and `mhm_qgis.py`. Real QGIS APIs,
+  `QgsMapLayerComboBox`, QGIS Processing and the QGIS project are available.
+- **Standalone PyPI runtime**: the `mhm-qgis` command installs `mhm_qgis.standalone`
+  before importing the dialog. Layer selectors become path selector widgets backed by
+  lightweight layer objects.
 
 Keep this rule intact:
 
@@ -49,84 +127,562 @@ Reusable computation should move toward QGIS-free file/path/data APIs.
 
 ## Standalone GUI Notes
 
-- `mhm_qgis.cli:main` is the console script target.
-- The CLI intentionally calls `standalone_qgis.install(force=True)` so the
-  command-line GUI uses file-path selectors even on machines where QGIS Python
-  libraries are importable outside a real QGIS session.
-- The standalone shim is for UI startup and input selection. It does not provide
-  a real QGIS Processing backend. Processing actions that still call
-  `processing.run(...)` need pure-Python or external-tool backends before they
-  can be considered fully cluster-ready.
-- Do not import `mhm_qgis.mhm_qgis_main` in standalone paths before installing the
+- The CLI intentionally calls `install(force=True)` so the command-line GUI uses
+  file-path selectors even where QGIS Python libraries are importable outside a real
+  QGIS session.
+- The shim is for UI startup and input selection. It does **not** provide a real QGIS
+  Processing backend. Actions that still call `processing.run(...)` need pure-Python or
+  external-tool backends before they can be considered cluster-ready.
+- The shim does not stub everything. `QgsMapCanvas`, `QgsMapToolEmitPoint` and
+  `QgsVertexMarker` are absent, so `qt/dialogs/domain_delineator.py` cannot be imported
+  under it -- that dialog needs real QGIS. `Morphology/common.py` does `import
+  processing` at module level, so the whole `Morphology` package needs the shim
+  installed first.
+- Do not import `qt/dialogs/mhm_qgis_main.py` in standalone paths before installing the
   shim.
 
-## mHM-Tools Integration Snapshot
+## mHM-Tools Integration
 
-- `mhm-tools>=0.3.0` is an external runtime dependency. There is no bundled
-  `src/mhm_qgis/mhm_tools` source tree in the current project.
-- The plugin calls exports from `mhm_tools.pre` through
-  `src/mhm_qgis/applications/mhm_tools_handler.py`; it does not shell out to the
-  `mhm-tools` CLI.
-- `rasterize_map_data` burns vector attributes directly or maps them through a
-  lookup table, always using the filled DEM's exact grid.
-- `format_soil_data`, `format_geology_data`, `format_lai_data`, and
-  `format_lc_data` accept
-  categorical and DEM rasters in ASCII, GeoTIFF, or NetCDF form and align
-  categories to the DEM with nearest-neighbour resampling.
-- Shared raster file I/O and alignment live in `mhm_tools.common.file_handler`;
-  `mhm_tools.common.rasterize` is intentionally limited to `rasterize_vector`.
-- The corresponding external CLI commands are `data-converter rasterize-map`
-  and `data-converter format-data`. Categorical inputs require lookup fields;
-  gridded `--type lai` NetCDF input instead infers its source cadence and is
-  warped directly onto the DEM grid.
-- QGIS-specific layer selection, materialization, logging, output placement,
-  and geology parameter metadata remain in `mhm_qgis`. See `src/mhm_qgis/AGENTS.md` for
-  the detailed contract and current caveats.
+- `mhm-tools>=0.3.0` is an external runtime dependency, pinned in both
+  `pyproject.toml` and `requirements.txt`. There is no bundled `src/mhm_qgis/mhm_tools`
+  source tree; import the installed package. **The pin currently exceeds what is
+  installed in the development environment (`0.2.2.dev4`)** -- keep that in mind before
+  reading an import failure as a code bug.
+- Call `mhm_tools` through Python functions, not the `mhm-tools` CLI, unless explicitly
+  asked, and only through `applications/mhm_tools_handler.py`.
+- `rasterize_map_data` burns vector attributes directly or maps them through a lookup
+  table, always on the filled DEM's exact grid.
+- `format_soil_data`, `format_geology_data`, `format_lai_data` and `format_lc_data`
+  accept categorical and DEM rasters as ASCII, GeoTIFF or NetCDF and align categories to
+  the DEM with nearest-neighbour resampling.
+- Shared raster I/O and alignment live in `mhm_tools.common.file_handler`; lookup-table
+  reading in `mhm_tools.common.lookup_handler` (it moved there from `format_data` --
+  patch the plugin's own boundary in tests, not mhm-tools' internals);
+  `mhm_tools.common.rasterize` is deliberately limited to `rasterize_vector`.
+- The matching CLI commands are `data-converter rasterize-map` and
+  `data-converter format-data`.
+- QGIS-specific layer selection, materialization, logging and output placement stay in
+  `mhm_qgis`.
+- Do not copy external `mhm_tools` source back into this repository. Put generally
+  reusable raster computation in `mhm-tools` and expose it as a public Python function
+  plus a CLI command where required.
 
-## Domain And Worker Contracts
+## Current Conventions
 
-- Shared model inputs are published below `mhm-plugin/data/master/`. Static
-  morphology, meteorology, LAI, lat/lon, and streamflow observations must not
-  be written back to the former direct `data/*` folders.
-- Each selected domain outlet owns exactly one physical DEM at
-  `mhm-plugin/data/<outlet-id>/dem.asc`. Outlet IDs used as directory names
-  must reject path separators and traversal components.
-- `mhm_qgis_domain_delineation_state.json` is the canonical detailed state;
-  `nml-settings.json` is the normalized handoff containing domain directories,
-  DEM paths, contained gauge IDs, and shared `data/master/` paths.
-- Qt and QGIS objects remain on the main thread. `QgsTask` jobs receive only
-  copied primitive values and filesystem paths. Large advanced land-cover and
-  soil formatting runs through `mhm_qgis.native_worker` in a child process so a
-  GDAL/NumPy native failure cannot terminate QGIS.
-- Historical v5.13 land-cover formatting is windowed and period-by-period in
-  `mhm-tools`; never restore an eager list of full aligned period arrays.
-- One common L0/L2 extent covers every active domain. Prepared L0 rasters and
-  published advanced categorical inputs are placed on it by integer window copy
-  and nodata padding, never resampled. See `src/mhm_qgis/AGENTS.md`.
+- The selected mHM version comes from `comboBox_mHMversion`.
+- v5.13 uses `mhm_parameter.nml`; v6 uses `mhm_parameters.nml`.
+- v5.13 schemas live under `nml-schemas/v5.13`, v6 under `nml-schemas/v6`. There is no
+  `nml-templates/` directory; nml-tools owns rendering.
+- v5.13 multi-domain template values should render as one-shot arrays where possible,
+  e.g. `resolution_Hydrology = 12000, 24000`, not repeated `resolution_Hydrology(1)` /
+  `(2)` lines.
+- UI-facing logs go through `self.log_message(...)`.
+- No success popups for routine generated classdefinition files; log silently unless an
+  error needs user action.
+
+## State Files
+
+Four JSON files, and one of them has four writers.
+
+- `mhm_qgis_input_state.json`: UI state. `store/layout.project_version()` reads
+  `mhm_version` from it.
+- `mhm_qgis_domain_delineation_state.json`: canonical detailed delineation state
+  (`state/domain_state.py`).
+- `nml-settings.json`: the normalized handoff to nml-tools -- domain directories, DEM
+  paths, contained gauge IDs, shared `data/master/` paths (`state/nml_settings.py`).
+  Despite the name it has nothing to do with the external `nml_tools` package.
+- `mhm_qgis_processing_state.json` is written by **four** modules:
+  | writer | sections |
+  |---|---|
+  | `Morphology/core/processing_state.py` | `version`, `outputs`, `workflows`, `grid`, `domains` |
+  | `core/handlers/state/meteo_outputs.py` | `version`, `outputs` |
+  | `core/handlers/store/registry.py` | `outputs` |
+  | `core/handlers/state/cache.py` | whichever section the caller names (`stages`, `meteo_inspection`) |
+
+  **Three of them write `outputs`.** Every writer must overlay only its own sections;
+  dumping an in-memory copy wholesale erases what another writer added since it loaded,
+  which silently disabled all reuse once already. A read-modify-write race between load
+  and save is the live remaining hazard -- there is a regression test for it in
+  `tests/test_shared_processing_state.py`.
+
+## Morphology Rules
+
+- Filled DEM is an internal prerequisite for many workflows. Requirement calls
+  (`predecessors._ensure_filled_dem`) prepare/reuse it **without** loading it into
+  QGIS; only an explicit user action loads the layer. `pushButton_fillDem` is wired
+  through `connect_optional_processor_button`, which tolerates its absence -- and it is
+  currently absent from every `.ui` form, so `dem_fill.fill_dem()` is reachable only
+  from the workflow.
+- Temporary/intermediate geometry outputs belong in `Z Temp/Geometry`.
+- Final mHM static morphology ASCII/classdefinition outputs belong in
+  `data/master/static/morph`.
+- Crop/mask outputs in `Z Temp/Geometry` use `_crop` and `_masked` suffixes. Do not
+  auto-add them to QGIS; groupBox processing buttons show them.
+- `ascii_export.write_all_layers()` writes masked rasters to ASCII with mHM-compatible
+  headers. It is a Morphology Setup step; there is no longer a `pushButton_writeAll`.
+- Check raster dimensions across levels: L0 must be an integer multiple of L1, and
+  L1/L11 must be compatible with L2 as mHM requires.
+
+## Common L0/L2 Extent
+
+- The common extent is built once from the merged active-domain polygons in
+  `grid_resolution.aligned_l0_l2_headers()`. L2 is snapped outward to the L0 anchor with
+  floor/ceil; L0 is then derived from L2 (`ncols*n`, `nrows*n`, same corners), so `n x n`
+  L0 cells per L2 cell holds by construction. `validate_l0_l2_alignment()` guards every
+  header pair.
+- **Never round a grid-defining cell size.** `floor_cellsize()` / `ceil_cellsize()` are
+  for display and for the resolution text saved in UI state, nothing else. Two separate
+  failures came from rounding them:
+  - Flooring a repeating L0 cell size such as 1/1200 degrees to 8 places drifts a
+    fraction of a cell per row; over a few thousand rows the L0 window copy rejects
+    every raster as misaligned.
+  - `120 x` a 1/1200-degree cell size is `0.09999999999999999`, one ulp under `0.1`.
+    Flooring *that* to 8 places gives `0.09999999`, a 1e-8 error that fails
+    `validate_l0_l2_alignment` and makes `possible_resolutions()` return nothing.
+
+  Grid construction uses `exact_resolution` / `header["exact_cellsize"]` from
+  `raster_resolution_info()` and `current_l0_resolution()`. The L2 cell size is carried
+  verbatim from `aligned_l0_l2_headers()` through
+  `update_l2_resolution_from_metadata()`, `grid_level_headers()`, `read_header_file()`,
+  `_standardize_header()`, `_resolution_ratio()` and the `header_for_*` builders.
+  `_target_l0_header()` prefers the saved exact L0 header; never rebuild it from a
+  rounded resolution.
+- Never shift or shrink a misaligned boundary; expand it outward only.
+- Prepared L0 rasters are never resampled. `file_tasks.crop_aligned_l0_raster()` and
+  `mask_aligned_l0_raster()` copy integer windows, pad outside the source, and raise on
+  a misaligned or wrong-CRS input. Do not reintroduce `gdal:warpreproject` or
+  `gdal:cliprasterbymasklayer` here.
+- **A class layer must never carry nodata.** Two rules follow, both declared per layer in
+  `masking._collect_layers_to_crop`:
+  - The geometric pad is separate from the declared nodata. `pad_value` fills cells the
+    source does not reach; the band nodata stays `-9999`. Land cover, soil and geology
+    pad with `grid_resolution.CATEGORICAL_PAD_VALUE` (`1`), LAI with `LAI_PAD_VALUE`
+    (`0.0`). The DEM derivatives (dem, slope, aspect, facc, fdir, idgauges) still pad
+    with nodata. The publish path takes the same values from `advanced_l0.pad_spec_for`.
+  - **Only the DEM derivatives are watershed-masked.** Land cover, soil, geology and LAI
+    keep the full model extent: `mask_all_layers` writes their `_masked.tif` as a
+    straight `crop_aligned_l0_raster` copy of the crop, and `mask_lai_netcdf_to_l0`
+    copies `lai_crop.nc` to `lai.nc` with no mask. The `_masked` name is kept because
+    `write_all_layers` keys on it. Masking them would carve nodata into cells mHM reads,
+    which is a hole, not a boundary.
+- Advanced historical land cover and multi-horizon soil are formatted on the filled-DEM
+  grid and then placed on the common L0 header by `Morphology/layers/advanced_l0.py`,
+  which uses `ascii_morphology.pad_l0_file_to_header()` (cell lookup plus padding, never
+  interpolation). This is Morphology Setup step 5/6.
+- **ASCII grids are padded by streaming text**, in `Morphology/latlon/ascii_pad.py`.
+  Loading one to pad it costs gigabytes: measured at 3238 MiB for a 13201 x 6001 soil
+  class raster, which is why soil failed inside QGIS once crop and mask had already
+  claimed memory. The streaming version is 39 MiB and 1 s for the same file. Only the
+  soil *class* raster is padded; the horizon inputs (clay, sand, silt, bulk density) are
+  never touched.
+- Each Morphology Setup step records its own status in `workflows` as `<workflow>_crop`,
+  `_mask`, `_latlon`, `_write`, `_publish`, so a failure points at the failing step.
+- L2 meteorology inputs already on the target grid are sliced and padded by
+  `Meteorology/l2_grid.py`. Only misaligned or reprojected inputs are resampled, and
+  then nearest-neighbour only. Every written file and header is checked against the saved
+  L2 header before publication.
+- ERA5-Land temperature files are read once for `tavg`, `tmin` and `tmax` through
+  `iter_daily_datasets()`, but only when the estimated hold fits
+  `MHM_QGIS_METEO_MAX_BYTES` (2 GiB default). A long record needs all three series in
+  memory at once, tripling the peak, so it falls back to one variable at a time. Consume
+  the iterator and release each dataset after writing; `build_daily_datasets()` collects
+  them all and is for tests and short records.
+- `Meteorology/reuse.py` skips meteorology preparation when every required variable is
+  recorded in `mhm_qgis_processing_state.json`, still on disk, and its `header.txt`
+  matches the current L2 header. A changed L2 grid always rebuilds. `pet` is only
+  required when a PET folder is selected.
+- The validated L0 header, L2 header and multiplier are mirrored into the `grid` section
+  of `mhm_qgis_processing_state.json` for resumes.
+- Model-ready shared inputs live below `data/master`: static morphology in
+  `data/master/static/morph`, forcing in `data/master/meteo`, LAI in `data/master/lai`,
+  lat/lon at `data/master/latlon.nc`, observations in
+  `data/master/observation/streamflow`. Static morphology, meteorology, LAI, lat/lon and
+  streamflow observations must not be written back to the former direct `data/*` folders.
+- **Domain DEMs are written during Morphology Setup, not at delineation.** Delineation
+  records each domain's polygon and its target `data/<name>/dem.asc` in
+  `mhm_qgis_processing_state.json` under `domains`; step 6/6 (`write_domain_dems_to_l0`
+  -> `layers/domain_dem.py`) then masks the *cropped* L0 DEM with each polygon and
+  writes the ASCII. Every domain therefore shares the common L0 extent and matches the
+  other inputs cell for cell, which is what mHM needs. Cropping each domain to its own
+  bounding box produced mismatched matrices -- measured on one project: 3748x2824,
+  974x895 and 13202x6002 against a common grid of 13320x6120.
+- Each outlet owns exactly one physical DEM at `data/<outlet-id>/dem.asc`. Outlet IDs
+  used as directory names must reject path separators and traversal components, and
+  directories are created from saved outlet IDs, not literal template placeholders.
+- Each domain folder also receives the shared morphology inputs listed in
+  `DOMAIN_INPUT_NAMES` (slope, aspect, facc, fdir, soil class, geology class and their
+  class-definition files, plus `.prj` sidecars), because mHM reads morphology per domain
+  from `dir_Morpho`. Unchanged destinations are skipped so a rerun does not recopy. The
+  list is explicit rather than a glob so nothing unrelated leaks out of `data/master`;
+  `dem.asc` is excluded because each domain writes its own, and land cover, LAI and
+  `idgauges.asc` are excluded because the namelist points every domain at the shared copy.
+- **This is why Publish runs before Write Domain DEMs.** An advanced or mHM-ready soil,
+  geology or land-cover raster stays in `Z Temp/Morphology/morph` until
+  `publish_model_inputs` moves it into `data/master`, so copying first found nothing and
+  left every domain with a bare `dem.asc` -- silently. `copy_master_inputs` now logs what
+  `data/master` could not supply. Do not move `domain_dems` back ahead of `publish`.
+- `file_tasks.write_domain_dem_ascii()` streams rows straight to text, so a domain DEM
+  costs flat memory whatever the grid size. Do not reintroduce
+  `materialize_domain_dem_file` into the delineation path; it crops to the cutline and is
+  kept only for callers that genuinely want a tight extent.
+- Keep the Domain Outlet label and checkbox enabled regardless of their current value.
+  An unchanged outlet location is a valid domain/gauge location; a map pick overrides it.
+
+## v6 Input Layout
+
+- `store/layout.project_version()` reads `mhm_version` from
+  `mhm_qgis_input_state.json`, so the path helpers branch on version internally and the
+  ~24 callers of `morph_folder` / `lai_folder` never thread it through. The result is
+  cached per project folder against the state file's mtime -- it used to re-parse the
+  JSON on every call, inside loops. Unknown or missing version falls back to v5.13, which
+  every existing project already uses. **v5.13 output is unchanged**; tests assert that.
+- `ensure_project_structure()` honours its own `version_text` argument. It used to read
+  the version from state instead, so on a *new* project the state file did not exist, the
+  v5.13 default won, and asking for v6 still built `data/master/static/morph`.
+- v6 differences, all matching `.scripts/project-template/v6` and the mHM examples:
+  - `data/master/morph/` instead of `data/master/static/morph/`
+  - one `input.nc` instead of separate `.asc` -- `Morphology/layers/morph_input_nc.py`
+    bundles the masked L0 rasters with `x`/`y`/`x_bnds`/`y_bnds` and 2-D `lon`/`lat`, so
+    v6 needs no separate `latlon.nc`
+  - `data/master/meteo/<var>.nc`, flat, no `header.txt`, plus `mask.nc` from
+    `Meteorology/mask.py`
+  - `data/<domain>/dem.nc` from `layers/domain_dem_nc.py`, and no shared-file copying
+    into domain folders because everything else lives in `input.nc`
+  - `data/master/gauge/streamflow/` instead of `observation/streamflow/`
+- `input.nc` carries seven variables: `dem, fdir, slope, aspect, geology_class,
+  soil_class, facc`. **`LAI_class` is deliberately absent** -- mhm_qgis has no LAI class
+  product, so `lai_class_path` is rendered empty rather than naming a file that is never
+  written. Add both together if LAI classes are introduced.
+- The meteorology reuse check has no header file to compare under v6, so it validates the
+  written NetCDF grid against the saved L2 header instead.
+
+## Staging And Publication
+
+- Execute All writes land cover, soil and geology outputs into `Z Temp/Morphology/morph`
+  (`morph_staging_folder`), never straight into `data/master`. Nothing is model-ready
+  until the common L0 extent is known, and that only happens once meteorology has fixed
+  the L2 grid.
+- Morphology Setup step 5/6 (`align_advanced_inputs_to_l0` ->
+  `advanced_l0.publish_model_inputs`) pads each staged raster onto the L0 header, moves
+  the whole staged set into `data/master/static/morph` (class definitions and `.prj`
+  sidecars included), and rewrites the `output_path` / `classdefinition_path` /
+  `scenes[].output_path` entries in `nml-settings.json` to the published locations. Those
+  values feed `vSpecific/v5_13` and `vSpecific/v6`, so they must name files that exist.
+- Repointing also fixes paths left pointing at staging when the file is already in
+  master, so a reused stage still ends up resolvable.
+- The step finishes by calling `missing_model_inputs()` and fails when anything the
+  handoff names is absent. That is the guarantee that a completed Morphology Setup leaves
+  `nml-settings.json` usable by nml-tools.
+- `mHM_ready` is the exception: it bypasses crop/mask/write, so its raster and class
+  definition are already final and go directly to `data/master`.
+- Execute All verifies its categorical outputs in **staging**; only mHM-ready is verified
+  in `data/master`.
+
+## Fingerprinted Reuse
+
+- `core/handlers/state/cache.py` records, in `mhm_qgis_processing_state.json`, a
+  fingerprint of each stage's inputs next to the outputs it produced. A stage reruns only
+  when an input's size or modification time changed, its configuration changed, or one of
+  its recorded outputs is gone. Content is never hashed, so the check stays cheap on
+  multi-gigabyte inputs.
+- Sections in use: `stages` (per Execute All stage, from `morphology_task_bridge`) and
+  `meteo_inspection` (per meteorology folder, from `Meteorology/inspection_cache`). Keep
+  entries additive; `store_payload` merges into the existing state rather than replacing.
+- The categorical lookup stages and the LAI stage are gated on it. Geology used to rerun
+  every time because only land cover and soil passed `reuse_existing`, and that check was
+  existence-only rather than input-based. Land cover and soil keep `reuse_existing=True`
+  because their advanced mode has no lookup job to fingerprint; removing it would make
+  advanced runs rebuild every time.
+- Outputs already on disk with no recorded fingerprint are **adopted** when they postdate
+  every input (`outputs_newer_than_inputs`), so a project prepared before the cache
+  existed avoids one pointless rebuild. An output older than an input is certainly stale
+  and is rebuilt instead.
+- `Meteorology/inspection_cache.py` wraps `inspect_meteo_folder`, which opens every
+  NetCDF in a folder **twice**. On a 552-file ERA5-Land record that froze project load for
+  ~22 s per folder; reusing an unchanged inspection brings the whole `load_input_state`
+  from 22.6 s to 0.26 s. Do not call `inspect_meteo_folder` directly from the dialog.
+
+## Categorical Morphology Inputs
+
+- Plain input combo boxes are exposed through compatibility adapters under the former
+  `mMapLayerComboBox_*` names. Loaded QGIS layers are always listed; folder searching
+  optionally adds relative project paths.
+- Land cover, soil and geology use either `mHM_ready` or `Lookup Table` mode. Lookup mode
+  stores an explicit CSV or delimited TXT lookup file, mapping field and class field.
+- **All lookup-table reading goes through `core/handlers/lookup`.** `table.read` reads
+  `.csv` via mHM-tools and delimited `.txt` via pandas; `table.normalize_key` is the one
+  place that folds a column name (dropping a leading `*` and a `[unit]` suffix), and
+  every name comparison must use it. `table.columns` lists the selectable fields, hiding
+  starred and geometry columns. `table.as_csv` is a context manager that hands mHM-tools
+  a real CSV, converting a TXT lookup into a scratch directory it owns -- it must not
+  write into the directory it is handed, because one caller passes a real output folder.
+- `mhm_tools.pre.rasterize_map_data`, `format_soil_data`, `format_geology_data` and
+  `format_lc_data` perform all categorical raster computation. Do not restore local QGIS
+  reclassification or guessed mappings.
+- Vector lookup processing burns the selected class field. Its follow-up formatter must
+  therefore map `class_field` to itself; do not map the original source field twice.
+- The filled DEM defines the exact target grid and CRS. Original input and DEM CRS
+  arguments are missing-metadata fallbacks and must not override conflicting embedded
+  metadata.
+- Lookup mode retains `3_land_use.tif`, `3_soil.tif` and `3_geology_processed.tif` for
+  the existing crop/mask/write workflow.
+- Soil and geology classdefinitions are produced once by their formatter and moved to
+  `data/master/static/morph`. Only geology `PARAMETER_VALUE` metadata remains
+  plugin-specific, written by `core/handlers/lookup/geology.py` to
+  `Z Temp/Geometry/geology_class_metadata.json`.
+- `mHM_ready` accepts local `.asc`, `.nc` or `.tif` rasters, copies them to
+  `data/static/morph`, and bypasses categorical crop/mask/write. Soil and geology require
+  their existing classdefinition in that folder; geology also requires its plugin
+  metadata in `Z Temp/Geometry`.
+- Prefer direct local paths. Materialize provider sublayers and non-file-backed QGIS
+  layers only at the plugin boundary.
+- Do not add Shapely validity checks or `make_valid` calls before rasterizing.
+- The `format-data.csv` manifests for historical land cover and layered soil are built by
+  `core/handlers/lookup/manifests.py`, which validates before writing: land-use periods
+  must be ordered and gap-free, soil horizons consecutive and contiguous starting at
+  depth 0. **Their bytes are a contract mHM-tools parses** -- the soil preamble
+  (`Bulk Density Unit = ...`) and the relative-path rewriting are part of it. Diff the
+  output bytes before and after any change here.
+
+## LAI
+
+- The implemented LAI workflow is input type item 0: long-term mean monthly gridded data
+  from NetCDF.
+- For NetCDF LAI, disable lookup table and lookup field controls.
+- Infer the input cadence from the NetCDF time coordinate; do not ask the user to repeat
+  it in the UI.
+- Clip/resample LAI to the filled DEM L0 grid. The filled DEM may be projected while LAI
+  may be lat/lon.
+- **Execute All has two implementations. The button uses the bridge.**
+  `pushButton_executeAllMorphology` goes to `MorphologyTaskBridge.start_execute_all()`, a
+  `QgsTask` stage list (fill, terrain, land cover, soil, geology, LAI, hydrology).
+  `ExecuteAllMixin.execute_all_processing()` is the synchronous twin and is not reachable
+  from the UI. A stage added only to the mixin silently never runs -- that is exactly how
+  the LAI stage was missed. Add stages to both.
+- The Execute All Rasterio warp fills cells the source cannot supply with **0**: a
+  missing leaf area is none, not a gap. The later aligned window copy pads beyond the
+  staged extent with the same **0**. LAI is not watershed-masked, so `-9999` should not
+  appear in a published LAI cube.
+- LAI follows the same two-stage path as every other layer:
+  - **Execute All step 7/15** (`resample_lai_to_dem_grid`, bridge stage `start_lai`)
+    resamples the source onto the filled DEM grid with **bilinear** interpolation and
+    stages it at `Z Temp/Morphology/lai/lai_dem.nc`. The result has exactly the DEM's
+    size and extent.
+  - **Morphology Setup** then reaches the common L0 extent by integer **window copy**
+    padded with `0` (`crop_lai_netcdf_to_l0`); the mask hook (`mask_lai_netcdf_to_l0`)
+    publishes that crop as `lai.nc` unmasked. Neither stage resamples.
+
+  Keep the resampling in Execute All: changing the L2 multiplier must not force a
+  re-resample, only a re-crop.
+- Reusable temporal conversion, Rasterio warping, streaming NetCDF writing and aligned
+  window copying live in `mhm_tools.pre.format_lai`. Call that public API only through
+  `applications/mhm_tools_handler.py`. `lai.py` remains the thin QGIS boundary, and
+  `lai_task_options()` snapshots paths and primitive values for the worker. Never call a
+  processor method or touch a widget from the worker.
+- mHM-tools streams every stage one block of target rows and one time step at a time.
+  Never materialise the whole target cube or the full WGS84 target mesh.
+- `lai_window_offsets()` (in mhm-tools) validates cell size and alignment before
+  copying and raises rather than silently shifting the data.
+- Target WGS84 coordinates are generated by row block rather than as a full mesh;
+  projected grids must remain memory-bounded too.
+- The LAI variable is written at zlib level 1 on purpose: level 4 compresses an upsampled
+  grid no better (78:1 vs 76:1) and takes nearly twice as long.
+- Bilinear output barely compresses. Measured on real GIMMS LAI upsampled 100x:
+  nearest-neighbour reached 70:1 on its runs of repeated values, bilinear only 1.80:1 on
+  the DEM grid and 1.85:1 on the L0 grid because every cell differs. That is why mhm-tools'
+  `LAI_ASSUMED_COMPRESSION` is 1.8, and why a long record at L0 resolution is expensive
+  on disk: 468 monthly steps on a 13320 x 6120 grid is ~158 GiB per file, and the
+  pipeline writes three (`lai_dem.nc`, `lai_crop.nc`, `lai.nc`). Check the numbers before
+  assuming a long record is feasible; the 12-step long-term-mean option is ~4 GiB per file.
+- `lai.nc` is the published file; `lai_masked.nc` is not written, because a second
+  full-size copy costs disk for no benefit.
+- `mhm_tools.pre.format_lai.assert_lai_output_fits()` is a disk check, not a memory
+  check: memory is bounded by the streaming writer. It compares the estimate against
+  real free space via `shutil.disk_usage` and raises `MemoryError`. There is **no**
+  environment-variable override -- an earlier version of this document claimed
+  `MHM_TOOLS_LAI_MAX_BYTES`, which does not exist.
+- LAI is a 3D monthly array: 12 months plus spatial dimensions. Crop operations must
+  apply to all months. Output NetCDF must be double precision (`float64`). Write the L0
+  header for LAI to `data/master/lai/header.txt`.
+
+## Displaying Results
+
+- Three group boxes share one render path: `groupBox_displayMorphLayers`,
+  `groupBox_meteoDisplay` and `groupBox_outputDisplay`. Each picks a variable and a time,
+  then `qgis_bridge/display` puts a 2-D raster on the canvas.
+- `core/handlers/file/netcdf` reads the file; `core/post` resolves which variable and
+  time step; `qgis_bridge/display` renders. Keep that order -- the resolver is Qt-free
+  and testable, the renderer is not.
+- `show_raster` reuses the layer already loaded under the same name. A time scrubber
+  calls it on every step and `layers.load` does not uniquify names, so reloading would
+  both stack duplicates in the layer tree and reopen the file each tick.
+- Prepared forcing can be addressed through a `NETCDF:"path":var` URI with
+  `band = time index + 1`. **mHM output cannot**: it carries no CRS and GDAL returns the
+  identity geotransform `(0,1,0,0,0,1)`, which would place it at the origin with unit
+  pixels. Output therefore goes through `show_dataarray`, which attaches a CRS and writes
+  a scratch raster. The two paths cost the same per tick (measured 220.3 ms vs 224.7 ms),
+  so correctness decides, not speed.
+
+## Namelists
+
+- **The plugin no longer renders namelists itself.** It hands schemas, values and
+  dimensions to nml-tools, which owns the editor and the rendering. There is no
+  `Configuration/` package.
+- Schemas ship under `nml-schemas/v5.13` and `nml-schemas/v6`.
+- Version-specific initial values are built by `vSpecific/` (`build_initial_values`,
+  `build_dimensions`), which reads `nml-settings.json` through
+  `state/nml_settings.load_settings`.
+- The handoff goes through `applications/nml_tools_handler.launch_profile_editor`.
+  `configure_qtpy_api()` must run before it, because nml-tools loads Qt on first call.
+- The editor runs modally on the QGIS event loop and its return code is not meaningful
+  under QGIS, so the plugin cannot tell save from cancel.
+- nml-tools' modal dialogs became tabs (`ProfileDialog` -> `ProfileTab`); check the
+  installed API before assuming a class name.
+- Preserve full v5.13 parameter templates so blocks like `&PET0` remain present.
+- Be careful with Fortran namelist keys containing indices or derived-type fields, e.g.
+  `eval_Per%yStart`, `GeoParam(:,1)`, `GeoParam(1,:)`.
+- `mhm_qgis_domain_delineation_state.json` remains canonical. Project domain directories,
+  `dem.asc` paths, inverse domain-to-gauge membership and gauge metadata into
+  `nml-settings.json` before opening nml-tools.
+- If changing schemas, keep templates and compatibility mappings in sync.
+
+## Background Processing
+
+- Widgets, `QgsProject`, `QgsMapLayer` and map-canvas operations are main-thread only.
+  Snapshot paths, CRS text, numbers and plain containers before starting work.
+- Use `TaskCoordinator`/`QgsTask` for path-only computation and return paths or
+  serializable results to a main-thread completion callback. `QgsTask` jobs receive only
+  copied primitive values and filesystem paths.
+- **All heavy categorical formatting runs in `mhm_qgis.native_worker`**, a child process,
+  dispatched through `_run_in_worker`: advanced land cover and soil, and the lookup mode
+  used by geology. The lookup path used to run inside QGIS and OOM-killed it --
+  `anon-rss:5756792kB`, i.e. 5.5 GiB, formatting a vector input onto a 13201 x 6001 grid.
+  The worker sets `oom_score_adj=500` so the kernel takes the child first. Cancellation
+  must terminate that child; a nonzero or signal exit is reported as a task failure
+  rather than crashing QGIS.
+- **Worker-side modules must not import anything under `Morphology/`.** Importing that
+  package runs `Morphology/__init__` -> `common` -> `import processing`, which does not
+  exist outside QGIS. The lookup job (`core/handlers/lookup/job.py`) is clear of it, and
+  `core/handlers/lookup` as a whole imports no QGIS, no pandas and no `applications` at
+  package-import time. Keep it that way; there is a subprocess test that asserts it.
+- Historical v5.13 land-cover formatting is windowed and period-by-period in `mhm-tools`;
+  never restore an eager list of full aligned period arrays.
+- Keep large categorical raster algorithms bounded by raster windows and write one
+  historical period before allocating the next.
+
+## Import And Reload Pitfalls
+
+- QGIS reload can import `mhm_qgis.py` as top-level `mhm_qgis`; keep reload-safe import
+  handling intact.
+- Avoid introducing package-relative imports into files that may be loaded top-level
+  unless existing code already handles that context.
+- Circular mixin inheritance can break plugin reload with MRO errors. Prefer linear
+  aggregate mixins and small shared helper modules.
+- **Relative-import depth is the commonest error when moving a module.** Count from the
+  module's own package: level 1 is the containing package, and each extra dot goes up
+  one. Beware the two `core` packages -- `src/mhm_qgis/core/` and
+  `src/mhm_qgis/Morphology/core/` -- and the two `layers` packages,
+  `qgis_bridge/layers/` and `Morphology/layers/`.
+- A function-local import is invisible to the test suite until that code path runs. Four
+  such imports survived a package move undetected for exactly that reason.
+- Naming a module after a stdlib module (`core/utils/time.py`, `core/handlers/file/json/`)
+  is safe: Python 3 absolute imports mean `import time` still gets the builtin, which
+  wins over any `sys.path` entry.
+
+## Output Paths To Remember
+
+- Temporary geometry: `Z Temp/Geometry`
+- Morphology staging: `Z Temp/Morphology/morph`
+- Shared static morphology: `data/master/static/morph` (v6: `data/master/morph`)
+- Domain DEM: `data/<outlet-id>/dem.asc` (v6: `dem.nc`)
+- LAI: `data/master/lai`
+- Meteorology: `data/master/meteo`
+- Streamflow: `data/master/observation/streamflow` (v6: `data/master/gauge/streamflow`)
+- Root namelists: project root (`mhm.nml`, parameter namelist, `mhm_outputs.nml`)
+- mHM outputs: `output`
+- Restarts: `restart`
 
 ## Packaging Rules
 
-- Keep package discovery recursive. The project contains nested packages under
-  `src/mhm_qgis/Morphology`, `src/mhm_qgis/Meteorology`, `src/mhm_qgis/qt`,
-  `src/mhm_qgis/qt/ui`, `src/mhm_qgis/qt/bindings`, `src/mhm_qgis/qt/controllers`,
-  `src/mhm_qgis/core`, `src/mhm_qgis/applications`, `src/mhm_qgis/qgis_bridge`,
-  `src/mhm_qgis/standalone` and `src/mhm_qgis/vSpecific`. Every one needs an
-  `__init__.py` or setuptools drops it from the wheel.
-- Keep the `mhm-tools` dependency floor synchronized between `pyproject.toml`
-  and `requirements.txt` when an adapter starts using a newer public API.
-- Include plugin assets, schemas, templates, and project-template files in the
-  PyPI build.
+- Keep package discovery recursive. The distribution currently ships **38** packages;
+  every one needs an `__init__.py` or setuptools drops it from the wheel. This bites
+  every time a new subpackage is added -- a directory that exists but has no
+  `__init__.py` is not importable and not shipped.
+- Keep the `mhm-tools` dependency floor synchronized between `pyproject.toml` and
+  `requirements.txt` when a handler starts using a newer public API.
+- Include plugin assets, schemas, templates and project-template files in the PyPI build.
 - If adding data files under `src/mhm_qgis/`, update `MANIFEST.in` and package-data
   patterns if the extension is new.
 - Do not add `qgis` as a PyPI dependency. QGIS is provided by QGIS itself.
 
+## Verifying A Change
+
+- `python3 -m pytest tests/ -q` runs the whole suite in plain Python; the standalone shim
+  is installed per test module. The current baseline is **292 passed, 0 failed** -- know
+  it before you start, so a regression is unmistakable.
+- `python3 -m compileall -q src/mhm_qgis` catches misplaced imports, broken indentation
+  and `__future__` placement. `ast.parse` does **not** enforce `__future__` placement;
+  `compile()` does.
+- After moving any module, statically resolve every intra-package import against the real
+  module tree rather than trusting the test suite -- function-local imports and
+  module-level imports in modules no test touches will otherwise pass silently.
+- When a file format is a contract (a manifest, a namelist, an ASCII header, geology
+  metadata), generate it before and after the change from identical inputs and `cmp` the
+  bytes.
+- For real-QGIS checks, prepend `/usr/share/qgis/python` and
+  `/usr/share/qgis/python/plugins` to `sys.path`, call `QgsApplication.setPrefixPath` and
+  `initQgis()`. Set `locale/userLocale` in `QSettings` **after** `initQgis()` or
+  `classFactory` fails on a headless machine. Useful assertions: the main dialog
+  constructs with 6 input adapters and 5 tabs.
+- The standalone shell Python may not have `PyYAML`; QGIS Python may. If schema loading
+  fails only because `yaml` is missing in shell Python, note it rather than treating it as
+  a plugin failure.
+- Do not claim full runtime verification unless it was actually tested inside QGIS.
+
 ## Development Workflow
 
 - Use `rg` / `rg --files` for search.
-- Use `apply_patch` for manual edits.
-- Do not touch unrelated user changes.
-- Useful checks for this root-level packaging/runtime work:
-  - `python3 -m py_compile src/mhm_qgis/standalone/cli.py src/mhm_qgis/standalone/qgis_shim.py`
-  - `QT_QPA_PLATFORM=offscreen python3 -m mhm_qgis.cli --info`
-  - A standalone dialog import/instantiation smoke test with the shim installed.
-  - `python3 -m pytest -q` for the focused adapter and logging tests in `tests/`.
+- The worktree may already contain user changes. Do not revert unrelated modifications.
+- Many modules import QGIS/PyQt and cannot be fully imported in plain system Python.
+- Keep changes narrow and aligned with existing module boundaries.
+
+## Style
+
+- Keep UI code focused on UI state, validation and logging.
+- Keep the `applications/` boundary QGIS-free.
+- Prefer clear errors over silent fallbacks when the user is expected to provide
+  fields/layers.
+- Prefer deleting a duplicate over adding a delegator. Several restructuring passes left
+  thin forwarding stubs behind; they were removed as redundancy, and new ones are not
+  wanted. A one-line method on a dialog is the documented exception, because other
+  packages hold a reference to the dialog by name.
+
+## Recent Moves
+
+Recent restructuring passes relocated a lot of code. If a path below looks familiar and
+is not found, this is why.
+
+| was | is now |
+|---|---|
+| `pymhm/` (package and name) | `src/mhm_qgis/` |
+| `mhm_qgis_main.py`, `advanced_input_dialogs.py`, `domain_delineator_dialog.py` | `qt/dialogs/*.py`, one per form |
+| `mhm_qgis_dialog_base.ui` | `qt/ui/forms/mhm_qgis_main.ui` |
+| `ui/`, `pyui/` | `qt/ui/forms/`, `qt/ui/pyui/` |
+| `mhm_tools_adapter.py` | `applications/mhm_tools_handler.py` |
+| `project_layout.py` | `core/handlers/store/{paths,layout,registry}.py` |
+| `state_cache.py`, `nml_settings.py` | `core/handlers/state/{cache,nml_settings}.py` |
+| `core/handlers/netcdf/` | `core/handlers/file/netcdf/` |
+| JSON read/write scattered per module | `core/handlers/file/json/` |
+| `time_utils.py` | `core/utils/time.py` |
+| `viewport_raster_range.py` | `qt/objects/viewport_raster_range.py` |
+| `qgis_compat.py` | `qgis_bridge/layers/compat.py` |
+| `DialogUtils.load_layer`, layer construction | `qgis_bridge/layers/` (`load`, `open_layer`, `add`, `find_by_*`) |
+| `advanced_input_manifests.py` | `core/handlers/lookup/manifests.py` |
+| `geology_metadata.py` | `core/handlers/lookup/geology.py` |
+| `categorical_lookup.py` | `core/handlers/lookup/job.py` |
+| `read_categorical_lookup_table`, `read_lookup_fields` | `core/handlers/lookup/table.py` (`read`, `columns`) |
+
+Two known loose ends: `core/handlers/lookup/job.py` needs `prepare_categorical_file`
+from `applications/`, so it holds the one `core` -> `applications` edge in the tree (kept
+call-time only); and `Morphology/` still imports `OutletAssignment` and
+`InputComboAdapter` from `qt/dialogs/`, which points the wrong way.

@@ -15,7 +15,8 @@ from ..core.layer_preparation import LayerPreparationMixin
 from ..core.predecessors import PredecessorMixin
 from ..core.soil_sources import local_layer_source, materialize_vector_layer
 from ..watershed.dem_fill import DemFillMixin
-from ...geology_metadata import write_geology_metadata
+from ...core.handlers.lookup import write_geology_metadata
+from ...qgis_bridge import layers
 
 _SPECS = {
     "lc": {
@@ -458,9 +459,8 @@ class CategoricalProcessingMixin(
         return value or self._dialog_crs_text()
 
     def _dem_crs(self):
-        return self._layer_crs_text(
-            QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
-        ) or self._dialog_crs_text()
+        return self._crs_text(
+            layers.crs_of(self.filled_dem_path)) or self._dialog_crs_text()
 
     def _dialog_crs_text(self):
         method = getattr(self.dialog, "get_crs", None)

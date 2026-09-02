@@ -6,8 +6,8 @@ from ..common import (
     os,
     QgsVectorLayer,
     NULL,
-    create_vector_file_writer,
 )
+from ...qgis_bridge.layers.compat import create_vector_file_writer
 from .base import BaseProcessingMixin
 
 

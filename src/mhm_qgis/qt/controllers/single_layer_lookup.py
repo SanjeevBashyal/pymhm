@@ -6,6 +6,7 @@ own, `SingleLayerInputDialog` pairs it with an input layer. Their field
 refreshing is kept separate because they read different widgets.
 """
 from __future__ import annotations
+from ...core.handlers import lookup
 
 try:
     from qgis.PyQt import QtWidgets
@@ -33,7 +34,7 @@ def _refresh_fields(dialog, _index=None):
         dialog._update_ok()
         return
     try:
-        fields = _selection().read_lookup_fields(path)
+        fields = lookup.columns(path)
     except Exception as error:
         if error_label is not None:
             error_label.setText(str(error))

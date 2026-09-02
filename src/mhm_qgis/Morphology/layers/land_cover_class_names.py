@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-
-def _normalized(value):
-    text = str(value).strip().lstrip("*").split("[", 1)[0]
-    return "".join(character.lower() for character in text if character.isalnum())
+from ...core.handlers import lookup
 
 
 class LandCoverClassNameMixin:
@@ -16,12 +13,12 @@ class LandCoverClassNameMixin:
         if not config:
             return {}
 
-        from ...applications.mhm_tools_handler import read_categorical_lookup_table
-
         try:
-            table = read_categorical_lookup_table(config["lookup_table"])
-            fields = {_normalized(column): column for column in table.columns}
-            class_field = fields[_normalized(config["class_field"])]
+            table = lookup.read(config["lookup_table"])
+            fields = {
+                lookup.normalize_key(column): column for column in table.columns
+            }
+            class_field = fields[lookup.normalize_key(config["class_field"])]
             name = next(
                 (
                     fields[field]

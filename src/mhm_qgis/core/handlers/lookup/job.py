@@ -12,8 +12,7 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from .applications.mhm_tools_handler import prepare_categorical_file
-from .geology_metadata import write_geology_metadata
+from .geology import write_geology_metadata
 
 
 def _publish(replacements, removals, temporary):
@@ -49,6 +48,8 @@ def run_lookup_job(job, progress=None):
     QGIS-free so it can run inside `native_worker`: formatting a vector input on
     an L0 grid peaked at 5.5 GiB and was OOM-killing the QGIS process.
     """
+    from ....applications.mhm_tools_handler import prepare_categorical_file
+
     def report(value):
         if progress is not None:
             progress(value)

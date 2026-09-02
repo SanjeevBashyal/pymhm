@@ -10,7 +10,7 @@ from mhm_qgis import standalone
 
 standalone.install(force=True)
 
-from mhm_qgis import geology_metadata
+from mhm_qgis.core.handlers.lookup import geology as geology_metadata
 
 
 def test_metadata_uses_selected_class_field(tmp_path, monkeypatch):
@@ -62,11 +62,9 @@ def test_metadata_ignores_starred_geo_id(tmp_path, monkeypatch):
             "PARAMETER_VALUE [int]": [100],
         }
     )
-    from mhm_qgis.applications import mhm_tools_handler as mhm_tools_adapter
+    from mhm_qgis.core.handlers.lookup import table as lookup_table
 
-    monkeypatch.setattr(
-        mhm_tools_adapter, "read_categorical_lookup_table", lambda _path: table
-    )
+    monkeypatch.setattr(lookup_table, "read", lambda _path: table)
     output = tmp_path / "geology.json"
 
     geology_metadata.write_geology_metadata(

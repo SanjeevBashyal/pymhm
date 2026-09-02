@@ -2,9 +2,10 @@
 """Geometry output cleanup and in-memory path reset."""
 from __future__ import annotations
 
-from ..common import (QgsProject, QMessageBox, os, processing,
+from ..common import (QMessageBox, os, processing,
                       project_geometry_folder)
 from ..core.base import BaseProcessingMixin
+from ...qgis_bridge import layers
 
 
 class ResetGeometryMixin(BaseProcessingMixin):
@@ -34,28 +35,15 @@ class ResetGeometryMixin(BaseProcessingMixin):
         self.log_message("\n--- Resetting Geometry Processing ---")
         
         # Step 1: Remove layers from QGIS interface
-        project = QgsProject.instance()
         geometry_folder = project_geometry_folder(self.dialog.project_folder)
         
         if not os.path.exists(geometry_folder):
             self.log_message("Geometry folder does not exist. Nothing to reset.")
             os.makedirs(geometry_folder, exist_ok=True)
         
-        # Get all layers and identify those from geometry folder
-        layers_to_remove = []
-        for layer_id, layer in project.mapLayers().items():
-            source = layer.source()
-            # Check if layer source is in geometry folder
-            if geometry_folder in source.replace('\\', '/'):
-                layers_to_remove.append(layer_id)
-                self.log_message(f"Removing layer from QGIS: {layer.name()}")
-        
-        # Remove layers
-        for layer_id in layers_to_remove:
-            project.removeMapLayer(layer_id)
-        
-        if layers_to_remove:
-            self.log_message(f"Removed {len(layers_to_remove)} layer(s) from QGIS interface.")
+        removed = layers.remove_under(geometry_folder, log=self.log_message)
+        if removed:
+            self.log_message(f"Removed {removed} layer(s) from QGIS interface.")
         else:
             self.log_message("No layers found in QGIS interface to remove.")
         

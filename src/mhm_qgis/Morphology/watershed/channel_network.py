@@ -11,12 +11,12 @@ from ..common import (
     QgsFields,
     QgsWkbTypes,
     QgsPointXY,
-    create_vector_file_writer,
-    qgs_field,
     processing,
 )
+from ...qgis_bridge.layers.compat import create_vector_file_writer, qgs_field
 from ..core.vector_io import VectorIOMixin
 from ..hydrology.flow import FlowAnalysisMixin
+from ...qgis_bridge import layers
 
 
 class ChannelNetworkMixin(FlowAnalysisMixin, VectorIOMixin):
@@ -136,8 +136,7 @@ class ChannelNetworkMixin(FlowAnalysisMixin, VectorIOMixin):
         fields.append(qgs_field("idx_ds", "Int"))
         fields.append(qgs_field("pit", "Int"))
 
-        filled_dem_layer = QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
-        output_crs = filled_dem_layer.crs() if filled_dem_layer.isValid() else self.dialog.get_crs()
+        output_crs = layers.crs_of(self.filled_dem_path) or self.dialog.get_crs()
 
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         self._remove_vector_dataset(output_path)

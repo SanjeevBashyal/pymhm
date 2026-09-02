@@ -5,7 +5,7 @@ import csv
 
 import pytest
 
-from mhm_qgis.advanced_input_manifests import (
+from mhm_qgis.core.handlers.lookup import (
     LandUseInput,
     LandUsePeriod,
     SoilHorizon,

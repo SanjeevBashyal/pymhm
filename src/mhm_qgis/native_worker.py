@@ -6,14 +6,14 @@ import sys
 import traceback
 from pathlib import Path
 
-from .advanced_input_manifests import (
+from .core.handlers.lookup import (
     LandUseInput,
     LandUsePeriod,
     SoilHorizon,
     SoilInput,
 )
 from .advanced_input_processing import process_land_cover_input, process_soil_input
-from .categorical_lookup import run_lookup_job
+from .core.handlers.lookup import run_lookup_job
 
 
 def _prefer_worker_termination():

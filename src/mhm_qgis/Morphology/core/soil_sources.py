@@ -6,7 +6,8 @@ import re
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from ..common import create_vector_file_writer, os
+from ..common import os
+from ...qgis_bridge.layers.compat import create_vector_file_writer
 
 
 def local_layer_source(layer):

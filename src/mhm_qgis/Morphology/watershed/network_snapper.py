@@ -15,10 +15,9 @@ from ..common import (
     QgsWkbTypes,
     QgsCoordinateTransform,
     QgsProject,
-    create_vector_file_writer,
-    qgs_field,
     processing,
 )
+from ...qgis_bridge.layers.compat import create_vector_file_writer, qgs_field
 from ..core.vector_io import VectorIOMixin
 
 

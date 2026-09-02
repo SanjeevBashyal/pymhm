@@ -43,6 +43,7 @@ from ...core.handlers.state.domain_state import (
     resolve_output_path,
     save_state,
 )
+from ...qgis_bridge import layers
 
 
 @dataclass(frozen=True)
@@ -161,7 +162,12 @@ class DomainWorkflow:
         context = self.processor._build_flwdir_from_filled_dem()
         if not context:
             raise RuntimeError("The filled DEM flow grid could not be prepared.")
-        transform = self.processor._snapped_to_filled_dem_transform(snapped_layer)
+        transform = layers.transform_to_raster(
+            snapped_layer, self.processor.filled_dem_path,
+            log=self.processor.log_message)
+        # Constant for every outlet, so it is read once rather than per iteration.
+        filled_dem_crs = layers.crs_of(self.processor.filled_dem_path)
+        filled_dem_authid = filled_dem_crs.authid() if filled_dem_crs else ""
         status_field = self.processor._snap_status_field(
             snapped_layer.fields().names()
         )
@@ -205,9 +211,7 @@ class DomainWorkflow:
                     "picked": {
                         "x": float(center_x),
                         "y": float(center_y),
-                        "crs": QgsRasterLayer(
-                            self.processor.filled_dem_path, "Filled DEM"
-                        ).crs().authid(),
+                        "crs": filled_dem_authid,
                     },
                     "catchment_area_m2": result["catchment_area_m2"],
                     "mask_path": result["raster_path"],

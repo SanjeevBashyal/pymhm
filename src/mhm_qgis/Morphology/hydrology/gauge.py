@@ -24,6 +24,7 @@ from .outlets import (
     station_id_int,
     station_id_text,
 )
+from ...qgis_bridge import layers
 
 
 class GaugePositionMixin(PourPointWorkflowMixin, OutletCountMixin, PredecessorMixin):
@@ -133,16 +134,16 @@ class GaugePositionMixin(PourPointWorkflowMixin, OutletCountMixin, PredecessorMi
             dtype=np.int32,
         )
 
-        point_transform = self._snapped_to_raster_transform(snapped_layer)
-        filled_dem_layer = QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
+        point_transform = layers.transform_to_raster(snapped_layer, self.filled_dem_path)
+        filled_dem_crs = layers.crs_of(self.filled_dem_path)
         for item in gauge_features:
             point = item["geometry"].asPoint()
             transform = point_transform
             source_crs = item.get("crs")
             if source_crs is not None and source_crs.isValid():
-                target_crs = filled_dem_layer.crs()
+                target_crs = filled_dem_crs
                 transform = None
-                if target_crs.isValid() and source_crs != target_crs:
+                if target_crs is not None and source_crs != target_crs:
                     transform = QgsCoordinateTransform(
                         source_crs, target_crs, QgsProject.instance()
                     )
@@ -293,27 +294,6 @@ class GaugePositionMixin(PourPointWorkflowMixin, OutletCountMixin, PredecessorMi
                 f"Using 95th percentile threshold: {threshold_cells} cells.")
 
         return flow_accumulation >= threshold_cells
-
-    def _snapped_to_raster_transform(self, snapped_layer: object) -> object | None:
-        """Return a coordinate transform when snapped points and DEM CRS differ."""
-        filled_dem_layer = QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
-        if not filled_dem_layer.isValid():
-            return None
-
-        source_crs = snapped_layer.crs()
-        target_crs = filled_dem_layer.crs()
-        if not source_crs.isValid() or not target_crs.isValid():
-            return None
-        if source_crs.authid() == target_crs.authid():
-            return None
-
-        transform = QgsCoordinateTransform(
-            source_crs,
-            target_crs,
-            QgsProject.instance(),
-        )
-        transform.setBallparkTransformsAreAppropriate(True)
-        return transform
 
     def _point_to_row_col(
             self,

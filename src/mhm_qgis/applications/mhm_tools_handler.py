@@ -10,6 +10,8 @@ from collections.abc import Callable, Generator
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from ..core.handlers import lookup
+
 
 LogCallback = Callable[[str], None]
 
@@ -103,95 +105,6 @@ def capture_messages(
             logger.propagate = old_propagate
 
 
-def read_categorical_lookup_table(lookup_table):
-    """Read CSV lookups with mHM-tools and delimited TXT lookups with pandas."""
-    lookup_path = Path(lookup_table)
-    if lookup_path.suffix.lower() != ".txt":
-        from mhm_tools.common.lookup_handler import read_lookup_table
-
-        return read_lookup_table(lookup_path)
-
-    import pandas as pd
-
-    try:
-        table = pd.read_csv(
-            lookup_path,
-            sep=None,
-            engine="python",
-            encoding="utf-8-sig",
-        )
-    except Exception as error:
-        raise ValueError(
-            f"Could not read lookup table {lookup_path}: {error}"
-        ) from error
-    if table.empty:
-        raise ValueError(f"Lookup table {lookup_path} is empty.")
-    return table
-
-
-def _category_key(value):
-    """Normalize a vector/lookup category like mHM-tools rasterization."""
-    import pandas as pd
-
-    if pd.isna(value):
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        number = float(text)
-    except ValueError:
-        return text
-    return str(int(number)) if number.is_integer() else text
-
-
-def _field_key(value):
-    text = str(value).strip().lstrip("*").split("[", 1)[0]
-    return "".join(character.lower() for character in text if character.isalnum())
-
-
-def resolve_vector_mapping_field(input_file, lookup_table, mapping_field):
-    """Resolve a vector field by name or unambiguous lookup-value coverage."""
-    import geopandas as gpd
-
-    frame = gpd.read_file(input_file, ignore_geometry=True)
-    normalized = _field_key(mapping_field)
-    matches = [
-        column
-        for column in frame.columns
-        if _field_key(column) == normalized
-    ]
-    if len(matches) == 1:
-        return str(matches[0])
-
-    lookup = read_categorical_lookup_table(lookup_table)
-    lookup_column = next(
-        (
-            column
-            for column in lookup.columns
-            if _field_key(column) == normalized
-        ),
-        None,
-    )
-    if lookup_column is None:
-        raise ValueError(f"Lookup mapping field {mapping_field!r} was not found.")
-    lookup_values = {
-        key for key in map(_category_key, lookup[lookup_column]) if key is not None
-    }
-    candidates = []
-    for column in frame.columns:
-        values = {key for key in map(_category_key, frame[column]) if key is not None}
-        if values and values.issubset(lookup_values):
-            candidates.append(str(column))
-    if len(candidates) == 1:
-        return candidates[0]
-    available = ", ".join(str(column) for column in frame.columns)
-    raise ValueError(
-        f"Could not identify the vector field corresponding to lookup field "
-        f"{mapping_field!r}. Available vector fields: {available or '<none>'}."
-    )
-
-
 def prepare_categorical_file(
     kind: str,
     input_file: str | Path,
@@ -234,74 +147,68 @@ def prepare_categorical_file(
             prefix=f"mhm_qgis_{kind}_", dir=output_path.parent
         ) as temporary:
             temporary_path = Path(temporary)
-            lookup_for_tools = lookup_path
-            if lookup_path.suffix.lower() == ".txt":
-                lookup_for_tools = temporary_path / "lookup.csv"
-                read_categorical_lookup_table(lookup_path).to_csv(
-                    lookup_for_tools,
-                    index=False,
-                )
-            formatted_input = input_path
-            formatter_mapping_field = mapping_field
-            formatter_input_crs = input_crs
+            with lookup.as_csv(lookup_path, dir=temporary_path) as lookup_for_tools:
+                formatted_input = input_path
+                formatter_mapping_field = mapping_field
+                formatter_input_crs = input_crs
 
-            if is_vector:
-                formatted_input = temporary_path / f"{kind}_rasterized.tif"
-                vector_mapping_field = resolve_vector_mapping_field(
-                    input_path, lookup_for_tools, mapping_field
-                )
-                rasterize_kwargs = {
-                    "input_file": input_path,
+                if is_vector:
+                    formatted_input = temporary_path / f"{kind}_rasterized.tif"
+                    vector_mapping_field = lookup.resolve_vector_mapping_field(
+                        input_path, lookup_for_tools, mapping_field
+                    )
+                    rasterize_kwargs = {
+                        "input_file": input_path,
+                        "dem_file": dem_path,
+                        "output_file": formatted_input,
+                        "mapping_field": vector_mapping_field,
+                        "lookup_table": lookup_for_tools,
+                        "lookup_mapping_field": mapping_field,
+                        "lookup_value_field": class_field,
+                    }
+                    if input_crs is not None:
+                        rasterize_kwargs["input_crs"] = input_crs
+                    if dem_crs is not None:
+                        rasterize_kwargs["dem_crs"] = dem_crs
+                    pre.rasterize_map_data(**rasterize_kwargs)
+                    formatter_mapping_field = class_field
+                    formatter_input_crs = None
+
+                formatter_kwargs = {
+                    "input_file": formatted_input,
                     "dem_file": dem_path,
-                    "output_file": formatted_input,
-                    "mapping_field": vector_mapping_field,
+                    "output_path": temporary_path,
                     "lookup_table": lookup_for_tools,
-                    "lookup_mapping_field": mapping_field,
-                    "lookup_value_field": class_field,
+                    "mapping_field": formatter_mapping_field,
+                    "class_field": class_field,
+                    "output_type": "tif",
                 }
-                if input_crs is not None:
-                    rasterize_kwargs["input_crs"] = input_crs
+                if formatter_input_crs is not None:
+                    formatter_kwargs["input_crs"] = formatter_input_crs
                 if dem_crs is not None:
-                    rasterize_kwargs["dem_crs"] = dem_crs
-                pre.rasterize_map_data(**rasterize_kwargs)
-                formatter_mapping_field = class_field
-                formatter_input_crs = None
+                    formatter_kwargs["dem_crs"] = dem_crs
+                formatter(**formatter_kwargs)
 
-            formatter_kwargs = {
-                "input_file": formatted_input,
-                "dem_file": dem_path,
-                "output_path": temporary_path,
-                "lookup_table": lookup_for_tools,
-                "mapping_field": formatter_mapping_field,
-                "class_field": class_field,
-                "output_type": "tif",
-            }
-            if formatter_input_crs is not None:
-                formatter_kwargs["input_crs"] = formatter_input_crs
-            if dem_crs is not None:
-                formatter_kwargs["dem_crs"] = dem_crs
-            formatter(**formatter_kwargs)
+                raster_output = temporary_path / raster_name
+                if not raster_output.is_file():
+                    raise FileNotFoundError(
+                        f"mhm-tools did not create the expected raster: {raster_output}"
+                    )
 
-            raster_output = temporary_path / raster_name
-            if not raster_output.is_file():
-                raise FileNotFoundError(
-                    f"mhm-tools did not create the expected raster: {raster_output}"
+                definition_output = (
+                    temporary_path / definition_name
+                    if definition_path is not None and definition_name is not None
+                    else None
                 )
+                if definition_output is not None and not definition_output.is_file():
+                    raise FileNotFoundError(
+                        "mhm-tools did not create the expected classdefinition: "
+                        f"{definition_output}"
+                    )
 
-            definition_output = (
-                temporary_path / definition_name
-                if definition_path is not None and definition_name is not None
-                else None
-            )
-            if definition_output is not None and not definition_output.is_file():
-                raise FileNotFoundError(
-                    "mhm-tools did not create the expected classdefinition: "
-                    f"{definition_output}"
-                )
-
-            os.replace(raster_output, output_path)
-            if definition_output is not None and definition_path is not None:
-                os.replace(definition_output, definition_path)
+                os.replace(raster_output, output_path)
+                if definition_output is not None and definition_path is not None:
+                    os.replace(definition_output, definition_path)
 
     return output_path
 
@@ -340,14 +247,10 @@ def prepare_land_cover_periods(
         kwargs["input_crs"] = input_crs
     if dem_crs is not None:
         kwargs["dem_crs"] = dem_crs
-    if lookup_path.suffix.lower() == ".txt":
-        with TemporaryDirectory(prefix="mhm_qgis_lc_lookup_", dir=output) as temporary:
-            lookup_csv = Path(temporary) / "lookup.csv"
-            read_categorical_lookup_table(lookup_path).to_csv(lookup_csv, index=False)
-            kwargs["lookup_table"] = lookup_csv
-            with capture_messages(log):
-                outputs = tuple(Path(path) for path in pre.format_lc_periods(**kwargs))
-    else:
+    with lookup.as_csv(
+        lookup_path, dir=output, prefix="mhm_qgis_lc_lookup_"
+    ) as lookup_csv:
+        kwargs["lookup_table"] = lookup_csv
         with capture_messages(log):
             outputs = tuple(Path(path) for path in pre.format_lc_periods(**kwargs))
     return _require_outputs(outputs)
@@ -584,6 +487,4 @@ __all__ = [
     "prepare_land_cover_periods",
     "prepare_lai_file",
     "prepare_soil_horizons",
-    "read_categorical_lookup_table",
-    "resolve_vector_mapping_field",
 ]

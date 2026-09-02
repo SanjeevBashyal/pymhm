@@ -8,16 +8,15 @@ from pathlib import Path
 from typing import Iterable
 
 try:
-    from qgis.core import (QgsMapLayer, QgsProject, QgsRasterLayer,
-                           QgsVectorLayer)
+    from qgis.core import QgsMapLayer, QgsProject
     from qgis.PyQt import QtCore, QtWidgets
 except ImportError:
     from ...standalone import install
 
     install(force=True)
-    from qgis.core import (QgsMapLayer, QgsProject, QgsRasterLayer,
-                           QgsVectorLayer)
+    from qgis.core import QgsMapLayer, QgsProject
     from qgis.PyQt import QtCore, QtWidgets
+from ...qgis_bridge import layers
 from ...core.handlers.store.paths import WORKSPACE_FOLDER_NAME
 from ...qt.controllers import single_layer_input as single_layer_controller
 from ...qt.controllers import single_layer_lookup as lookup_controller
@@ -266,15 +265,8 @@ def _file_layer(path: str, kind: str):
     path = str(path or "")
     if not path:
         return None
-    name = Path(path).name
-    if kind in {"pour_points", "lookup"} or Path(path).suffix.lower() == ".shp":
-        layer = QgsVectorLayer(path, name, "ogr")
-    else:
-        layer = QgsRasterLayer(path, name)
-    try:
-        return layer if layer.isValid() else None
-    except Exception:
-        return None
+    vector = kind in {"pour_points", "lookup"} or Path(path).suffix.lower() == ".shp"
+    return layers.open_layer(path, Path(path).name, is_raster=not vector)
 
 
 class InputComboAdapter(QtCore.QObject):
@@ -413,18 +405,6 @@ class InputComboAdapter(QtCore.QObject):
         line_edit = self.combo_box.lineEdit()
         if line_edit is not None:
             line_edit.setPlaceholderText(text)
-
-
-def read_lookup_fields(lookup_table) -> list[str]:
-    """Return fields using the same table reader as mHM-tools formatting."""
-    from ...applications.mhm_tools_handler import read_categorical_lookup_table
-
-    table = read_categorical_lookup_table(lookup_table)
-    return [
-        str(column)
-        for column in table.columns
-        if str(column) != "geometry" and not str(column).strip().startswith("*")
-    ]
 
 
 def _combo_path(combo_box) -> str:
@@ -675,6 +655,5 @@ __all__ = [
     "SingleLayerLookupConfig",
     "loaded_qgis_items",
     "qgis_layer_item",
-    "read_lookup_fields",
     "scan_project_inputs",
 ]

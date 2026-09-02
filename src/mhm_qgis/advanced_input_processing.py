@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from .advanced_input_manifests import (
+from .core.handlers.lookup import (
     LandUseInput,
     SoilInput,
     write_land_use_manifest,

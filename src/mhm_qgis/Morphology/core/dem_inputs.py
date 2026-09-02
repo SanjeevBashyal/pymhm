@@ -13,6 +13,7 @@ from ..common import (
     processing,
 )
 from .base import BaseProcessingMixin
+from ...qgis_bridge import layers
 
 
 class DemInputMixin(BaseProcessingMixin):
@@ -56,14 +57,13 @@ class DemInputMixin(BaseProcessingMixin):
 
         if os.path.exists(reprojected_dem_path):
             self.log_message(f"Found existing reprojected DEM. Loading it...")
-            reprojected_layer = QgsRasterLayer(
+            reprojected_layer = layers.open_layer(
                 reprojected_dem_path, "1_DEM_Reprojected")
-            if reprojected_layer.isValid():
+            if reprojected_layer is not None:
                 self.dem_layer = reprojected_layer
                 return reprojected_layer
-            else:
-                self.log_message(
-                    "WARNING: Existing reprojected DEM is not valid. Reprojecting again...")
+            self.log_message(
+                "WARNING: Existing reprojected DEM is not valid. Reprojecting again...")
 
         # Reproject DEM
         self.log_message(

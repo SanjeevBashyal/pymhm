@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from ...advanced_input_manifests import (
+from ...core.handlers.lookup import (
     LandUseInput,
     LandUsePeriod,
     MAX_LAND_USE_PERIODS,
@@ -22,7 +22,6 @@ from .input_selection import (
     INPUT_EXTENSIONS,
     InputComboAdapter,
     loaded_qgis_items,
-    read_lookup_fields,
     scan_project_inputs,
 )
 

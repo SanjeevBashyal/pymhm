@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from mhm_qgis import advanced_input_processing as processing
-from mhm_qgis.advanced_input_manifests import (
+from mhm_qgis.core.handlers.lookup import (
     LandUseInput,
     LandUsePeriod,
     SoilHorizon,

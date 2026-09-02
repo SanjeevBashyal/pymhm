@@ -2,15 +2,9 @@
 """
 Utility functions and base classes for mhm_qgis dialog processing
 """
-import os
 import sys
 from qgis.PyQt.QtWidgets import QMessageBox
-from qgis.core import (
-    QgsProject,
-    QgsRasterLayer,
-    QgsVectorLayer,
-    QgsApplication
-)
+from qgis.core import QgsApplication
 import processing
 
 
@@ -65,26 +59,6 @@ class DialogUtils:
             QMessageBox.critical(
                 self, "Processing Error", f"Algorithm '{name}' failed.\nCheck the log for details.")
             return None
-
-    def load_layer(self, path, name, is_raster=True):
-        """Loads a layer into the QGIS project."""
-        check_path = path
-        if str(path).startswith('NETCDF:"') and '":' in str(path):
-            check_path = str(path).split('NETCDF:"', 1)[1].split('\":', 1)[0]
-        if not path or not os.path.exists(check_path):
-            self.log_message(f"ERROR: Output file not found at {path}")
-            return
-
-        layer = QgsRasterLayer(
-            path, name) if is_raster else QgsVectorLayer(path, name, "ogr")
-
-        if not layer.isValid():
-            self.log_message(f"ERROR: Failed to load layer: {name}")
-            return
-
-        QgsProject.instance().addMapLayer(layer)
-        self.log_message(f"Layer '{name}' added to project.")
-        return layer
 
     def get_dem_extent_and_resolution(self):
         """Get DEM extent and pixel resolution for clipping and rasterization"""

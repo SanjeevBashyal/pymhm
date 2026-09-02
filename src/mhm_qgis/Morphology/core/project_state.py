@@ -9,6 +9,7 @@ from ..common import (
     processing,
 )
 from .processing_state import ProcessingStateMixin
+from ...qgis_bridge import layers
 
 
 class ProjectStateMixin(ProcessingStateMixin):
@@ -76,9 +77,9 @@ class ProjectStateMixin(ProcessingStateMixin):
         reprojected_dem_path = os.path.join(
             geometry_folder, "0_dem_reprojected.tif")
         if os.path.exists(reprojected_dem_path):
-            reprojected_layer = QgsRasterLayer(
+            reprojected_layer = layers.open_layer(
                 reprojected_dem_path, "1_DEM_Reprojected")
-            if reprojected_layer.isValid():
+            if reprojected_layer is not None:
                 self.dem_layer = reprojected_layer
                 self.log_message(
                     f"Found existing reprojected DEM: 0_dem_reprojected.tif")

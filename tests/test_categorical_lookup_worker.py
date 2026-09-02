@@ -57,7 +57,7 @@ def test_the_lookup_module_imports_without_qgis():
     """It runs in a child process, where `processing` is unavailable."""
     process = subprocess.run(
         [sys.executable, "-c",
-         "import mhm_qgis.categorical_lookup as m; print(m.run_lookup_job.__name__)"],
+         "import mhm_qgis.core.handlers.lookup.job as m; print(m.run_lookup_job.__name__)"],
         capture_output=True, text=True,
         env=dict(os.environ, PYTHONPATH=str(REPO)),
     )

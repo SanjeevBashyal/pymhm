@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Widget state for the input-plus-lookup half of the single-layer form."""
 from __future__ import annotations
+from ...core.handlers import lookup
 
 
 def _selection():
@@ -26,7 +27,7 @@ def _refresh_fields(dialog, _index=None):
     if not path:
         return
     try:
-        fields = _selection().read_lookup_fields(path)
+        fields = lookup.columns(path)
     except Exception:
         return
     dialog.mapping_field_combo.addItems(fields)

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ..common import DialogUtils, json, os, processing
+from ...qgis_bridge import layers
 from .processing_state import ProcessingStateMixin
 
 
@@ -89,8 +90,8 @@ class BaseProcessingMixin(ProcessingStateMixin):
                     f"Loading prepared display raster instead: {os.path.basename(display_path)}")
 
         self.mark_output_prepared(display_path, name=display_name, loaded=True)
-        # Call the parent load_layer method
-        return self.dialog.load_layer(display_path, display_name, is_raster)
+        return layers.load(
+            display_path, display_name, is_raster=is_raster, log=self.log_message)
 
     def run_processing_algorithm(
             self,

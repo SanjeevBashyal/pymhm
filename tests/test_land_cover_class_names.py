@@ -28,10 +28,10 @@ class _Reader(LandCoverClassNameMixin):
 
 
 def test_names_are_keyed_by_formatted_class_field(monkeypatch):
-    # Patch the handler, which is the boundary the code under test crosses.
+    # Patch the lookup API, which is the boundary the code under test crosses.
     # Reaching into mhm_tools.common directly coupled this to where mhm-tools
     # happened to keep read_lookup_table, and it moved.
-    from mhm_qgis.applications import mhm_tools_handler
+    from mhm_qgis.core.handlers import lookup
 
     table = pd.DataFrame(
         {
@@ -41,7 +41,7 @@ def test_names_are_keyed_by_formatted_class_field(monkeypatch):
         }
     )
     monkeypatch.setattr(
-        mhm_tools_handler, "read_categorical_lookup_table", lambda _path: table
+        lookup, "read", lambda _path: table
     )
 
     assert _Reader()._read_land_cover_class_names() == {

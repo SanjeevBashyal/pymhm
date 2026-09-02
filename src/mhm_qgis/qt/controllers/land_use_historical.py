@@ -18,8 +18,9 @@ except ImportError:
 
 from qgis.PyQt import QtWidgets
 
-from ...advanced_input_manifests import LandUseInput, MAX_LAND_USE_PERIODS
-from ..dialogs.input_selection import read_lookup_fields, scan_project_inputs
+from ...core.handlers import lookup
+from ...core.handlers.lookup import LandUseInput, MAX_LAND_USE_PERIODS
+from ..dialogs.input_selection import scan_project_inputs
 
 def set_layer_count(dialog, count: int) -> None:
     count = min(MAX_LAND_USE_PERIODS, max(1, int(count)))
@@ -109,7 +110,7 @@ def _lookup_changed(dialog, *_args) -> None:
     dialog.comboBox_classFieldInput.clear()
     if dialog._lookup_path:
         try:
-            fields = read_lookup_fields(dialog._lookup_path)
+            fields = lookup.columns(dialog._lookup_path)
         except Exception as error:
             dialog._lookup_error = f"Could not read land-use lookup table: {error}"
             fields = []

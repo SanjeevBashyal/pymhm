@@ -58,7 +58,8 @@ from ...morphology_display import DISPLAY_KEYS
 from ...standalone import is_active as standalone_is_active
 from ...qt.bindings.main import bind as bind_main_form
 from ...qt.controllers import main as main_controller
-from ...qgis_compat import map_layer_filters
+from ...qgis_bridge import layers as qgis_layers
+from ...qgis_bridge.layers import map_layer_filters
 from .project_terminal import ProjectTerminalDialog
 from ...task_coordinator import TaskCoordinator
 from .thread_display import ThreadDisplayDialog
@@ -1307,7 +1308,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
 
     @staticmethod
     def _land_use_input_value(value):
-        from ...advanced_input_manifests import LandUseInput, LandUsePeriod
+        from ...core.handlers.lookup import LandUseInput, LandUsePeriod
 
         if isinstance(value, LandUseInput):
             return value
@@ -1329,7 +1330,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
 
     @staticmethod
     def _soil_input_value(value):
-        from ...advanced_input_manifests import SoilHorizon, SoilInput
+        from ...core.handlers.lookup import SoilHorizon, SoilInput
 
         if isinstance(value, SoilInput):
             return value
@@ -1865,44 +1866,19 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         if not source:
             return None
 
-        existing_layer = self.find_project_layer_by_source(source)
-        if existing_layer:
-            return existing_layer
+        found = qgis_layers.find_by_source(source)
+        if found:
+            return found
 
         name = layer_info.get("name") or os.path.basename(source.split("|")[0])
-        layer_type = layer_info.get("type", "vector")
-        if layer_type == "raster":
-            layer = QgsRasterLayer(source, name)
-        else:
-            layer = QgsVectorLayer(source, name, "ogr")
-
-        if not layer.isValid():
+        layer = qgis_layers.open_layer(
+            source, name, is_raster=layer_info.get("type", "vector") == "raster")
+        if layer is None:
             return None
 
-        QgsProject.instance().addMapLayer(layer)
+        qgis_layers.add(layer)
         self.log_message(f"Restored input layer: {name} | {source}")
         return layer
-
-    def find_project_layer_by_source(self, source):
-        """Find a loaded layer with the same source path/URI."""
-        target_source = self.normalized_layer_source(source)
-        for layer in QgsProject.instance().mapLayers().values():
-            if self.normalized_layer_source(layer.source()) == target_source:
-                return layer
-        return None
-
-    def normalized_layer_source(self, source):
-        """Normalize a QGIS layer source for comparison."""
-        if not source:
-            return ""
-
-        base_source = source.split("|")[0]
-        if os.path.exists(base_source):
-            base_source = os.path.abspath(base_source)
-            suffix = source[len(source.split("|")[0]) :]
-            return (base_source + suffix).replace("\\", "/").lower()
-
-        return source.replace("\\", "/").lower()
 
     def log_selected_input_paths(self, action_name):
         """Print selected layer/file inputs for easier debugging from QGIS."""

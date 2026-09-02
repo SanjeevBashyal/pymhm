@@ -9,6 +9,8 @@ import pytest
 import pandas as pd
 
 from mhm_qgis.applications import mhm_tools_handler as categorical
+from mhm_qgis.core.handlers import lookup
+from mhm_qgis.core.handlers.lookup import table as lookup_table
 
 
 def _touch(path: Path) -> Path:
@@ -120,7 +122,7 @@ def test_vector_geology_rasterizes_then_uses_identity_mapping(tmp_path, monkeypa
         format_geology_data=format_geology_data,
     )
     monkeypatch.setattr(
-        categorical,
+        lookup,
         "resolve_vector_mapping_field",
         lambda *_args: "xx",
     )
@@ -184,13 +186,13 @@ def test_vector_mapping_field_is_inferred_from_lookup_values(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        categorical,
-        "read_categorical_lookup_table",
+        lookup_table,
+        "read",
         lambda _path: pd.DataFrame({"Class": ["su", "ss", "wb"]}),
     )
 
     assert (
-        categorical.resolve_vector_mapping_field("input.shp", "lookup.csv", "Class")
+        lookup_table.resolve_vector_mapping_field("input.shp", "lookup.csv", "Class")
         == "xx"
     )
 
@@ -236,7 +238,11 @@ def test_land_cover_dispatches_without_classdefinition(tmp_path, monkeypatch):
         "class_field": "LC_CLASS",
         "output_type": "tif",
     }
-    assert normalized_lookup == temporary_path / "lookup.csv"
+    # `as_csv` owns a scratch subdirectory rather than writing into the
+    # directory it is handed -- the other call site hands it a real output
+    # folder, which must not be left with a stray lookup.csv.
+    assert normalized_lookup.name == "lookup.csv"
+    assert temporary_path in normalized_lookup.parents
     assert lookup_text == ["grid_value,LC_CLASS\n1,2\n"]
     assert not normalized_lookup.exists()
 

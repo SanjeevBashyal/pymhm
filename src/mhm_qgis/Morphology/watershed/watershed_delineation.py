@@ -13,6 +13,7 @@ from ..common import (
     NULL,
 )
 from .pour_point_workflow import PourPointWorkflowMixin
+from ...qgis_bridge import layers
 
 
 class WatershedDelineationMixin(PourPointWorkflowMixin):
@@ -69,7 +70,8 @@ class WatershedDelineationMixin(PourPointWorkflowMixin):
         watershed_outputs = []
         field_names = snapped_points_layer.fields().names()
         snap_status_field = self._snap_status_field(field_names)
-        point_transform = self._snapped_to_filled_dem_transform(snapped_points_layer)
+        point_transform = layers.transform_to_raster(
+            snapped_points_layer, self.filled_dem_path, log=self.log_message)
 
         for i, feature in enumerate(features):
             geom = feature.geometry()
@@ -337,30 +339,6 @@ class WatershedDelineationMixin(PourPointWorkflowMixin):
             if candidate in field_names:
                 return candidate
         return None
-
-    def _snapped_to_filled_dem_transform(self, snapped_layer: object) -> object | None:
-        """Return a coordinate transform when snapped points and filled DEM CRS differ."""
-        filled_dem_layer = QgsRasterLayer(self.filled_dem_path, "Filled_DEM")
-        if not filled_dem_layer.isValid():
-            return None
-
-        source_crs = snapped_layer.crs()
-        target_crs = filled_dem_layer.crs()
-        if not source_crs.isValid() or not target_crs.isValid():
-            return None
-        if source_crs.authid() == target_crs.authid():
-            return None
-
-        transform = QgsCoordinateTransform(
-            source_crs,
-            target_crs,
-            QgsProject.instance(),
-        )
-        transform.setBallparkTransformsAreAppropriate(True)
-        self.log_message(
-            f"Transforming snapped points from {source_crs.authid()} "
-            f"to filled DEM CRS {target_crs.authid()} for watershed delineation.")
-        return transform
 
     def _point_to_flwdir_cell_center(
             self,
