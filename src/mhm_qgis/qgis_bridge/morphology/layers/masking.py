@@ -308,7 +308,7 @@ class MaskingMixin(WatershedDelineationMixin):
         for entry in written:
             self.mark_output_prepared(
                 entry["dem_path"], name="dem.asc", loaded=False)
-            for path in entry.get("copied", ()):
+            for path in entry.get("linked", ()):
                 self.mark_output_prepared(
                     path, name=os.path.basename(path), loaded=False)
         if not written:

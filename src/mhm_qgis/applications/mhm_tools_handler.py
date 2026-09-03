@@ -433,6 +433,38 @@ def create_dem_derivative_files(
     return {path.stem: path for path in paths}
 
 
+def link_folder_tree(
+    input_dir: str | Path,
+    output_dir: str | Path,
+    file_names: tuple[str, ...] = ("*.*",),
+    *,
+    overwrite: bool = True,
+    log: LogCallback | None = None,
+) -> tuple[Path, ...]:
+    """Symlink files from one folder tree into another through mHM-tools.
+
+    ``file_names`` are the glob patterns mHM-tools matches under ``input_dir``,
+    one pass each. Returns the destination paths the patterns resolve to, which
+    is what the caller records as prepared output.
+    """
+    from mhm_tools.pre import link_folder_tree as _link_folder_tree
+
+    source = Path(input_dir)
+    destination = Path(output_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    linked: list[Path] = []
+    with capture_messages(log):
+        for pattern in file_names:
+            _link_folder_tree(
+                source, destination, overwrite=overwrite, file_name=pattern
+            )
+            linked.extend(
+                destination / path.relative_to(source)
+                for path in source.rglob(pattern)
+            )
+    return tuple(linked)
+
+
 def create_latlon_file(
     out_file: str | Path,
     level0: dict | str | Path,
@@ -483,6 +515,7 @@ __all__ = [
     "create_dem_derivative_files",
     "create_latlon_file",
     "lai_time_step",
+    "link_folder_tree",
     "prepare_categorical_file",
     "prepare_land_cover_periods",
     "prepare_lai_file",

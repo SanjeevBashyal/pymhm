@@ -50,50 +50,41 @@ DOMAIN_INPUT_NAMES = tuple(
 SIDECAR_SUFFIXES = (".prj",)
 
 
-def copy_master_inputs(project_folder, directory, log=None) -> list[Path]:
-    """Copy the shared morphology inputs from data/master into one domain.
+def link_master_inputs(project_folder, directory, log=None) -> list[Path]:
+    """Symlink the shared morphology inputs from data/master into one domain.
 
     Run this after `advanced_l0.publish_model_inputs`: an advanced or
     mHM-ready soil, geology, or land-cover raster only reaches data/master at
-    publication, so copying earlier would silently find nothing. An unchanged
-    destination is left alone, so re-running Morphology Setup does not recopy
-    gigabytes.
+    publication, so linking earlier would silently find nothing. Every domain
+    reads the same bytes, so these are links rather than copies -- the shared
+    rasters run to gigabytes and a domain's own dem.asc is the only file that
+    differs.
     """
     master = Path(morph_folder(project_folder))
     destination = Path(directory)
-    destination.mkdir(parents=True, exist_ok=True)
-    copied: list[Path] = []
+    names: list[str] = []
     absent: list[str] = []
 
-    for label, names in DOMAIN_INPUT_GROUPS:
-        present = [master / name for name in names if (master / name).is_file()]
+    for label, group in DOMAIN_INPUT_GROUPS:
+        present = [name for name in group if (master / name).is_file()]
         if not present:
             absent.append(label)
             continue
-        candidates = list(present)
-        candidates.extend(
-            source.with_suffix(suffix)
-            for source in present
-            for suffix in SIDECAR_SUFFIXES
-        )
-        for source in candidates:
-            if not source.is_file():
-                continue
-            target = destination / source.name
-            if _already_copied(source, target):
-                continue
-            temporary = target.with_name(f".{target.name}.tmp")
-            temporary.unlink(missing_ok=True)
-            try:
-                shutil.copyfile(source, temporary)
-                os.replace(temporary, target)
-            except BaseException:
-                temporary.unlink(missing_ok=True)
-                raise
-            copied.append(target)
+        for name in present:
+            names.append(name)
+            names.extend(
+                sidecar.name
+                for sidecar in (
+                    (master / name).with_suffix(suffix)
+                    for suffix in SIDECAR_SUFFIXES
+                )
+                if sidecar.is_file()
+            )
+
+    linked = _link_shared_inputs(master, destination, names, log) if names else []
     if log:
         log(
-            f"Copied {len(copied)} shared morphology file(s) into "
+            f"Linked {len(linked)} shared morphology file(s) into "
             f"{destination}."
         )
         if absent:
@@ -104,18 +95,40 @@ def copy_master_inputs(project_folder, directory, log=None) -> list[Path]:
                 + ", ".join(absent)
                 + f"; {destination.name} will run without it."
             )
-    return copied
+    return linked
 
 
-def _already_copied(source: Path, target: Path) -> bool:
-    """Return True when the destination already holds this exact content."""
-    if not target.is_file():
-        return False
-    source_stat, target_stat = source.stat(), target.stat()
-    return (
-        source_stat.st_size == target_stat.st_size
-        and target_stat.st_mtime_ns >= source_stat.st_mtime_ns
-    )
+def _link_shared_inputs(master: Path, destination: Path, names, log) -> list[Path]:
+    """Link the named files, falling back to copies where links are refused."""
+    from ....applications import mhm_tools_handler
+
+    try:
+        # mHM-tools logs two lines per pattern; the caller's summary is enough.
+        return list(
+            mhm_tools_handler.link_folder_tree(master, destination, tuple(names))
+        )
+    except OSError as error:
+        # Windows refuses symlinks without Developer Mode or admin rights.
+        if log:
+            log(
+                "WARNING: Could not symlink the shared morphology inputs, "
+                f"copying them instead: {error}"
+            )
+    destination.mkdir(parents=True, exist_ok=True)
+    return [_copy_input(master / name, destination / name) for name in names]
+
+
+def _copy_input(source: Path, target: Path) -> Path:
+    """Copy one shared input into place without leaving a partial file."""
+    temporary = target.with_name(f".{target.name}.tmp")
+    temporary.unlink(missing_ok=True)
+    try:
+        shutil.copyfile(source, temporary)
+        os.replace(temporary, target)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    return target
 
 
 def domain_dem_plan(project_folder) -> list[dict[str, Any]]:
@@ -199,9 +212,9 @@ def write_domain_dems(
         )
         # v6 reads every shared layer from master's input.nc, so a domain folder
         # holds only its own DEM.
-        entry["copied"] = [] if is_v6(project_folder) else [
+        entry["linked"] = [] if is_v6(project_folder) else [
             str(path)
-            for path in copy_master_inputs(
+            for path in link_master_inputs(
                 project_folder, entry["directory"], log=log)
         ]
         written.append(entry)
@@ -213,7 +226,7 @@ def write_domain_dems(
 __all__ = [
     "DOMAIN_INPUT_GROUPS",
     "DOMAIN_INPUT_NAMES",
-    "copy_master_inputs",
+    "link_master_inputs",
     "domain_dem_plan",
     "write_domain_dems",
 ]
