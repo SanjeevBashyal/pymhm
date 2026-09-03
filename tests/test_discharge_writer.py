@@ -6,7 +6,7 @@ from mhm_qgis import standalone
 standalone.install(force=True)
 
 # isort: off
-from mhm_qgis.Morphology.hydrology.discharge_writer import (
+from mhm_qgis.core.handlers.file.discharge import (
     records_from_layer,
     streamflow_filename,
     write_streamflow_observation,

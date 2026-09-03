@@ -11,7 +11,7 @@ from mhm_qgis import standalone  # noqa: E402
 
 standalone.install(force=True)
 
-from mhm_qgis.Morphology.latlon.ascii_pad import (  # noqa: E402
+from mhm_qgis.core.handlers.file.ascii.pad import (  # noqa: E402
     ascii_window_offsets,
     pad_ascii_grid,
     read_ascii_header,

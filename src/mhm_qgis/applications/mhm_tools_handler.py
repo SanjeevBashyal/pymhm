@@ -414,7 +414,7 @@ def create_dem_derivative_files(
 
     The whole pass is held in memory, so callers that can afford a subprocess
     should run it through `mhm_qgis.native_worker` -- see
-    `Morphology.file_tasks.dem_derivative_files`, which injects a worker-backed
+    `core.handlers.raster.dem_derivative_files`, which injects a worker-backed
     `compute` hook. This function is the one entry point either route uses.
     """
     from mhm_tools.pre.dem_derivatives import create_dem_derivatives

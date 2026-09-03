@@ -36,7 +36,7 @@ def test_a_stale_meteorology_copy_does_not_erase_a_newer_cache_write(project):
     the whole file. What loses data is another writer landing in between: the
     stale in-memory copy is then written back over the newer sections.
     """
-    state = MeteorologyOutputState(_Dialog(project))
+    state = MeteorologyOutputState(project)
 
     held = state.load()                                       # meteorology reads
     cache.store_payload(project, "stages", "lai", "d", {})    # cache writes
@@ -47,7 +47,7 @@ def test_a_stale_meteorology_copy_does_not_erase_a_newer_cache_write(project):
 
 def test_the_cache_keeps_the_meteorology_outputs(project):
     dialog = _Dialog(project)
-    state = MeteorologyOutputState(dialog)
+    state = MeteorologyOutputState(dialog.project_folder)
     state.mark_prepared(project / "pre.nc", "pre.nc")
     before = jsonio.read_mapping(cache.state_path(project)).get("outputs")
     assert before
@@ -62,7 +62,7 @@ def test_unrelated_sections_written_by_anyone_else_survive(project):
     jsonio.write(path, {"workflows": {"execute_all": "done"}, "grid": {"ncols": 10}})
 
     cache.store_payload(project, "stages", "soil", "digest-3", {"outputs": []})
-    MeteorologyOutputState(_Dialog(project)).mark_prepared(project / "tavg.nc")
+    MeteorologyOutputState(project).mark_prepared(project / "tavg.nc")
 
     state = jsonio.read_mapping(path)
     assert state["workflows"] == {"execute_all": "done"}

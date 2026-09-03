@@ -11,7 +11,7 @@ QGIS is imported inside the functions, never at module scope, so `qgis_bridge`
 stays importable in tests and under the standalone shim.
 """
 from .compat import create_vector_file_writer, map_layer_filters, qgs_field
-from .crs import crs_of, transform_to_raster
+from .crs import crs_of, transform_between, transform_to_raster
 from .loader import load, open_layer, source_uri
 from .project import (
     add,
@@ -25,6 +25,7 @@ __all__ = [
     "add",
     "create_vector_file_writer",
     "crs_of",
+    "transform_between",
     "find_by_name",
     "find_by_source",
     "load",

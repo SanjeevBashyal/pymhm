@@ -19,13 +19,15 @@ PathInput = Union[str, Path]
 class MeteorologyOutputState:
     """Small helper for recording prepared meteorology outputs."""
 
-    def __init__(self, dialog: object) -> None:
-        self.dialog = dialog
+    def __init__(self, project_folder, log=None) -> None:
+        """Take the project folder, not a dialog: `core` must not hold Qt objects."""
+        self.project_folder = project_folder
+        self.log = log
 
     def state_path(self) -> Path | None:
-        if not self.dialog.project_folder:
+        if not self.project_folder:
             return None
-        return Path(workspace_folder(self.dialog.project_folder)) / STATE_FILENAME
+        return Path(workspace_folder(self.project_folder)) / STATE_FILENAME
 
     #: The only sections this writer owns in the shared processing state.
     OWNED_SECTIONS = ("version", "outputs")
@@ -51,12 +53,16 @@ class MeteorologyOutputState:
         try:
             jsonio.merge_sections(path, owned)
         except OSError as error:
-            self.dialog.log_message(
+            self._log(
                 f"WARNING: Could not save processing state: {error}")
+
+    def _log(self, message: str) -> None:
+        if self.log is not None:
+            self.log(message)
 
     def output_key(self, path: Path) -> str:
         """Return the registry key recorded for one output."""
-        return key_for(self.dialog.project_folder, path)
+        return key_for(self.project_folder, path)
 
 
     def mark_prepared(self, path: PathInput, name: str | None = None) -> None:
@@ -66,6 +72,6 @@ class MeteorologyOutputState:
         owner; this class keeps only the meteorology-specific label.
         """
         register(
-            self.dialog.project_folder, path,
+            self.project_folder, path,
             name=name, category="meteorology",
         )

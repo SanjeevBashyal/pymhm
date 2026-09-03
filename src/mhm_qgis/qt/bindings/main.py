@@ -135,24 +135,18 @@ def bind(dialog):
         "Gauge Position",
         dialog.morphology_processor.process_gauge_position,
     )
-    if hasattr(dialog, "pushButton_assignDischargeTables"):
-        dialog.connect_processor_button(
-            dialog.pushButton_assignDischargeTables,
-            "Assign Discharge Tables",
-            dialog.morphology_processor.assign_discharge_tables,
-        )
     try:
         dialog.input_combo("pour_points").layerChanged.connect(
             dialog.populate_pour_point_outlet_fields
         )
         dialog.input_combo("pour_points").layerChanged.connect(
-            lambda layer=None: dialog.morphology_processor.update_gauged_outlet_count(
+            lambda layer=None: dialog.update_gauged_outlet_count(
                 layer
             )
         )
     except Exception:
         pass
-    dialog.morphology_processor.update_gauged_outlet_count()
+    dialog.update_gauged_outlet_count()
 
     dialog.comboBox_pourPointOutletID.currentIndexChanged.connect(
         dialog.handle_model_input_changed

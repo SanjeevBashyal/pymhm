@@ -85,20 +85,23 @@ def test_saved_land_cover_and_soil_outputs_are_reusable(tmp_path):
 
 
 def test_execute_all_stage_order_includes_lai_before_hydrology():
-    """The button runs the task bridge, so the LAI stage must live there."""
-    import inspect
+    """The LAI stage must be in the sequence the button actually runs.
 
-    from mhm_qgis.morphology_task_bridge import MorphologyTaskBridge
+    This used to scrape the source text of `start_execute_all` for its lambdas,
+    because the order was only expressed as a list of closures. The order is
+    data now, so assert on the data.
+    """
+    from mhm_qgis.core.executions.morpho import EXECUTE_ALL_STAGES
 
-    source = inspect.getsource(MorphologyTaskBridge.start_execute_all)
-    order = [
-        line.split("self.start_", 1)[1].split("(", 1)[0]
-        for line in source.splitlines()
-        if "lambda next_step: self.start_" in line
-    ]
+    order = [stage.starter for stage in EXECUTE_ALL_STAGES]
     assert order == [
         "dem_derivatives", "categorical", "categorical", "categorical",
         "lai", "hydrology",
+    ]
+    assert order.index("lai") < order.index("hydrology")
+    # The three categorical stages are lc, soil, geology -- in that order.
+    assert [s.args[0] for s in EXECUTE_ALL_STAGES if s.starter == "categorical"] == [
+        "lc", "soil", "geology",
     ]
 
 

@@ -23,24 +23,26 @@ class MeteorologyWorkflowWorker(QtCore.QObject):
             self,
             workflow_key,
             workflow_label,
-            meteorology_processor,
+            meteorology_state,
             meteorology_run):
         super().__init__()
         self.workflow_key = workflow_key
         self.workflow_label = workflow_label
-        self.meteorology_processor = meteorology_processor
+        self.meteorology_state = meteorology_state
         self.meteorology_run = meteorology_run
-        self._original_meteo_log_message = None
 
     @QtCore.pyqtSlot()
     def run(self):
         """Execute meteorology and hand morphology back to the GUI thread."""
-        self._original_meteo_log_message = self.meteorology_processor.log_message
-        self.meteorology_processor.log_message = self.log_message.emit
+        from ...core.executions import meteo
+
         try:
-            ok = self.meteorology_processor.process_meteo_forcing(
+            # No `report`: a worker thread must not raise a modal dialog, so
+            # failures come back through `finished` for the GUI thread to show.
+            ok = meteo.prepare_forcing(
                 self.meteorology_run,
-                show_dialog=False,
+                self.meteorology_state,
+                log=self.log_message.emit,
             )
             self.finished.emit(self.workflow_key, ok, "")
         except Exception as exc:
@@ -49,7 +51,3 @@ class MeteorologyWorkflowWorker(QtCore.QObject):
             )
             self.log_message.emit(f"Traceback: {traceback.format_exc()}")
             self.finished.emit(self.workflow_key, False, str(exc))
-        finally:
-            self.meteorology_processor.log_message = (
-                self._original_meteo_log_message
-            )

@@ -13,7 +13,7 @@ from qgis.core import (  # noqa: E402
     QgsVectorLayer,
 )
 
-from mhm_qgis.Morphology.layers import categorical  # noqa: E402
+from mhm_qgis.qgis_bridge.morphology.layers import categorical  # noqa: E402
 from mhm_qgis.core.handlers.store.paths import geometry_folder, morph_staging_folder
 from mhm_qgis.core.handlers.store.layout import morph_folder  # noqa: E402
 # isort: on
@@ -203,13 +203,13 @@ def test_ready_mode_rejects_vector_input(tmp_path, monkeypatch):
         ),
         dem,
     )
-    monkeypatch.setattr(categorical.QMessageBox, "warning", lambda *_args: None)
+    monkeypatch.setattr(type(processor), "warn", lambda *_a: None)
 
     assert not processor.process_soil()
 
 
 def test_ready_land_cover_is_available_to_elevation_bands(tmp_path):
-    from mhm_qgis.Morphology.elevation_bands.band_landcover_helpers import \
+    from mhm_qgis.others.elevation_bands.band_landcover_helpers import \
         BandLandCoverHelperMixin
 
     project = tmp_path / "project"
@@ -310,7 +310,7 @@ def test_failed_geology_publish_restores_previous_outputs(tmp_path, monkeypatch)
     monkeypatch.setattr(categorical, "prepare_categorical_file", prepare)
     monkeypatch.setattr(categorical, "write_geology_metadata", write_metadata)
     monkeypatch.setattr(categorical.os, "replace", fail_definition_publish)
-    monkeypatch.setattr(categorical.QMessageBox, "critical", lambda *_args: None)
+    monkeypatch.setattr(type(processor), "error", lambda *_a: None)
 
     assert not processor.process_geology()
     assert output.read_bytes() == b"old raster"
@@ -351,7 +351,7 @@ def test_failed_backup_does_not_delete_existing_output(tmp_path, monkeypatch):
 
     monkeypatch.setattr(categorical, "prepare_categorical_file", prepare)
     monkeypatch.setattr(categorical.os, "replace", fail_backup)
-    monkeypatch.setattr(categorical.QMessageBox, "critical", lambda *_args: None)
+    monkeypatch.setattr(type(processor), "error", lambda *_a: None)
 
     assert not processor.process_land_use()
     assert output.read_bytes() == b"existing"

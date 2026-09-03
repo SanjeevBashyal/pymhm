@@ -10,10 +10,10 @@ from mhm_qgis import standalone
 standalone.install(force=True)
 
 # isort: off
-from mhm_qgis.Morphology.core.predecessors import PredecessorMixin  # noqa: E402
-from mhm_qgis.Morphology.hydrology.gauge import GaugePositionMixin  # noqa: E402
-from mhm_qgis.Morphology.hydrology.outlets import OutletCountMixin  # noqa: E402
-from mhm_qgis.Morphology.orchestration.reset_geometry import (  # noqa: E402
+from mhm_qgis.qgis_bridge.morphology.core.predecessors import PredecessorMixin  # noqa: E402
+from mhm_qgis.qgis_bridge.morphology.hydrology.gauge import GaugePositionMixin  # noqa: E402
+from mhm_qgis.qt.controllers.main import update_gauged_outlet_count  # noqa: E402
+from mhm_qgis.qgis_bridge.morphology.orchestration.reset_geometry import (  # noqa: E402
     ResetGeometryMixin,
 )
 from mhm_qgis.core.handlers.state.domain_state import (  # noqa: E402
@@ -92,9 +92,7 @@ def test_saved_state_controls_gauge_and_domain_counts(tmp_path: Path) -> None:
             "label_numberOfGaugedOutletsValue": label,
         },
     )()
-    harness = type("Harness", (), {"dialog": dialog})()
-
-    assert OutletCountMixin.update_gauged_outlet_count(harness) == "1"
+    assert update_gauged_outlet_count(dialog) == "1"
     assert label.value == "1"
     assert domain_count(dialog) == 3
 

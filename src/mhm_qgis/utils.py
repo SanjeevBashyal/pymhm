@@ -5,7 +5,6 @@ Utility functions and base classes for mhm_qgis dialog processing
 import sys
 from qgis.PyQt.QtWidgets import QMessageBox
 from qgis.core import QgsApplication
-import processing
 
 
 class DialogUtils:
@@ -47,18 +46,15 @@ class DialogUtils:
         return True
 
     def run_processing_algorithm(self, name, params):
-        """A wrapper to run a processing algorithm and handle errors."""
-        self.log_message(f"Running algorithm: {name}...")
-        try:
-            result = processing.run(name, params)
-            self.log_message(f"Algorithm '{name}' finished successfully.")
-            return result
-        except Exception as e:
-            self.log_message(
-                f"ERROR: Algorithm '{name}' failed. Details: {str(e)}")
-            QMessageBox.critical(
-                self, "Processing Error", f"Algorithm '{name}' failed.\nCheck the log for details.")
-            return None
+        """Run a processing algorithm, reporting failures to the user."""
+        from .qgis_bridge import processing as qgis_processing
+        from .qt.reporting import dialog_reporter
+
+        return qgis_processing.run(
+            name, params,
+            log=self.log_message,
+            report=dialog_reporter(self, log=None),
+        )
 
     def get_dem_extent_and_resolution(self):
         """Get DEM extent and pixel resolution for clipping and rasterization"""

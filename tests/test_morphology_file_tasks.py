@@ -14,7 +14,7 @@ from mhm_qgis import standalone
 standalone.install(force=True)
 
 from mhm_qgis.grid_resolution import CATEGORICAL_PAD_VALUE  # noqa: E402
-from mhm_qgis.Morphology.file_tasks import (  # noqa: E402
+from mhm_qgis.core.handlers.raster.tasks import (  # noqa: E402
     DEM_DERIVATIVE_OUTPUTS,
     crop_aligned_l0_raster,
     delineate_domains_file,

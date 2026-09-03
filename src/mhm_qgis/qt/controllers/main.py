@@ -27,10 +27,10 @@ from ..dialogs.input_selection import (INPUT_EXTENSIONS, InputComboAdapter,
                                 LaiNetcdfInputDialog, MhmReadyInputDialog,
                                 SingleLayerInputDialog, loaded_qgis_items,
                                 scan_project_folders, scan_project_inputs)
-from ...Meteorology.forcing import MeteoFolderSpec, resolution_in_crs
-from ...Meteorology.inspection_cache import inspect_meteo_folder_cached
+from ...core.meteorology.forcing import MeteoFolderSpec, resolution_in_crs
+from ...core.meteorology.inspection_cache import inspect_meteo_folder_cached
 from ...morphology_display import DISPLAY_KEYS
-from ...Morphology.hydrology.outlets import StationIdError, outlet_ids_from_layer
+from ...core.morphology.hydrology.outlets import StationIdError, outlet_ids_from_layer
 from ...core.handlers.store.paths import data_folder
 
 def configure_input_adapters(dialog):
@@ -1455,3 +1455,31 @@ def get_lai_time_range(dialog):
 def get_crs(dialog):
     """Get the selected CRS"""
     return dialog.mProjectionSelectionWidget_crs.crs()
+
+
+def update_gauged_outlet_count(dialog, layer=None):
+    """Show configured gauges, falling back to the layer feature count.
+
+    Reads a combo box and writes a label, so it is controller work; it used to
+    be a mixin on the morphology processor, which put a widget reference inside
+    the computation layer.
+    """
+    from ...core.morphology.hydrology.outlets import (
+        configured_gauged_outlet_ids,
+        feature_count_text,
+    )
+
+    if layer is None:
+        layer = dialog.input_combo("pour_points").currentLayer()
+
+    configured_ids = configured_gauged_outlet_ids(
+        getattr(dialog, "project_folder", None)
+    )
+    count = (
+        str(len(configured_ids))
+        if configured_ids is not None
+        else feature_count_text(layer)
+    )
+    if hasattr(dialog, "label_numberOfGaugedOutletsValue"):
+        dialog.label_numberOfGaugedOutletsValue.setText(count)
+    return count

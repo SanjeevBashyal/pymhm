@@ -11,7 +11,7 @@ from mhm_qgis import standalone  # noqa: E402
 standalone.install(force=True)
 
 from mhm_qgis.grid_resolution import CATEGORICAL_PAD_VALUE  # noqa: E402
-from mhm_qgis.Morphology.layers.masking import MaskingMixin  # noqa: E402
+from mhm_qgis.qgis_bridge.morphology.layers.masking import MaskingMixin  # noqa: E402
 
 
 # Layers the DEM workflow produces, and the policy each one must follow.

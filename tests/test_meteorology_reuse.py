@@ -12,8 +12,8 @@ from mhm_qgis import standalone  # noqa: E402
 
 standalone.install(force=True)
 
-from mhm_qgis.Meteorology.paths import expected_meteo_outputs  # noqa: E402
-from mhm_qgis.Meteorology.reuse import (  # noqa: E402
+from mhm_qgis.core.meteorology.paths import expected_meteo_outputs  # noqa: E402
+from mhm_qgis.core.meteorology.reuse import (  # noqa: E402
     output_state_key,
     required_meteo_variables,
     stale_meteo_variables,

@@ -20,7 +20,7 @@ from mhm_qgis.core.handlers.state.domain_state import (  # noqa: E402
     DOMAIN_MODE_SNAPPED,
     gauge_records,
 )
-from mhm_qgis.Morphology.watershed.domain_workflow import (  # noqa: E402
+from mhm_qgis.qgis_bridge.morphology.watershed.domain_workflow import (  # noqa: E402
     DomainWorkflow,
 )
 # isort: on

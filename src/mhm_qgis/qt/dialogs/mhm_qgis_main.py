@@ -42,13 +42,14 @@ from .input_selection import (
     scan_project_folders,
     scan_project_inputs,
 )
-from ...Meteorology import MeteorologyProcessor
-from ...Meteorology.forcing import (MeteoFolderSpec, TargetGrid,
+from ...core.executions import meteo as meteo_execution
+from ...core.handlers.state.meteo_outputs import MeteorologyOutputState
+from ...core.meteorology.forcing import (MeteoFolderSpec, TargetGrid,
                                   inspect_meteo_inputs, resolution_in_crs)
-from ...Meteorology.inspection_cache import inspect_meteo_folder_cached
-from ...Meteorology.processor import MeteorologyRun
-from ...Morphology import MorphologyProcessor
-from ...Morphology.hydrology.outlets import (
+from ...core.meteorology.inspection_cache import inspect_meteo_folder_cached
+from ...core.executions.meteo import MeteorologyRun
+from ...qgis_bridge.morphology import MorphologyProcessor
+from ...core.morphology.hydrology.outlets import (
     StationIdError,
     outlet_ids_from_layer,
 )
@@ -140,7 +141,8 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
 
         # --- Initialize processors ---
         self.morphology_processor = MorphologyProcessor(self)
-        self.meteorology_processor = MeteorologyProcessor(self)
+        # Built on demand rather than stored: `project_folder` is empty at
+        # construction and changes whenever the user picks a project.
         self.configuration_processor = ConfigurationProcessor(self)
         self.morphology_tasks = MorphologyTaskBridge(self)
 
@@ -639,7 +641,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
                 DischargeTableAssignmentDialog,
                 DomainAndDischargeTableAssignmentDialog,
             )
-            from ...Morphology.watershed.domain_workflow import DomainWorkflow
+            from ...qgis_bridge.morphology.watershed.domain_workflow import DomainWorkflow
             from ...core.handlers.state.domain_state import (
                 DOMAIN_MODE_DEM_EXTENT,
                 DOMAIN_MODE_SNAPPED,
@@ -677,7 +679,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             else:
                 workflow.apply_snapped_domains(assignments)
             sync_domain_settings(self.project_folder)
-            self.morphology_processor.update_gauged_outlet_count()
+            self.update_gauged_outlet_count()
             self.invalidate_meteo_morph_setup()
             return True
         except Exception as error:
@@ -772,7 +774,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
                     f"WARNING: Could not update domain namelist settings: {error}"
                 )
             self.save_input_state()
-            self.morphology_processor.update_gauged_outlet_count()
+            self.update_gauged_outlet_count()
 
     def _domain_delineator_preflight_failed(self, message):
         message = str(message).split("\n", 1)[0]
@@ -787,7 +789,6 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
                 "fallback_button": "pushButton_executeAllMorphology",
                 "label": "Execute All Processing",
                 "action_name": "Execute All Processing",
-                "method": "execute_all_processing",
                 "thread_name": "mHM QGISExecuteAllThread",
                 "completed_message": (
                     "Morphology preparation completed successfully."
@@ -800,7 +801,6 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
                 "button": "pushButton_executeMeteoMorphSetup",
                 "label": "Meteorology and Morphology Setup",
                 "action_name": "Meteorology and Morphology Setup",
-                "method": "execute_morph_setup_processing",
                 "thread_name": "mHM QGISMeteoMorphSetupThread",
                 "completed_message": (
                     "Meteorology and morphology setup completed successfully."
@@ -830,6 +830,13 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
     def start_execute_all_processing(self):
         """Run Execute All as a sequence of QGIS-managed file tasks."""
         self.morphology_tasks.start_execute_all()
+
+    def update_gauged_outlet_count(self, layer=None):
+        return main_controller.update_gauged_outlet_count(self, layer)
+
+    def _current_meteorology_state(self):
+        """Return a meteorology output state bound to the current project."""
+        return MeteorologyOutputState(self.project_folder, log=self.log_message)
 
     def start_meteo_morph_setup_processing(self):
         """Validate inputs and run meteo then morphology setup."""
@@ -935,7 +942,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         worker = MeteorologyWorkflowWorker(
             workflow_key,
             spec["label"],
-            meteorology_processor=self.meteorology_processor,
+            meteorology_state=self._current_meteorology_state(),
             meteorology_run=self._pending_meteo_run,
         )
         worker.moveToThread(thread)
@@ -1957,12 +1964,18 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             self.refresh_meteo_display()
             self.refresh_output_display()
             self.load_input_state()
-            self.morphology_processor.update_gauged_outlet_count()
+            self.update_gauged_outlet_count()
 
             # Load project state in morphology processor
             self.morphology_processor.load_project_state()
             self.refresh_morphology_workflow_button_states()
-            self.meteorology_processor.load_project_state()
+            meteo_execution.existing_outputs(
+                self.project_folder,
+                self._current_meteorology_state(),
+                log=self.log_message,
+            )
+            self.update_l2_resolution_from_metadata()
+            self.refresh_meteo_display()
             self.refresh_grid_resolution_controls()
 
     def on_tab_changed(self, *args, **kwargs):

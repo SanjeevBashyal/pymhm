@@ -14,7 +14,7 @@ from mhm_qgis import standalone  # noqa: E402
 
 standalone.install(force=True)
 
-from mhm_qgis.Morphology.layers.morph_input_nc import (  # noqa: E402
+from mhm_qgis.core.morphology.layers.morph_input_nc import (  # noqa: E402
     MORPH_VARIABLES,
     available_layers,
     write_morph_input_nc,

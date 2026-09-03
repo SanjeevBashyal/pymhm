@@ -20,7 +20,7 @@ from mhm_qgis import standalone  # noqa: E402
 
 standalone.install(force=True)
 
-from mhm_qgis.Morphology.latlon.ascii_morphology import (  # noqa: E402
+from mhm_qgis.core.handlers.file.ascii.morphology import (  # noqa: E402
     _read_raster,
     _target_coordinates,
     align_dataset_to_header,

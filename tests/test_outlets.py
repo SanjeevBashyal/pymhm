@@ -12,7 +12,7 @@ from mhm_qgis import standalone
 standalone.install(force=True)
 
 # isort: off
-from mhm_qgis.Morphology.hydrology.outlets import (
+from mhm_qgis.core.morphology.hydrology.outlets import (
     StationIdError,
     find_outlet_id_field,
     find_station_id_field,

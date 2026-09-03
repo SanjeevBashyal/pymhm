@@ -27,7 +27,7 @@ from qgis.gui import QgsMapCanvas, QgsMapToolEmitPoint, QgsVertexMarker
 
 from .input_selection import scan_project_inputs
 from ...qt.dialogs.discharge_assignment import OutletAssignment
-from ...Morphology.hydrology.outlets import (
+from ...core.morphology.hydrology.outlets import (
     StationIdError,
     station_id_text,
 )
@@ -39,8 +39,8 @@ from ...core.handlers.state.domain_state import (
     resolve_output_path,
     save_state,
 )
-from ...Morphology.watershed.domain_workflow import DomainWorkflow
-from ...Morphology.file_tasks import (
+from ...qgis_bridge.morphology.watershed.domain_workflow import DomainWorkflow
+from ...core.handlers.raster.tasks import (
     delineate_domains_file,
     delineate_outlet_file,
 )

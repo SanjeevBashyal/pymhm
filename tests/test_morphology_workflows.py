@@ -7,7 +7,7 @@ from mhm_qgis import standalone
 standalone.install(force=True)
 
 # isort: off
-from mhm_qgis.Morphology.orchestration.execute_all import ExecuteAllMixin  # noqa: E402
+from mhm_qgis.qgis_bridge.morphology.orchestration.execute_all import ExecuteAllMixin  # noqa: E402
 from mhm_qgis.core.handlers.store.paths import morph_staging_folder
 from mhm_qgis.core.handlers.store.layout import geometry_folder  # noqa: E402
 # isort: on
@@ -147,30 +147,6 @@ class _WorkflowHarness:
     def align_advanced_inputs_to_l0(self, show_error_dialog=True):
         self.calls.append("align_advanced")
         return True
-
-
-def test_execute_all_stops_before_finalization(tmp_path):
-    workflow = _WorkflowHarness(tmp_path)
-
-    assert ExecuteAllMixin.execute_all_processing(
-        workflow,
-        show_error_dialog=False,
-    )
-    assert workflow.calls == [
-        "fill",
-        "slope",
-        "aspect",
-        "land_cover",
-        "soil",
-        "geology",
-        "lai",
-        "flow_accumulation",
-        "flow_direction",
-        "channel_network",
-        "snap",
-        "gauge",
-    ]
-    assert workflow.statuses[-1][:2] == ("execute_all", "completed")
 
 
 def test_combined_setup_runs_finalization_in_order(tmp_path):

@@ -12,9 +12,9 @@ from mhm_qgis import standalone  # noqa: E402
 
 standalone.install(force=True)
 
-from mhm_qgis.Meteorology import forcing  # noqa: E402
-from mhm_qgis.Meteorology.forcing import TargetGrid, _resample_ready  # noqa: E402
-from mhm_qgis.Meteorology.l2_grid import (  # noqa: E402
+from mhm_qgis.core.meteorology import forcing  # noqa: E402
+from mhm_qgis.core.meteorology.forcing import TargetGrid, _resample_ready  # noqa: E402
+from mhm_qgis.core.meteorology.l2_grid import (  # noqa: E402
     assert_header_file_matches,
     assert_matches_header,
 )
@@ -150,7 +150,7 @@ def _era5_file(path, days=31, rows=4, cols=5):
 
 def test_a_long_record_falls_back_to_one_variable_at_a_time(tmp_path, monkeypatch):
     """Reading files once for tavg/tmin/tmax must not multiply the peak memory."""
-    from mhm_qgis.Meteorology.ERA5Land.mhm.build import (
+    from mhm_qgis.core.meteorology.ERA5Land.mhm.build import (
         METEO_MAX_BYTES_ENV,
         estimated_single_pass_bytes,
         single_pass_byte_limit,
@@ -175,11 +175,11 @@ def test_a_long_record_falls_back_to_one_variable_at_a_time(tmp_path, monkeypatc
 
 
 def test_the_single_pass_and_sequential_paths_agree(tmp_path, monkeypatch):
-    from mhm_qgis.Meteorology.ERA5Land.mhm.build import (
+    from mhm_qgis.core.meteorology.ERA5Land.mhm.build import (
         METEO_MAX_BYTES_ENV,
         build_daily_datasets,
     )
-    from mhm_qgis.Meteorology.ERA5Land.mhm.specs import FORCING_SPECS
+    from mhm_qgis.core.meteorology.ERA5Land.mhm.specs import FORCING_SPECS
 
     files = []
     for month in (1, 2):

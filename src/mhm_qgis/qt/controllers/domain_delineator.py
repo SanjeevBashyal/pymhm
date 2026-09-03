@@ -24,7 +24,7 @@ except ImportError:
 
 from ..dialogs.input_selection import scan_project_inputs
 from ..dialogs.discharge_assignment import OutletAssignment
-from ...Morphology.hydrology.outlets import StationIdError
+from ...core.morphology.hydrology.outlets import StationIdError
 
 def _load_outlet(dialog, outlet_id):
     dialog.current_outlet_id = str(outlet_id or "")
@@ -176,7 +176,7 @@ def _domain_state_saved(dialog, proposed_state):
     dialog.state = proposed_state
     dialog._draft_state = copy.deepcopy(proposed_state)
     dialog.main_dialog.save_input_state()
-    dialog.processor.update_gauged_outlet_count()
+    dialog.update_gauged_outlet_count()
     dialog._show_saved_watershed(
         proposed_state["outlets"].get(dialog.current_outlet_id, {})
     )

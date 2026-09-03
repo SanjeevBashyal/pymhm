@@ -12,12 +12,12 @@ from mhm_qgis import standalone  # noqa: E402
 
 standalone.install(force=True)
 
-from mhm_qgis.Meteorology import inspection_cache  # noqa: E402
-from mhm_qgis.Meteorology.inspection_cache import (  # noqa: E402
+from mhm_qgis.core.meteorology import inspection_cache  # noqa: E402
+from mhm_qgis.core.meteorology.inspection_cache import (  # noqa: E402
     inspect_meteo_folder_cached,
     inspection_fingerprint,
 )
-from mhm_qgis.Meteorology.forcing import MeteoFolderSpec  # noqa: E402
+from mhm_qgis.core.meteorology.forcing import MeteoFolderSpec  # noqa: E402
 
 xr = pytest.importorskip("xarray")
 

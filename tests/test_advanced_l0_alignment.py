@@ -13,11 +13,11 @@ from mhm_qgis import standalone  # noqa: E402
 
 standalone.install(force=True)
 
-from mhm_qgis.Morphology.latlon.ascii_morphology import (  # noqa: E402
+from mhm_qgis.core.handlers.file.ascii.morphology import (  # noqa: E402
     pad_dataset_to_header,
     pad_l0_file_to_header,
 )
-from mhm_qgis.Morphology.layers.advanced_l0 import (  # noqa: E402
+from mhm_qgis.core.morphology.layers.advanced_l0 import (  # noqa: E402
     missing_model_inputs,
     pad_spec_for,
     publish_model_inputs,

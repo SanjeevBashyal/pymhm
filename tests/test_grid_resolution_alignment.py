@@ -177,7 +177,7 @@ def test_repeating_degree_l2_cell_size_is_never_rounded_away():
 
 
 def test_all_four_levels_validate_on_a_repeating_degree_grid(tmp_path):
-    from mhm_qgis.Morphology.latlon.ascii_morphology import validate_grid_headers
+    from mhm_qgis.core.handlers.file.ascii.morphology import validate_grid_headers
     from mhm_qgis.grid_resolution import (
         header_for_existing_bounds,
         possible_resolutions,

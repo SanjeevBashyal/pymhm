@@ -9,7 +9,7 @@ standalone.install(force=True)
 
 # isort: off
 from mhm_qgis.core.handlers.state.meteo_outputs import MeteorologyOutputState  # noqa: E402
-from mhm_qgis.Morphology.core.processing_state import ProcessingStateMixin  # noqa: E402
+from mhm_qgis.qgis_bridge.morphology.core.processing_state import ProcessingStateMixin  # noqa: E402
 from mhm_qgis.core.handlers.store.layout import workspace_folder  # noqa: E402
 # isort: on
 
@@ -44,7 +44,7 @@ def test_morphology_state_is_saved_in_workspace(tmp_path: Path) -> None:
 
 def test_meteorology_state_and_output_keys_use_workspace(tmp_path: Path) -> None:
     dialog = _Dialog(tmp_path)
-    state = MeteorologyOutputState(dialog)
+    state = MeteorologyOutputState(dialog.project_folder)
     workspace = Path(workspace_folder(tmp_path))
     output = workspace / "data" / "meteo" / "pre" / "pre.nc"
 

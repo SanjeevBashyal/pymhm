@@ -7,7 +7,7 @@ from datetime import date
 import numpy as np
 import pytest
 
-from mhm_qgis.Meteorology import display
+from mhm_qgis.core.meteorology import display
 
 
 def _write_forcing(project, variable, first, days):

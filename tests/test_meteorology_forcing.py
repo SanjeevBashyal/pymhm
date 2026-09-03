@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from mhm_qgis.Meteorology.forcing import (
+from mhm_qgis.core.meteorology.forcing import (
     ERA5LAND,
     MHM_READY,
     MeteoFolderSpec,
@@ -195,7 +195,7 @@ def test_processes_separate_era5land_folders_and_optional_pet(
     assert not (tmp_path / "out" / "pet" / "pet.nc").exists()
     assert not (tmp_path / "out" / "pet" / "header.txt").exists()
 
-    from mhm_qgis.Meteorology import forcing
+    from mhm_qgis.core.meteorology import forcing
 
     previous_pre = without_pet.outputs["pre"].read_bytes()
     original_writer = forcing.write_netcdf

@@ -14,11 +14,12 @@ from qgis.PyQt import QtCore
 from qgis.PyQt.QtWidgets import QMessageBox
 from qgis.core import QgsRasterLayer
 
-from .Morphology.core.soil_sources import local_layer_source
-from .Morphology.file_tasks import (dem_derivative_files, fill_dem_file,
+from .core.morphology.soil_sources import local_layer_source
+from .core.executions import morpho
+from .core.handlers.raster.tasks import (dem_derivative_files, fill_dem_file,
                                     hydrology_files, terrain_files)
-from .Morphology.hydrology.outlets import configured_gauged_outlet_ids
-from .Morphology.layers.categorical import _SPECS
+from .core.morphology.hydrology.outlets import configured_gauged_outlet_ids
+from .qgis_bridge.morphology.layers.categorical import _SPECS
 from .applications.mhm_tools_handler import prepare_lai_file
 from .core.handlers.state.nml_settings import load_settings
 from .core.handlers.state.cache import (
@@ -874,58 +875,22 @@ class MorphologyTaskBridge(QtCore.QObject):
         self.processor.load_processing_state()
         self.processor.mark_workflow_status("execute_all", "running")
         self.dialog.set_morphology_workflow_button_state("execute_all", "running")
-        stages = [
-            lambda next_step: self.start_dem_derivatives(
-                key="execute-all-dem",
-                done=lambda _r: next_step(),
-                failed=self._fail_execute_all,
-            ),
-            lambda next_step: self.start_categorical(
-                "lc",
-                key="execute-all-lc",
-                reuse_existing=True,
-                done=lambda _r: next_step(),
-                failed=self._fail_execute_all,
-            ),
-            lambda next_step: self.start_categorical(
-                "soil",
-                key="execute-all-soil",
-                reuse_existing=True,
-                done=lambda _r: next_step(),
-                failed=self._fail_execute_all,
-            ),
-            lambda next_step: self.start_categorical(
-                "geology",
-                key="execute-all-geology",
-                done=lambda _r: next_step(),
-                failed=self._fail_execute_all,
-            ),
-            lambda next_step: self.start_lai(
-                done=lambda _r: next_step(),
-                failed=self._fail_execute_all,
-            ),
-            # facc and fdir already came from the derivatives stage; this pass
-            # only adds the upstream-area raster and the channel network.
-            lambda next_step: self.start_hydrology(
-                key="execute-all-hydrology",
-                load="",
-                accumulation=False,
-                direction=False,
-                done=lambda _r: next_step(),
-                failed=self._fail_execute_all,
-            ),
-        ]
 
-        def advance(index=0):
-            if index >= len(stages):
-                self._finish_execute_all()
-                return
-            started = stages[index](lambda: advance(index + 1))
-            if not started:
-                self._fail_execute_all("Could not start the next preprocessing task.")
+        def start(stage, advance):
+            starter = getattr(self, f"start_{stage.starter}")
+            return starter(
+                *stage.args,
+                done=lambda _result: advance(),
+                failed=self._fail_execute_all,
+                **stage.options,
+            )
 
-        advance()
-        return True
+        return morpho.run_stages(
+            morpho.EXECUTE_ALL_STAGES,
+            start,
+            on_done=self._finish_execute_all,
+            on_fail=self._fail_execute_all,
+        )
 
     def _finish_execute_all(self):
         try:

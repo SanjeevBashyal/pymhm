@@ -9,7 +9,7 @@ from __future__ import annotations
 from qgis.PyQt import QtCore
 from qgis.PyQt.QtWidgets import QMessageBox
 
-from ...Meteorology.display import (
+from ...core.meteorology.display import (
     VARIABLE_LABELS,
     available_meteo_variables,
     date_for_step,

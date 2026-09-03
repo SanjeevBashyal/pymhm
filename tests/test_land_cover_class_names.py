@@ -6,7 +6,7 @@ from mhm_qgis import standalone
 
 standalone.install(force=True)
 
-from mhm_qgis.Morphology.layers.land_cover_class_names import (  # noqa: E402
+from mhm_qgis.qgis_bridge.morphology.layers.land_cover_class_names import (  # noqa: E402
     LandCoverClassNameMixin,
 )
 
