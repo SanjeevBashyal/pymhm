@@ -40,10 +40,6 @@ def _configure_row(dialog, row: _AssignmentRow) -> None:
         )
     )
     row.gauge.setChecked(is_gauge)
-    if row.domain is not None:
-        row.domain.setChecked(
-            bool(record.get("is_domain", record.get("domain", False)))
-        )
 
     source = str(record.get("discharge_file", "") or "")
     if source:

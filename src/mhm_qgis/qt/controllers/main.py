@@ -922,14 +922,13 @@ def handle_domain_definition_type(dialog, index):
         return
     previous = dialog._domain_definition_mode
     previous_dem = dialog.checkBox_DEMdomain.isChecked()
-    if int(index) == 2:
+    if int(index) == 1:
         dialog._domain_definition_mode = dialog.comboBox_domainDefinitionType.currentText()
         dialog.save_input_state()
         dialog.open_domain_delineator()
         return
-    mode = "dem" if int(index) == 0 else "snapped"
-    dialog.checkBox_DEMdomain.setChecked(mode == "dem")
-    if dialog.open_domain_assignment(mode):
+    dialog.checkBox_DEMdomain.setChecked(True)
+    if dialog.open_domain_assignment():
         dialog._domain_definition_mode = dialog.comboBox_domainDefinitionType.currentText()
         dialog.save_input_state()
         return

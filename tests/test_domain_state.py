@@ -181,7 +181,7 @@ def test_saved_order_and_gauge_metadata_survive_sorted_json(tmp_path: Path) -> N
     )
     state = {
         "version": 1,
-        "definition_type": "snapped_pour_points",
+        "definition_type": "domain_delineator",
         "outlet_order": ["20", "001", "3"],
         "outlets": {
             "001": {
@@ -207,7 +207,7 @@ def test_saved_order_and_gauge_metadata_survive_sorted_json(tmp_path: Path) -> N
     loaded = load_state(tmp_path / "project")
 
     assert loaded["version"] == 2
-    assert loaded["definition_mode"] == "snapped_pour_points"
+    assert loaded["definition_mode"] == "domain_delineator"
     assert loaded["outlet_order"] == ["20", "001", "3"]
     assert loaded["outlets"]["20"]["domain_id"] == 1
     assert loaded["outlets"]["001"]["domain_id"] == 2

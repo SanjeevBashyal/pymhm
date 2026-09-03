@@ -612,8 +612,8 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
     def handle_domain_definition_type(self, *args, **kwargs):
         return main_controller.handle_domain_definition_type(self, *args, **kwargs)
 
-    def open_domain_assignment(self, mode):
-        """Open the non-interactive domain/gauge assignment workflow."""
+    def open_domain_assignment(self):
+        """Open the non-interactive gauge assignment for the DEM-extent domain."""
         if standalone_is_active():
             QMessageBox.information(
                 self,
@@ -639,13 +639,9 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         try:
             from ...qt.dialogs.discharge_assignment import (
                 DischargeTableAssignmentDialog,
-                DomainAndDischargeTableAssignmentDialog,
             )
             from ...qgis_bridge.morphology.watershed.domain_workflow import DomainWorkflow
-            from ...core.handlers.state.domain_state import (
-                DOMAIN_MODE_DEM_EXTENT,
-                DOMAIN_MODE_SNAPPED,
-            )
+            from ...core.handlers.state.domain_state import DOMAIN_MODE_DEM_EXTENT
             from ...core.handlers.state.nml_settings import sync_domain_settings
 
             layer = self.input_combo("pour_points").currentLayer()
@@ -656,16 +652,8 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
                 self.selected_outlet_id_field(),
                 outlet_ids,
             )
-            definition = (
-                DOMAIN_MODE_DEM_EXTENT if mode == "dem" else DOMAIN_MODE_SNAPPED
-            )
-            state = workflow.load_synced_state(definition, mode == "dem")
-            dialog_class = (
-                DischargeTableAssignmentDialog
-                if mode == "dem"
-                else DomainAndDischargeTableAssignmentDialog
-            )
-            dialog = dialog_class(
+            state = workflow.load_synced_state(DOMAIN_MODE_DEM_EXTENT, True)
+            dialog = DischargeTableAssignmentDialog(
                 outlet_ids,
                 self,
                 initial_records=state.get("outlets", {}),
@@ -673,11 +661,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             execute = getattr(dialog, "exec", None) or dialog.exec_
             if execute() != QDialog.Accepted:
                 return False
-            assignments = dialog.selected_assignments()
-            if mode == "dem":
-                workflow.apply_dem_extent(assignments)
-            else:
-                workflow.apply_snapped_domains(assignments)
+            workflow.apply_dem_extent(dialog.selected_assignments())
             sync_domain_settings(self.project_folder)
             self.update_gauged_outlet_count()
             self.invalidate_meteo_morph_setup()

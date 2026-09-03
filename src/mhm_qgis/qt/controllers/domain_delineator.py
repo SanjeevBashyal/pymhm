@@ -64,6 +64,10 @@ def _load_outlet(dialog, outlet_id):
     dialog._show_picked_coordinates(record.get("picked"))
     dialog._show_saved_watershed(record)
     dialog._zoom_to_outlet()
+    if dialog._watershed_layer is None:
+        # Nothing saved yet: delineate the snapped location up front so the
+        # snap can be judged against its mask and catchment area.
+        dialog._preview_saved_point(record)
 
 
 def _set_discharge_enabled(dialog, enabled):

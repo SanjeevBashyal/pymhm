@@ -14,7 +14,6 @@ from qgis.PyQt.QtWidgets import QApplication  # noqa: E402
 
 from mhm_qgis.qt.dialogs.discharge_assignment import (  # noqa: E402
     DischargeTableAssignmentDialog,
-    DomainAndDischargeTableAssignmentDialog,
     OutletAssignment,
 )
 # isort: on
@@ -51,13 +50,11 @@ def test_basic_dialog_reuses_designer_row_and_adds_only_remaining_rows():
     dialog.close()
 
 
-def test_domain_dialog_returns_typed_records_for_every_outlet():
+def test_dialog_returns_typed_records_for_every_outlet():
     _app()
-    dialog = DomainAndDischargeTableAssignmentDialog(
+    dialog = DischargeTableAssignmentDialog(
         ["001", "2"],
-        initial_records={
-            "001": {"is_domain": True, "is_gauged": True},
-        },
+        initial_records={"2": {"is_gauged": False}},
     )
     layer = _Layer()
     first = dialog._rows[0]
@@ -67,32 +64,29 @@ def test_domain_dialog_returns_typed_records_for_every_outlet():
     records = dialog.selected_assignments()
 
     assert records == [
-        OutletAssignment("001", True, True, layer),
+        OutletAssignment("001", True, False, layer),
         OutletAssignment("2", False, False, None),
     ]
-    assert first.domain is dialog.checkBox_isDomain
-    assert dialog._rows[1].domain.objectName() == "checkBox_isDomain2"
     dialog.close()
 
 
-def test_dialog_restores_legacy_gauge_and_domain_flags():
+def test_dialog_restores_legacy_gauge_flag():
     _app()
-    dialog = DomainAndDischargeTableAssignmentDialog(
+    dialog = DischargeTableAssignmentDialog(
         ["1"],
-        initial_records={"1": {"gauged": True, "domain": True}},
+        initial_records={"1": {"gauged": False}},
     )
 
-    assert dialog.checkBox_isGauge.isChecked()
-    assert dialog.checkBox_isDomain.isChecked()
+    assert not dialog.checkBox_isGauge.isChecked()
     dialog.close()
 
 
 def test_gauge_checkbox_controls_only_its_discharge_inputs():
     _app()
-    dialog = DomainAndDischargeTableAssignmentDialog(["1", "2"])
+    dialog = DischargeTableAssignmentDialog(["1", "2"])
     first, second = dialog._rows
 
-    first.gauge.setChecked(True)
+    second.gauge.setChecked(False)
 
     assert first.discharge.isEnabled()
     assert first.browse.isEnabled()

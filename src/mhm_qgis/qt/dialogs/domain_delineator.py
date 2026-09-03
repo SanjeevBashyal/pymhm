@@ -19,6 +19,7 @@ from qgis.PyQt.QtWidgets import (
 from qgis.core import (
     QgsCoordinateTransform,
     QgsGeometry,
+    QgsPalettedRasterRenderer,
     QgsProject,
     QgsRasterLayer,
     QgsVectorLayer,
@@ -29,6 +30,7 @@ from .input_selection import scan_project_inputs
 from ...qt.dialogs.discharge_assignment import OutletAssignment
 from ...core.morphology.hydrology.outlets import (
     StationIdError,
+    find_outlet_id_field,
     station_id_text,
 )
 from ...core.handlers.state.domain_state import (
@@ -51,6 +53,10 @@ from ...qt.controllers import domain_delineator as domain_delineator_controller
 from ...qt.bindings.domain_delineator import bind as bind_domain_delineator
 from ...qt.ui.pyui.ui_domain_delineator_dialog import Ui_DomainDelineatorDialog
 from ..objects.viewport_raster_range import ViewportRasterRangeController
+
+
+MASK_COLOR = QColor(255, 105, 180)
+MASK_OPACITY = 0.5
 
 
 def _run_outlet_task(task, options):
@@ -112,6 +118,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         self._draft_state = copy.deepcopy(self.state)
         self._features = self._outlet_features()
         self._prepare_map_layers(prepared_context)
+        self._seed_snapped_outlets()
         self._connect_signals()
         self.finished.connect(self._cleanup)
         self.listWidget_outlets.addItems(self.outlet_ids)
@@ -138,6 +145,79 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             if outlet_id:
                 features[outlet_id] = feature
         return features
+
+    def _seed_snapped_outlets(self):
+        """Snap the pour points once so every outlet opens on a channel cell.
+
+        Only outlets without a location are seeded, so reopening the dialog
+        never discards a location the user picked. Snapping is a convenience,
+        not a prerequisite: when it fails the outlets simply start unpicked.
+        """
+        try:
+            self._apply_snapped_outlets()
+        except Exception as error:
+            self.main_dialog.log_message(
+                "WARNING: Domain Delineator could not snap the pour points; "
+                f"pick the outlet locations manually ({error})."
+            )
+
+    def _apply_snapped_outlets(self):
+        layer = QgsVectorLayer(
+            self.workflow.regenerate_snapped_points(),
+            "Snapped pour points",
+            "ogr",
+        )
+        if not layer.isValid():
+            raise RuntimeError("The snapped pour-point layer is invalid.")
+        field = find_outlet_id_field(layer, self.outlet_id_field)
+        target = self._filled_dem_layer.crs()
+        transform = None
+        source = layer.crs()
+        if source.isValid() and target.isValid() and source != target:
+            transform = QgsCoordinateTransform(
+                source, target, QgsProject.instance()
+            )
+            transform.setBallparkTransformsAreAppropriate(True)
+        for feature in layer.getFeatures():
+            outlet_id = station_id_text(feature.attribute(field))
+            record = self._draft_state["outlets"].get(outlet_id)
+            if record is None or isinstance(record.get("picked"), dict):
+                continue
+            geometry = QgsGeometry(feature.geometry())
+            if geometry.isEmpty():
+                continue
+            if transform is not None:
+                geometry.transform(transform)
+            point = geometry.asPoint()
+            record["picked"] = {
+                "x": float(point.x()),
+                "y": float(point.y()),
+                "crs": target.authid() if target.isValid() else "",
+                "source": "snapped",
+            }
+
+    def _mask_layer(self, path, name, basin_id):
+        """Render a delineation mask as a translucent pink raster.
+
+        Drawing the pyflwdir mask itself keeps the review loop free of a
+        polygonize pass; polygons are only written when the outlets are saved.
+        """
+        layer = QgsRasterLayer(str(path), name)
+        if not layer.isValid():
+            return None
+        layer.setRenderer(
+            QgsPalettedRasterRenderer(
+                layer.dataProvider(),
+                1,
+                [QgsPalettedRasterRenderer.Class(
+                    int(basin_id), MASK_COLOR, name)],
+            )
+        )
+        layer.setOpacity(MASK_OPACITY)
+        return layer
+
+    def _basin_id(self, outlet_id):
+        return self.outlet_ids.index(str(outlet_id)) + 1
 
     def _prepare_map_layers(self, prepared_context=None):
         if prepared_context is None:
@@ -305,20 +385,35 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         if button != Qt.LeftButton:
             return
         self._stop_picking()
-        raster_path, vector_path = self._outlet_paths(
-            self.current_outlet_id, preview=True)
+        self._preview_outlet(point.x(), point.y())
+
+    def _preview_saved_point(self, record):
+        """Preview the stored location so a snap can be judged before editing."""
+        picked = record.get("picked")
+        if not isinstance(picked, dict):
+            return
+        try:
+            x, y = self._picked_in_dem_crs(picked)
+        except (KeyError, TypeError, ValueError):
+            return
+        self._preview_outlet(x, y)
+
+    def _preview_outlet(self, x, y):
+        """Delineate one candidate outlet, writing only the mask raster."""
+        outlet_id = self.current_outlet_id
+        if not outlet_id:
+            return
+        raster_path, _vector_path = self._outlet_paths(outlet_id, preview=True)
         self._watershed_layer = None
         self._refresh_canvas()
-        outlet_id = self.current_outlet_id
-        x, y = point.x(), point.y()
 
         options = {
             "filled_dem": self.processor.filled_dem_path,
-            "x": x,
-            "y": y,
+            "x": float(x),
+            "y": float(y),
             "raster_path": raster_path,
-            "vector_path": vector_path,
-            "basin_id": self.outlet_ids.index(outlet_id) + 1,
+            "vector_path": "",
+            "basin_id": self._basin_id(outlet_id),
         }
         self.main_dialog.task_coordinator.submit(
             "domain-watershed-preview",
@@ -354,10 +449,10 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             self._preview_result = result
             self._show_area(result["catchment_area_m2"])
             self._show_picked_coordinates(result["picked"])
-            self._watershed_layer = QgsVectorLayer(
-                result["vector_path"],
+            self._watershed_layer = self._mask_layer(
+                result["raster_path"],
                 f"Watershed {outlet_id}",
-                "ogr",
+                self._basin_id(outlet_id),
             )
             self._refresh_canvas()
         except Exception as error:
@@ -670,14 +765,15 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
 
     def _show_saved_watershed(self, record):
         self._watershed_layer = None
-        value = record.get("vector_path")
+        value = record.get("mask_path")
         if value:
             try:
-                path = str(resolve_output_path(self.project_folder, value))
-                layer = QgsVectorLayer(
-                    path, f"Watershed {self.current_outlet_id}", "ogr")
-                if layer.isValid():
-                    self._watershed_layer = layer
+                self._watershed_layer = self._mask_layer(
+                    str(resolve_output_path(self.project_folder, value)),
+                    f"Watershed {self.current_outlet_id}",
+                    record.get("domain_id") or self._basin_id(
+                        self.current_outlet_id),
+                )
             except ValueError:
                 pass
         self._refresh_canvas()

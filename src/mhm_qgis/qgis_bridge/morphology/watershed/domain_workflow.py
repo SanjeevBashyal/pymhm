@@ -32,7 +32,6 @@ from ....core.morphology.hydrology.outlets import (
 )
 from ....core.handlers.state.domain_state import (
     DOMAIN_MODE_DEM_EXTENT,
-    DOMAIN_MODE_SNAPPED,
     active_domain_records,
     assign_domain_ids,
     gauged_outlet_ids,
@@ -126,113 +125,6 @@ class DomainWorkflow:
         self.remove_deselected_gauges(previously_gauged, state)
         return state
 
-    def apply_snapped_domains(
-        self,
-        assignments: Iterable[OutletAssignment],
-        *,
-        include_dem_domain: bool = False,
-    ) -> dict:
-        """Delineate only checked domains at their snapped pour points."""
-        assignments = self._validated_assignment_list(assignments)
-        prepared = self.validate_gauge_assignments(assignments)
-        previously_gauged = set(
-            gauged_outlet_ids(load_state(self.project_folder))
-        )
-        state = self.load_synced_state(
-            DOMAIN_MODE_SNAPPED,
-            include_dem_domain,
-        )
-        self.apply_assignment_records(state, assignments, prepared)
-        assign_domain_ids(state)
-        self.require_active_domain(state)
-
-        self.regenerate_snapped_points()
-
-        snapped_layer = QgsVectorLayer(
-            self.processor.snapped_points_path,
-            "Snapped pour points",
-            "ogr",
-        )
-        if not snapped_layer.isValid():
-            raise RuntimeError("The prepared snapped pour-point layer is invalid.")
-        features = self._features_by_outlet(snapped_layer, require_exact=True)
-        context = self.processor._build_flwdir_from_filled_dem()
-        if not context:
-            raise RuntimeError("The filled DEM flow grid could not be prepared.")
-        transform = layers.transform_to_raster(
-            snapped_layer, self.processor.filled_dem_path,
-            log=self.processor.log_message)
-        # Constant for every outlet, so it is read once rather than per iteration.
-        filled_dem_crs = layers.crs_of(self.processor.filled_dem_path)
-        filled_dem_authid = filled_dem_crs.authid() if filled_dem_crs else ""
-        status_field = self.processor._snap_status_field(
-            snapped_layer.fields().names()
-        )
-        for assignment in assignments:
-            if not (assignment.is_domain or assignment.is_gauge):
-                continue
-            feature = features[assignment.outlet_id]
-            if status_field and str(feature.attribute(status_field)) == "failed":
-                raise ValueError(
-                    f"Outlet {assignment.outlet_id} could not be snapped "
-                    "to the channel network."
-                )
-
-        for assignment in assignments:
-            record = state["outlets"][assignment.outlet_id]
-            if not assignment.is_domain:
-                continue
-            feature = features[assignment.outlet_id]
-            point = feature.geometry().asPoint()
-            if transform is not None:
-                point = transform.transform(point)
-            raster_path, vector_path = self.outlet_paths(
-                assignment.outlet_id,
-                state,
-            )
-            result = self.processor.delineate_single_outlet(
-                point.x(),
-                point.y(),
-                raster_path,
-                vector_path,
-                basin_id=int(record["domain_id"]),
-                context=context,
-            )
-            if not result:
-                raise RuntimeError(
-                    f"Watershed delineation failed for outlet {assignment.outlet_id}."
-                )
-            center_x, center_y = result["cell_center"]
-            record.update(
-                {
-                    "picked": {
-                        "x": float(center_x),
-                        "y": float(center_y),
-                        "crs": filled_dem_authid,
-                    },
-                    "catchment_area_m2": result["catchment_area_m2"],
-                    "mask_path": result["raster_path"],
-                    "vector_path": result["vector_path"],
-                }
-            )
-            # The domain DEM is written during Morphology Setup, once the common
-            # L0 extent is known, so every domain shares the model grid.
-            record["domain_directory"] = domain_data_folder(
-                self.project_folder, assignment.outlet_id
-            )
-            record["dem_path"] = domain_dem_path(
-                self.project_folder, assignment.outlet_id
-            )
-
-        if state.get("dem_domain"):
-            self.prepare_dem_domain(state)
-        self.merge_active_domains(state)
-        self.update_gauge_domain_ids(state, snapped_layer)
-        self.write_gauges(prepared)
-        save_state(self.project_folder, state)
-        self.remove_deselected_gauges(previously_gauged, state)
-        return state
-
     def validate_gauge_assignments(
         self,
         assignments: Iterable[OutletAssignment],
@@ -291,7 +183,7 @@ class DomainWorkflow:
     def update_gauge_domain_ids(self, state: dict, point_layer=None) -> None:
         """Store IDs of every active domain intersecting each gauge point."""
         assign_domain_ids(state)
-        point_layer = point_layer or self.membership_point_layer(state)
+        point_layer = point_layer or self.pour_points_layer
         missing_points = [
             outlet_id
             for outlet_id in gauged_outlet_ids(state)
@@ -374,20 +266,6 @@ class DomainWorkflow:
         if feature is None or feature.geometry().isEmpty():
             raise ValueError("A gauged outlet has no point geometry.")
         return QgsGeometry(feature.geometry()), point_layer.crs()
-
-    def membership_point_layer(self, state: dict):
-        """Return snapped gauge points when the saved mode requires them."""
-        if state.get("definition_mode") == DOMAIN_MODE_SNAPPED:
-            path = getattr(self.processor, "snapped_points_path", None)
-            if not path:
-                path = os.path.join(
-                    geometry_folder(self.project_folder),
-                    "2_pour_points_snapped.shp",
-                )
-            layer = QgsVectorLayer(path, "Snapped pour points", "ogr")
-            if layer.isValid():
-                return layer
-        return self.pour_points_layer
 
     def regenerate_snapped_points(self) -> str:
         """Recreate snapped points so moved inputs cannot reuse stale positions."""

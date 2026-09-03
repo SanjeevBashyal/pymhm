@@ -14,11 +14,9 @@ STATE_FILENAME = "mhm_qgis_domain_delineation_state.json"
 STATE_VERSION = 2
 DEM_DOMAIN_ID = "__dem__"
 DOMAIN_MODE_DEM_EXTENT = "dem_extent"
-DOMAIN_MODE_SNAPPED = "snapped_pour_points"
 DOMAIN_MODE_DELINEATOR = "domain_delineator"
 DOMAIN_MODES = {
     DOMAIN_MODE_DEM_EXTENT,
-    DOMAIN_MODE_SNAPPED,
     DOMAIN_MODE_DELINEATOR,
 }
 PathInput = Union[str, Path]

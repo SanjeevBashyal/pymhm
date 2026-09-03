@@ -152,7 +152,7 @@ def _domain_state(project, outlets, dem_domain=False):
     from mhm_qgis.core.handlers.state.domain_state import save_state
 
     save_state(project, {
-        "definition_mode": "snapped_pour_points",
+        "definition_mode": "domain_delineator",
         "pour_points_source": "outlets.shp",
         "outlet_id_field": "id",
         "outlet_order": list(outlets),

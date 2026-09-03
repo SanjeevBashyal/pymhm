@@ -36,7 +36,7 @@ def test_domain_gauges_project_to_v5_namelist_values(tmp_path):
     save_state(
         tmp_path,
         {
-            "definition_mode": "snapped_pour_points",
+            "definition_mode": "domain_delineator",
             "pour_points_source": "pour_points.shp",
             "outlet_id_field": "station_id",
             "outlet_order": ["001"],
@@ -148,7 +148,7 @@ def test_shared_gauges_are_counted_once_per_domain(tmp_path):
     save_state(
         tmp_path,
         {
-            "definition_mode": "snapped_pour_points",
+            "definition_mode": "domain_delineator",
             "pour_points_source": "pour_points.shp",
             "outlet_id_field": "station_id",
             "outlet_order": ["240", "280", "350"],

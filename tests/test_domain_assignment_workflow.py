@@ -17,7 +17,7 @@ from mhm_qgis.qt.dialogs.discharge_assignment import (  # noqa: E402
 )
 from mhm_qgis.core.handlers.state.domain_state import (  # noqa: E402
     DOMAIN_MODE_DEM_EXTENT,
-    DOMAIN_MODE_SNAPPED,
+    DOMAIN_MODE_DELINEATOR,
     gauge_records,
 )
 from mhm_qgis.qgis_bridge.morphology.watershed.domain_workflow import (  # noqa: E402
@@ -198,9 +198,9 @@ def test_assignment_rows_must_still_match_selected_feature_order(tmp_path):
         )
 
 
-def test_snapped_mode_requires_at_least_one_selected_domain(tmp_path):
+def test_delineator_mode_requires_at_least_one_selected_domain(tmp_path):
     workflow = _workflow(tmp_path)
-    state = workflow.load_synced_state(DOMAIN_MODE_SNAPPED, False)
+    state = workflow.load_synced_state(DOMAIN_MODE_DELINEATOR, False)
 
     with pytest.raises(ValueError, match="at least one domain"):
         workflow.require_active_domain(state)

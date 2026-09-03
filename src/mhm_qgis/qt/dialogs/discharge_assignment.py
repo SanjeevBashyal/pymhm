@@ -22,9 +22,6 @@ from ...qt.controllers import discharge_assignment as discharge_controller
 from ...qt.ui.pyui.ui_discharge_table_assignment_dialog import (
     Ui_DischargeTableAssignmentDialog,
 )
-from ...qt.ui.pyui.ui_domain_and_discharge_table_assignment_dialog import (
-    Ui_DischargeTableAssignmentDialog as Ui_DomainAndDischargeTableAssignmentDialog,
-)
 
 
 @dataclass(frozen=True)
@@ -50,13 +47,11 @@ class _AssignmentRow:
     gauge: QCheckBox
     discharge: QComboBox
     browse: QPushButton
-    domain: QCheckBox | None = None
 
 
 class _OutletAssignmentRows:
     """Populate a Designer row template once per outlet."""
 
-    include_domain = False
     default_is_gauge = False
 
     def _setup_assignment_rows(
@@ -91,23 +86,19 @@ class _OutletAssignmentRows:
         return _AssignmentRow(
             outlet_id=outlet_id,
             id_value=self.label_pourPointIDValue,
-            domain=(self.checkBox_isDomain if self.include_domain else None),
             gauge=self.checkBox_isGauge,
             discharge=self.comboBox_dischargeTableInput,
             browse=self.pushButton_browseDischargeTable1,
         )
 
     def _designer_row_widgets(self) -> tuple[object, ...]:
-        widgets = [
+        return (
             self.label_pourPointID,
             self.label_pourPointIDValue,
             self.checkBox_isGauge,
             self.comboBox_dischargeTableInput,
             self.pushButton_browseDischargeTable1,
-        ]
-        if self.include_domain:
-            widgets.append(self.checkBox_isDomain)
-        return tuple(widgets)
+        )
 
     def _create_row(self, row_index: int, outlet_id: str) -> _AssignmentRow:
         suffix = row_index + 1
@@ -123,22 +114,14 @@ class _OutletAssignmentRows:
         browse.setObjectName(f"pushButton_browseDischargeTable{suffix}")
         browse.setMaximumWidth(40)
 
-        column = 0
-        self.rows_layout.addWidget(label, row_index, column)
-        self.rows_layout.addWidget(id_value, row_index, column + 1)
-        domain = None
-        if self.include_domain:
-            domain = QCheckBox("Is Domain?", self.rows_widget)
-            domain.setObjectName(f"checkBox_isDomain{suffix}")
-            self.rows_layout.addWidget(domain, row_index, column + 2)
-            column += 1
-        self.rows_layout.addWidget(gauge, row_index, column + 2)
-        self.rows_layout.addWidget(discharge, row_index, column + 3)
-        self.rows_layout.addWidget(browse, row_index, column + 4)
+        self.rows_layout.addWidget(label, row_index, 0)
+        self.rows_layout.addWidget(id_value, row_index, 1)
+        self.rows_layout.addWidget(gauge, row_index, 2)
+        self.rows_layout.addWidget(discharge, row_index, 3)
+        self.rows_layout.addWidget(browse, row_index, 4)
         return _AssignmentRow(
             outlet_id=outlet_id,
             id_value=id_value,
-            domain=domain,
             gauge=gauge,
             discharge=discharge,
             browse=browse,
@@ -178,7 +161,6 @@ class _OutletAssignmentRows:
             OutletAssignment(
                 outlet_id=row.outlet_id,
                 is_gauge=row.gauge.isChecked(),
-                is_domain=(row.domain.isChecked() if row.domain else False),
                 discharge_layer=(
                     row.discharge.currentData() if row.gauge.isChecked() else None
                 ),
@@ -214,28 +196,7 @@ class DischargeTableAssignmentDialog(
         self._setup_assignment_rows(station_ids, initial_records)
 
 
-class DomainAndDischargeTableAssignmentDialog(
-    QDialog,
-    Ui_DomainAndDischargeTableAssignmentDialog,
-    _OutletAssignmentRows,
-):
-    """Assign optional domains and discharge tables to supplied outlets."""
-
-    include_domain = True
-
-    def __init__(
-        self,
-        outlet_ids: list[str],
-        parent=None,
-        initial_records: Mapping[str, Mapping] | None = None,
-    ):
-        super().__init__(parent)
-        self.setupUi(self)
-        self._setup_assignment_rows(outlet_ids, initial_records)
-
-
 __all__ = [
     "DischargeTableAssignmentDialog",
-    "DomainAndDischargeTableAssignmentDialog",
     "OutletAssignment",
 ]
