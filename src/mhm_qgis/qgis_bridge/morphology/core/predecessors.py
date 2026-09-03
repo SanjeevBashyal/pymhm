@@ -9,6 +9,7 @@ from ..common import (
 )
 from .base import BaseProcessingMixin
 from .naming import NamingAndRangeMixin
+from ....core.handlers.store.layout import MERGED_MASK_NAME
 from ... import layers
 
 
@@ -279,6 +280,7 @@ class PredecessorMixin(BaseProcessingMixin, NamingAndRangeMixin):
         """Create the merged watershed vector if it has not been generated yet."""
         if self._restore_existing_path(
                 "merged_watershed_path",
+                os.path.join("Watersheds", MERGED_MASK_NAME),
                 os.path.join("Watersheds", "4_watershed_merged_vector.shp"),
                 "4_watershed_merged_vector.shp"):
             return True

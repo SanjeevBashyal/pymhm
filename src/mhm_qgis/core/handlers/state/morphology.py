@@ -142,10 +142,10 @@ def workflow_status(session, workflow) -> dict:
 
 
 def save_domain_plan(session, plan) -> list:
-    """Record each domain's polygon and target DEM for Morphology Setup."""
+    """Record each domain's mask and target DEM for Morphology Setup."""
     session.processing_state["domains"] = [
         {key: entry[key] for key in
-         ("domain_id", "outlet_id", "name", "polygon", "directory", "dem_path")}
+         ("domain_id", "outlet_id", "name", "mask", "directory", "dem_path")}
         for entry in plan
     ]
     save(session)

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .core.handlers.state.nml_settings import load_settings
 from .core.handlers.store.paths import geometry_folder, workspace_folder
-from .core.handlers.store.layout import morph_folder
+from .core.handlers.store.layout import MERGED_MASK_NAME, morph_folder
 
 
 DISPLAY_KEYS = (
@@ -64,11 +64,14 @@ def resolve_display_output(
         ]
         return _first(candidates, "Soil", variable="soil_class")
     if key == "domain_mask":
-        merged = geometry / "Watersheds" / "4_watershed_merged_vector.shp"
-        if merged.is_file():
-            return DisplayOutput(merged, "Domain Mask", is_raster=False)
+        merged_vector = geometry / "Watersheds" / "4_watershed_merged_vector.shp"
+        if merged_vector.is_file():
+            return DisplayOutput(merged_vector, "Domain Mask", is_raster=False)
         return _first(
-            [geometry / "Watersheds" / "4_watershed_DEM.tif"],
+            [
+                geometry / "Watersheds" / MERGED_MASK_NAME,
+                geometry / "Watersheds" / "4_watershed_DEM.tif",
+            ],
             "Domain Mask",
         )
 

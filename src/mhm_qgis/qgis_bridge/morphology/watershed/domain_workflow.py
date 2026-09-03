@@ -12,10 +12,10 @@ from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsGeometry,
     QgsPointXY,
-    QgsVectorLayer,
 )
+from ....core.handlers.raster.tasks import _read_raster, merge_domain_masks
 from ....core.handlers.store.paths import domain_data_folder, geometry_folder
-from ....core.handlers.store.layout import domain_dem_path
+from ....core.handlers.store.layout import MERGED_MASK_NAME, domain_dem_path
 from ....qt.dialogs.discharge_assignment import OutletAssignment
 from ....core.handlers.file.discharge import (
     local_source_path,
@@ -40,6 +40,28 @@ from ....core.handlers.state.domain_state import (
     save_state,
 )
 from ... import layers
+
+
+class _DomainMask:
+    """Point-in-domain tests straight off a delineation mask raster."""
+
+    def __init__(self, path: str) -> None:
+        raster = _read_raster(path)
+        self._values = raster["array"]
+        self._transform = raster["geotransform"]
+        self.crs = QgsCoordinateReferenceSystem(raster.get("projection") or "")
+
+    def any(self) -> bool:
+        return bool((self._values != 0).any())
+
+    def contains(self, point) -> bool:
+        origin_x, pixel_width, _rx, origin_y, _ry, pixel_height = self._transform
+        col = int((point.x() - origin_x) / pixel_width)
+        row = int((point.y() - origin_y) / pixel_height)
+        rows, cols = self._values.shape
+        if not (0 <= row < rows and 0 <= col < cols):
+            return False
+        return bool(self._values[row, col] != 0)
 
 
 @dataclass(frozen=True)
@@ -196,37 +218,19 @@ class DomainWorkflow:
             if missing_points
             else {}
         )
-        domain_geometries = []
+        domain_masks = []
         for domain in active_domain_records(state):
-            if domain.get("is_dem_domain"):
-                path = self.dem_paths()[1]
-            else:
-                value = domain.get("vector_path")
-                path = (
-                    str(resolve_output_path(self.project_folder, value))
-                    if value
-                    else ""
-                )
-            layer = QgsVectorLayer(path, f"Domain {domain['domain_id']}", "ogr")
-            if not path or not layer.isValid():
+            path = self.domain_mask_path(domain)
+            if not path or not os.path.exists(path):
                 raise ValueError(
-                    f"Domain polygon is missing for outlet {domain['outlet_id']}."
+                    f"Domain mask is missing for outlet {domain['outlet_id']}."
                 )
-            geometry = None
-            for feature in layer.getFeatures():
-                current = QgsGeometry(feature.geometry())
-                if current.isEmpty():
-                    continue
-                geometry = (
-                    current if geometry is None else geometry.combine(current)
-                )
-            if geometry is None or geometry.isEmpty():
+            mask = _DomainMask(path)
+            if not mask.any():
                 raise ValueError(
-                    f"Domain polygon is empty for outlet {domain['outlet_id']}."
+                    f"Domain mask is empty for outlet {domain['outlet_id']}."
                 )
-            domain_geometries.append(
-                (int(domain["domain_id"]), layer.crs(), geometry)
-            )
+            domain_masks.append((int(domain["domain_id"]), mask))
 
         for outlet_id in gauged_outlet_ids(state):
             point_geometry, source_crs = self._effective_gauge_geometry(
@@ -235,18 +239,27 @@ class DomainWorkflow:
                 point_layer,
             )
             memberships = []
-            for domain_id, target_crs, domain_geometry in domain_geometries:
+            for domain_id, mask in domain_masks:
                 candidate = QgsGeometry(point_geometry)
-                transform = layers.transform_between(source_crs, target_crs)
+                transform = layers.transform_between(source_crs, mask.crs)
                 if transform is not None:
                     candidate.transform(transform)
-                if domain_geometry.intersects(candidate):
+                if mask.contains(candidate.asPoint()):
                     memberships.append(domain_id)
             if not memberships:
                 raise ValueError(
                     f"Gauge outlet {outlet_id} is not inside an active domain."
                 )
             state["outlets"][outlet_id]["domain_ids"] = memberships
+
+    def domain_mask_path(self, domain: dict) -> str:
+        """Return the delineation mask raster for one active domain record."""
+        if domain.get("is_dem_domain"):
+            return self.dem_mask_path()
+        value = domain.get("mask_path")
+        if not value:
+            return ""
+        return str(resolve_output_path(self.project_folder, value))
 
     @staticmethod
     def _effective_gauge_geometry(record, feature, point_layer):
@@ -314,7 +327,7 @@ class DomainWorkflow:
         domain_id = state.get("dem_domain_id")
         if domain_id is None:
             return
-        output_raster, output_vector = self.dem_paths()
+        output_raster = self.dem_mask_path()
         reference = self.processor._read_raster_array(
             self.processor.filled_dem_path,
             as_float=True,
@@ -339,8 +352,6 @@ class DomainWorkflow:
             gdal_type=deps["gdal"].GDT_Int32,
         ):
             raise RuntimeError("Could not write the DEM-domain mask.")
-        if not self._polygonize_mask(output_raster, output_vector):
-            raise RuntimeError("Could not write the DEM-domain polygon.")
         state["dem_domain_directory"] = domain_data_folder(
             self.project_folder, "dem_extent"
         )
@@ -355,64 +366,24 @@ class DomainWorkflow:
             raise ValueError("Select at least one domain outlet.")
 
     def merge_active_domains(self, state: dict) -> str | None:
-        """Merge every active domain polygon and return the merged path."""
-        vector_paths = []
+        """Merge every active domain mask and return the merged raster path."""
+        masks = []
         for domain in active_domain_records(state):
-            if domain.get("is_dem_domain"):
-                path = self.dem_paths()[1]
-            else:
-                value = domain.get("vector_path")
-                path = (
-                    str(resolve_output_path(self.project_folder, value))
-                    if value
-                    else ""
-                )
+            path = self.domain_mask_path(domain)
             if not path or not os.path.exists(path):
                 raise ValueError(
                     f"Delineate and save domain {domain['outlet_id']} first."
                 )
-            layer = QgsVectorLayer(path, Path(path).stem, "ogr")
-            if not layer.isValid() or layer.featureCount() < 1:
-                raise ValueError(
-                    f"Domain polygon is invalid or empty: {Path(path).name}"
-                )
-            vector_paths.append(path)
+            masks.append((int(domain["domain_id"]), path))
 
-        merged_path = os.path.join(
-            geometry_folder(self.project_folder),
-            "Watersheds",
-            "4_watershed_merged_vector.shp",
-        )
-        if not vector_paths:
-            self.processor._remove_vector_dataset(merged_path)
+        merged_path = self.merged_mask_path(self.project_folder)
+        if not masks:
+            self.processor._remove_stale_raster_output(merged_path)
             self.processor.merged_watershed_path = None
             self.processor.watershed_vector_path = None
             return None
 
-        pending_path = os.path.splitext(merged_path)[0] + "_pending.shp"
-        self.processor._remove_vector_dataset(pending_path)
-        try:
-            result = self.processor.run_processing_algorithm(
-                "native:mergevectorlayers",
-                {"LAYERS": vector_paths, "CRS": None, "OUTPUT": pending_path},
-            )
-            pending_layer = QgsVectorLayer(
-                pending_path,
-                "Pending merged domains",
-                "ogr",
-            )
-            valid = (
-                bool(result)
-                and pending_layer.isValid()
-                and pending_layer.featureCount() > 0
-            )
-            pending_layer = None
-            if not valid:
-                raise RuntimeError("Could not merge the active domain polygons.")
-            self._publish_vector_dataset(pending_path, merged_path)
-        finally:
-            self.processor._remove_vector_dataset(pending_path)
-
+        merge_domain_masks(masks, merged_path)
         self.processor.merged_watershed_path = merged_path
         self.processor.watershed_vector_path = merged_path
         self.processor.mark_output_prepared(
@@ -431,13 +402,13 @@ class DomainWorkflow:
         os.makedirs(path, exist_ok=True)
         return path
 
-    def outlet_paths(
+    def outlet_mask_path(
         self,
         outlet_id: str,
         state: dict,
         *,
         preview: bool = False,
-    ) -> tuple[str, str]:
+    ) -> str:
         prefix = "_preview_" if preview else "4_watershed_"
         ordered = list(state.get("outlet_order", self.outlet_ids))
         try:
@@ -445,15 +416,21 @@ class DomainWorkflow:
         except ValueError:
             index = len(ordered) + 1
         safe = re.sub(r"[^A-Za-z0-9_-]+", "_", str(outlet_id)).strip("_")
-        base = os.path.join(
+        return os.path.join(
             self.domain_output_folder(),
-            f"{prefix}{index}_{safe or 'outlet'}",
+            f"{prefix}{index}_{safe or 'outlet'}.tif",
         )
-        return base + ".tif", base + ".shp"
 
-    def dem_paths(self) -> tuple[str, str]:
-        base = os.path.join(self.domain_output_folder(), "4_watershed_DEM")
-        return base + ".tif", base + ".shp"
+    def dem_mask_path(self) -> str:
+        return os.path.join(self.domain_output_folder(), "4_watershed_DEM.tif")
+
+    @staticmethod
+    def merged_mask_path(project_folder) -> str:
+        return os.path.join(
+            geometry_folder(project_folder),
+            "Watersheds",
+            MERGED_MASK_NAME,
+        )
 
     @staticmethod
     def layer_source(layer) -> str:
@@ -574,46 +551,6 @@ class DomainWorkflow:
                 + "). Recreate snapped points."
             )
         return features
-
-    def _polygonize_mask(self, raster_path: str, vector_path: str) -> bool:
-        raw_path = os.path.splitext(vector_path)[0] + "_raw.shp"
-        self.processor._remove_vector_dataset(raw_path)
-        try:
-            result = self.processor.run_processing_algorithm(
-                "gdal:polygonize",
-                {
-                    "INPUT": raster_path,
-                    "BAND": 1,
-                    "FIELD": "DN",
-                    "EIGHT_CONNECTEDNESS": False,
-                    "EXTRA": "",
-                    "OUTPUT": raw_path,
-                },
-            )
-            return bool(
-                result
-                and os.path.exists(raw_path)
-                and self.processor._copy_nonzero_polygons(raw_path, vector_path)
-            )
-        finally:
-            self.processor._remove_vector_dataset(raw_path)
-
-    def _publish_vector_dataset(self, source_path: str, target_path: str) -> None:
-        source_base = os.path.splitext(source_path)[0]
-        target_base = os.path.splitext(target_path)[0]
-        self.processor._remove_vector_dataset(target_path)
-        for extension in (
-            ".shp",
-            ".shx",
-            ".dbf",
-            ".prj",
-            ".cpg",
-            ".qpj",
-            ".fix",
-        ):
-            source = source_base + extension
-            if os.path.exists(source):
-                os.replace(source, target_base + extension)
 
 
 __all__ = ["DomainWorkflow"]

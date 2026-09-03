@@ -306,19 +306,75 @@ def _rasterize_target_mask(vector_path, target_header, projection):
     return values
 
 
+def _raster_target_mask(mask_path, target_header, reference_path=None):
+    """Return a boolean target-grid mask from an aligned delineation raster.
+
+    The mask rasters written by :func:`_delineate` sit on the filled-DEM grid
+    with 0 outside the basin, so the target mask is a window copy rather than a
+    rasterization.
+    """
+    np, _pfd, _affine, gdal, _ogr, _osr = _dependencies()
+    source = gdal.Open(str(mask_path), gdal.GA_ReadOnly)
+    if source is None:
+        raise RuntimeError(f"Could not open the mask raster: {mask_path}")
+    try:
+        window = _aligned_l0_window(
+            source, mask_path, target_header, reference_path
+        )
+        keep = np.zeros(
+            (window["target_rows"], window["target_cols"]), dtype=bool
+        )
+        if window["copy_cols"] > 0 and window["copy_rows"] > 0:
+            values = source.GetRasterBand(1).ReadAsArray(
+                window["source_x"],
+                window["source_y"],
+                window["copy_cols"],
+                window["copy_rows"],
+            )
+            if values is None:
+                raise RuntimeError(f"Could not read the mask raster: {mask_path}")
+            keep[
+                window["target_y"]: window["target_y"] + window["copy_rows"],
+                window["target_x"]: window["target_x"] + window["copy_cols"],
+            ] = values != 0
+    finally:
+        source = None
+    return keep
+
+
+def _target_mask(mask_path, target_header, projection, reference_path=None):
+    """Return the target-grid mask for a delineation raster or a polygon layer.
+
+    Domains are delineated as pyflwdir masks, so no polygon is written for them.
+    The legacy watershed flow still produces a merged shapefile, which is why a
+    vector mask stays supported.
+    """
+    _np, _pfd, _affine, gdal, _ogr, _osr = _dependencies()
+    gdal.PushErrorHandler("CPLQuietErrorHandler")
+    try:
+        dataset = gdal.OpenEx(str(mask_path), gdal.OF_RASTER)
+    finally:
+        gdal.PopErrorHandler()
+    if dataset is None:
+        return _rasterize_target_mask(mask_path, target_header, projection)
+    dataset = None
+    return _raster_target_mask(mask_path, target_header, reference_path)
+
+
 def mask_aligned_l0_raster(
         source_path,
         output_path,
         target_header,
-        mask_vector,
+        mask_path,
         *,
         reference_path=None,
         pad_value=None,
         task=None):
-    """Apply a polygon mask to an aligned L0 raster without resampling it.
+    """Apply a domain mask to an aligned L0 raster without resampling it.
 
-    Cells outside the polygon become nodata; cells beyond the source extent
-    take ``pad_value`` as in :func:`crop_aligned_l0_raster`.
+    ``mask_path`` is a delineation mask raster or a polygon layer. Cells outside
+    the mask become nodata; cells beyond the source extent take ``pad_value`` as
+    in :func:`crop_aligned_l0_raster`.
     """
     _np, _pfd, _affine, gdal, _ogr, _osr = _dependencies()
     source = gdal.Open(str(source_path), gdal.GA_ReadOnly)
@@ -331,7 +387,9 @@ def mask_aligned_l0_raster(
         output_path,
         target_header,
         reference_path=reference_path,
-        mask=_rasterize_target_mask(mask_vector, target_header, projection),
+        mask=_target_mask(
+            mask_path, target_header, projection, reference_path
+        ),
         pad_value=pad_value,
         task=task,
     )
@@ -341,7 +399,7 @@ def write_domain_dem_ascii(
         source_path,
         output_path,
         target_header,
-        mask_vector,
+        mask_path,
         *,
         reference_path=None,
         nodata=-9999,
@@ -350,7 +408,7 @@ def write_domain_dem_ascii(
 
     The source is the cropped L0 DEM, so every domain shares the model extent and
     matches the other inputs cell for cell; only the cells inside the domain
-    polygon keep their value. Rows stream straight to text, so memory stays flat
+    mask keep their value. Rows stream straight to text, so memory stays flat
     whatever the grid size.
     """
     np, _pfd, _affine, gdal, _ogr, _osr = _dependencies()
@@ -360,7 +418,7 @@ def write_domain_dem_ascii(
     projection = source.GetProjection()
     window = _aligned_l0_window(source, source_path, target_header, reference_path)
     band = source.GetRasterBand(1)
-    keep = _rasterize_target_mask(mask_vector, target_header, projection)
+    keep = _target_mask(mask_path, target_header, projection, reference_path)
 
     cellsize = float(target_header["cellsize"])
     rows = int(target_header["nrows"])
@@ -728,31 +786,7 @@ def _write_channel_network(path, accumulation, context, threshold_cells):
     return path
 
 
-def _polygonize(raster_path, vector_path):
-    _np, _pfd, _affine, gdal, ogr, osr = _dependencies()
-    vector_path = os.path.abspath(str(vector_path))
-    os.makedirs(os.path.dirname(vector_path), exist_ok=True)
-    _remove_vector(vector_path, ogr)
-    raster = gdal.Open(str(raster_path))
-    band = raster.GetRasterBand(1)
-    spatial_ref = osr.SpatialReference()
-    srs = None
-    if raster.GetProjection():
-        spatial_ref.ImportFromWkt(raster.GetProjection())
-        srs = spatial_ref
-    dataset = ogr.GetDriverByName("ESRI Shapefile").CreateDataSource(vector_path)
-    layer = dataset.CreateLayer(Path(vector_path).stem, srs, ogr.wkbPolygon)
-    layer.CreateField(ogr.FieldDefn("DN", ogr.OFTInteger))
-    status = gdal.Polygonize(band, band.GetMaskBand(), layer, 0, [])
-    dataset = None
-    band = None
-    raster = None
-    if status != 0 or not os.path.exists(vector_path):
-        raise RuntimeError("Could not polygonize the watershed raster.")
-    return vector_path
-
-
-def _delineate(context, x, y, raster_path, vector_path, basin_id):
+def _delineate(context, x, y, raster_path, basin_id):
     np, _pfd, _affine, gdal, _ogr, osr = _dependencies()
     inverse = ~context["transform"]
     col_value, row_value = inverse * (float(x), float(y))
@@ -773,7 +807,6 @@ def _delineate(context, x, y, raster_path, vector_path, basin_id):
     raster_path = _write_raster(
         raster_path, values, reference, 0, gdal.GDT_Int32
     )
-    saved_vector = _polygonize(raster_path, vector_path) if vector_path else None
     area = context.get("area")
     if area is None:
         area = context["flwdir"].upstream_area(unit="m2")
@@ -783,102 +816,92 @@ def _delineate(context, x, y, raster_path, vector_path, basin_id):
         catchment = int(np.count_nonzero(mask)) * pyflwdir_handler.cell_area_m2(reference)
     return {
         "raster_path": raster_path,
-        "vector_path": saved_vector,
+        "mask": mask,
         "cell_center": (float(center_x), float(center_y)),
         "catchment_area_m2": catchment,
     }
 
 
-def delineate_outlet_file(
-    filled_dem, x, y, raster_path, vector_path, basin_id=1, *, task=None
-):
-    """Delineate and polygonize one outlet using no Qt or QGIS objects."""
+def delineate_outlet_file(filled_dem, x, y, raster_path, basin_id=1, *, task=None):
+    """Delineate one outlet mask using no Qt or QGIS objects."""
     _cancelled(task)
     _progress(task, 10)
-    result = _delineate(
-        _flow_context(filled_dem), x, y, raster_path, vector_path, basin_id
-    )
+    result = _delineate(_flow_context(filled_dem), x, y, raster_path, basin_id)
+    # The grid itself stays in the worker; only the written mask crosses back.
+    result.pop("mask", None)
     _progress(task, 100)
     return result
 
 
-def _dem_domain(context, basin_id, raster_path, vector_path):
+def _dem_domain(context, basin_id, raster_path):
     np, _pfd, _affine, gdal, _ogr, _osr = _dependencies()
-    values = np.where(~context["invalid"], int(basin_id), 0).astype(np.int32)
+    mask = ~context["invalid"]
+    values = np.where(mask, int(basin_id), 0).astype(np.int32)
     raster = _write_raster(raster_path, values, context["reference"], 0, gdal.GDT_Int32)
-    return raster, _polygonize(raster, vector_path)
+    return raster, mask
 
 
-def _merge_vectors(paths, output_path):
-    _np, _pfd, _affine, _gdal, ogr, osr = _dependencies()
-    output_path = os.path.abspath(str(output_path))
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    _remove_vector(output_path, ogr)
-    inputs = [ogr.Open(str(path)) for path in paths]
-    if not inputs or any(dataset is None for dataset in inputs):
-        raise RuntimeError("A domain polygon could not be opened.")
-    first = inputs[0].GetLayer(0)
-    source_srs = first.GetSpatialRef()
-    srs = source_srs.Clone() if source_srs is not None else None
-    output = ogr.GetDriverByName("ESRI Shapefile").CreateDataSource(output_path)
-    layer = output.CreateLayer(Path(output_path).stem, srs, ogr.wkbPolygon)
-    layer.CreateField(ogr.FieldDefn("DN", ogr.OFTInteger))
-    for dataset in inputs:
-        source = dataset.GetLayer(0)
-        source.ResetReading()
-        for item in source:
-            feature = ogr.Feature(layer.GetLayerDefn())
-            feature.SetGeometry(item.GetGeometryRef().Clone())
-            feature.SetField("DN", int(item.GetField("DN") or 0))
-            layer.CreateFeature(feature)
-            feature = None
-    output = None
-    inputs = []
-    if not os.path.exists(output_path):
-        raise RuntimeError("Could not merge the active domain polygons.")
-    return output_path
+def _merge_masks(masks, reference, output_path):
+    """Write the union of every domain mask as one delineation raster.
+
+    Domains nest, so a cell keeps the first domain that claims it: the outlets
+    are delineated before the DEM extent, which would otherwise swallow them.
+    Only the union matters downstream -- the merged mask is what the L0 rasters
+    are cut to -- but keeping the ids makes the raster readable on its own.
+    """
+    np, _pfd, _affine, gdal, _ogr, _osr = _dependencies()
+    merged = None
+    for domain_id, mask in masks:
+        if merged is None:
+            merged = np.where(mask, int(domain_id), 0).astype(np.int32)
+            continue
+        merged = np.where((merged == 0) & mask, int(domain_id), merged)
+    if merged is None:
+        raise ValueError("Select at least one domain outlet.")
+    return _write_raster(output_path, merged, reference, 0, gdal.GDT_Int32)
 
 
-def materialize_domain_dem_file(filled_dem, watershed_vector, output_path):
-    """Mask and crop the L0 DEM to one watershed and write Arc/Info ASCII."""
-    _np, _pfd, _affine, gdal, _ogr, _osr = _dependencies()
-    source = gdal.Open(str(filled_dem))
-    if source is None:
-        raise RuntimeError(f"Could not open the filled DEM: {filled_dem}")
-    transform = source.GetGeoTransform()
-    if transform[2] or transform[4]:
-        raise ValueError("Rotated DEM grids cannot be written as mHM ASCII files.")
-    output = Path(output_path).resolve()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_name(f".{output.name}.tmp.asc")
-    for path in (temporary, Path(f"{temporary}.aux.xml"), temporary.with_suffix(".prj")):
-        path.unlink(missing_ok=True)
-    options = gdal.WarpOptions(
-        format="AAIGrid",
-        cutlineDSName=str(watershed_vector),
-        cropToCutline=True,
-        dstNodata=-9999.0,
-        xRes=abs(float(transform[1])),
-        yRes=abs(float(transform[5])),
-        targetAlignedPixels=True,
-        resampleAlg="near",
-        multithread=False,
-        creationOptions=["DECIMAL_PRECISION=8"],
-    )
-    result = gdal.Warp(str(temporary), source, options=options)
-    source = None
-    if result is None:
-        raise RuntimeError(f"Could not create domain DEM: {output}")
-    result.FlushCache()
-    result = None
-    if not temporary.is_file():
-        raise RuntimeError(f"Could not create domain DEM: {output}")
-    os.replace(temporary, output)
-    temporary_projection = temporary.with_suffix(".prj")
-    if temporary_projection.is_file():
-        os.replace(temporary_projection, output.with_suffix(".prj"))
-    Path(f"{temporary}.aux.xml").unlink(missing_ok=True)
-    return str(output)
+def domain_mask_bounds(mask_path):
+    """Return the map bounds of the delineated cells in a mask raster.
+
+    The mask spans the whole filled-DEM grid, so its raster extent is not the
+    domain extent; the model grid is anchored on the non-zero cells instead.
+    """
+    np, _pfd, _affine, gdal, _ogr, _osr = _dependencies()
+    dataset = gdal.Open(str(mask_path), gdal.GA_ReadOnly)
+    if dataset is None:
+        return None
+    values = dataset.GetRasterBand(1).ReadAsArray()
+    transform = dataset.GetGeoTransform()
+    projection = dataset.GetProjection()
+    dataset = None
+    if values is None:
+        return None
+    rows, cols = np.nonzero(values)
+    if rows.size == 0:
+        return None
+    return {
+        "bounds": (
+            transform[0] + int(cols.min()) * transform[1],
+            transform[3] + (int(rows.max()) + 1) * transform[5],
+            transform[0] + (int(cols.max()) + 1) * transform[1],
+            transform[3] + int(rows.min()) * transform[5],
+        ),
+        "projection": projection,
+    }
+
+
+def merge_domain_masks(masks, output_path):
+    """Merge already-written domain mask rasters into one union raster."""
+    entries = []
+    reference = None
+    for domain_id, path in masks:
+        raster = _read_raster(path)
+        reference = reference or raster
+        entries.append((int(domain_id), raster["array"] != 0))
+    if reference is None:
+        raise ValueError("Select at least one domain outlet.")
+    return _merge_masks(entries, reference, output_path)
 
 
 def delineate_domains_file(
@@ -889,31 +912,27 @@ def delineate_domains_file(
     merged_path="",
     task=None,
 ):
-    """Delineate all selected domains and merge their polygons."""
+    """Delineate all selected domains and merge their masks."""
     context = _flow_context(filled_dem)
     results = {}
-    vectors = []
+    masks = []
     total = max(1, len(delineations) + int(dem_domain is not None))
     for index, item in enumerate(delineations):
         _cancelled(task)
-        outlet_id, x, y, raster, vector, domain_id, *domain_dem = item
-        result = _delineate(context, x, y, raster, vector, domain_id)
+        outlet_id, x, y, raster, domain_id, *domain_dem = item
+        result = _delineate(context, x, y, raster, domain_id)
+        masks.append((domain_id, result.pop("mask")))
         # Domain DEMs are written during Morphology Setup on the common L0 grid.
         if domain_dem:
             result["dem_path"] = str(domain_dem[0])
         results[str(outlet_id)] = result
-        vectors.append(result["vector_path"])
         _progress(task, 80 * (index + 1) / total)
     if dem_domain is not None:
-        domain_id, raster, vector, *domain_dem = dem_domain
-        _raster, saved_vector = _dem_domain(
-            context, domain_id, raster, vector
-        )
+        domain_id, raster, *domain_dem = dem_domain
+        _raster, mask = _dem_domain(context, domain_id, raster)
         dem_result = str(domain_dem[0]) if domain_dem else None
-        vectors.append(saved_vector)
-    if not vectors:
-        raise ValueError("Select at least one domain outlet.")
-    merged = _merge_vectors(vectors, merged_path)
+        masks.append((domain_id, mask))
+    merged = _merge_masks(masks, context["reference"], merged_path)
     _progress(task, 100)
     return {
         "outlets": results,
@@ -924,12 +943,13 @@ def delineate_domains_file(
 
 __all__ = [
     "crop_aligned_l0_raster",
+    "domain_mask_bounds",
+    "merge_domain_masks",
     "delineate_domains_file",
     "delineate_outlet_file",
     "fill_dem_file",
     "hydrology_files",
     "mask_aligned_l0_raster",
-    "materialize_domain_dem_file",
     "write_domain_dem_ascii",
     "terrain_files",
 ]

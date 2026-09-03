@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from ...handlers.raster.tasks import _aligned_l0_window, _dependencies, _rasterize_target_mask
+from ...handlers.raster.tasks import _aligned_l0_window, _dependencies, _target_mask
 
 
 NODATA = -9999.0
@@ -22,10 +22,10 @@ def write_domain_dem_netcdf(
         source_path,
         output_path,
         target_header: Mapping[str, Any],
-        mask_vector,
+        mask_path,
         *,
         reference_path=None) -> Path:
-    """Mask the cropped L0 DEM with a domain polygon and write `dem.nc`."""
+    """Mask the cropped L0 DEM with a domain mask and write `dem.nc`."""
     import numpy as np
     from netCDF4 import Dataset
 
@@ -37,7 +37,7 @@ def write_domain_dem_netcdf(
     window = _aligned_l0_window(source, source_path, target_header, reference_path)
     band = source.GetRasterBand(1)
     source_nodata = band.GetNoDataValue()
-    keep = _rasterize_target_mask(mask_vector, target_header, projection)
+    keep = _target_mask(mask_path, target_header, projection, reference_path)
 
     rows = int(target_header["nrows"])
     columns = int(target_header["ncols"])

@@ -17,7 +17,6 @@ from .tasks import (
     fill_dem_file,
     hydrology_files,
     mask_aligned_l0_raster,
-    materialize_domain_dem_file,
     terrain_files,
     write_domain_dem_ascii,
 )
@@ -30,7 +29,6 @@ __all__ = [
     "fill_dem_file",
     "hydrology_files",
     "mask_aligned_l0_raster",
-    "materialize_domain_dem_file",
     "terrain_files",
     "write_domain_dem_ascii",
 ]

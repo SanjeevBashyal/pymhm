@@ -158,13 +158,13 @@ def _domain_state(project, outlets, dem_domain=False):
         "outlet_order": list(outlets),
         "dem_domain": dem_domain,
         "outlets": {
-            outlet: {"is_domain": True, "vector_path": f"vec/{outlet}.shp"}
+            outlet: {"is_domain": True, "mask_path": f"masks/{outlet}.tif"}
             for outlet in outlets
         },
     })
 
 
-def test_the_plan_lists_every_active_domain_with_its_polygon(tmp_path):
+def test_the_plan_lists_every_active_domain_with_its_mask(tmp_path):
     from mhm_qgis.core.morphology.layers.domain_dem import domain_dem_plan
 
     _domain_state(tmp_path, ("001", "002"), dem_domain=True)
@@ -175,19 +175,19 @@ def test_the_plan_lists_every_active_domain_with_its_polygon(tmp_path):
     # Each entry names where its DEM will be written, on the shared grid.
     for entry in plan:
         assert entry["dem_path"].endswith(f"data/{entry['name']}/dem.asc")
-        assert entry["polygon"]
-    # The valid-DEM domain uses the delineator polygon, not an outlet vector.
-    assert plan[-1]["polygon"].endswith("4_watershed_DEM.shp")
+        assert entry["mask"]
+    # The valid-DEM domain uses the delineator mask, not an outlet mask.
+    assert plan[-1]["mask"].endswith("4_watershed_DEM.tif")
 
 
-def test_writing_domain_dems_refuses_a_missing_polygon(tmp_path):
+def test_writing_domain_dems_refuses_a_missing_mask(tmp_path):
     from mhm_qgis.core.morphology.layers.domain_dem import write_domain_dems
 
     dem = tmp_path / "crop.tif"
     _cropped_dem(dem)
     _domain_state(tmp_path, ("001",))
 
-    with pytest.raises(FileNotFoundError, match="no delineated polygon"):
+    with pytest.raises(FileNotFoundError, match="no delineated mask"):
         write_domain_dems(tmp_path, str(dem), L0)
 
 
@@ -219,7 +219,7 @@ def test_the_state_records_the_domain_plan(tmp_path):
     state = _State(tmp_path)
     plan = [{
         "domain_id": 1, "outlet_id": "001", "name": "001",
-        "polygon": "/p/vec/001.shp", "directory": "/p/data/001",
+        "mask": "/p/masks/001.tif", "directory": "/p/data/001",
         "dem_path": "/p/data/001/dem.asc",
     }]
     state.save_domain_plan(plan)

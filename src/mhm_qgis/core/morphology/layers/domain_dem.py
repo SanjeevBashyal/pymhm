@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """Write every domain DEM on the common L0 grid.
 
-Delineation records each domain's polygon but not its DEM, because the model
+Delineation records each domain's mask but not its DEM, because the model
 extent is not known until meteorology has fixed the L2 grid. Morphology Setup
-then masks the cropped L0 DEM with each polygon, so every `data/<domain>/dem.asc`
+then masks the cropped L0 DEM with each mask, so every `data/<domain>/dem.asc`
 has the same matrix size as the shared morphology and meteorology inputs.
 """
 from __future__ import annotations
@@ -119,7 +119,7 @@ def _already_copied(source: Path, target: Path) -> bool:
 
 
 def domain_dem_plan(project_folder) -> list[dict[str, Any]]:
-    """Return one entry per active domain: its polygon and its target DEM."""
+    """Return one entry per active domain: its mask and its target DEM."""
     state = load_domain_state(project_folder)
     plan: list[dict[str, Any]] = []
     for record in active_domain_records(state):
@@ -127,20 +127,19 @@ def domain_dem_plan(project_folder) -> list[dict[str, Any]]:
             continue
         outlet_id = str(record.get("outlet_id", ""))
         name = "dem_extent" if record.get("is_dem_domain") else outlet_id
-        polygon = _domain_polygon(project_folder, record)
         plan.append({
             "domain_id": int(record["domain_id"]),
             "outlet_id": outlet_id,
             "name": name,
-            "polygon": polygon,
+            "mask": _domain_mask(project_folder, record),
             "directory": domain_data_folder(project_folder, name),
             "dem_path": domain_dem_path(project_folder, name),
         })
     return plan
 
 
-def _domain_polygon(project_folder, record) -> str:
-    """Return the delineated polygon path for one domain."""
+def _domain_mask(project_folder, record) -> str:
+    """Return the delineated mask raster path for one domain."""
     if record.get("is_dem_domain"):
         from ...handlers.store.paths import geometry_folder
 
@@ -148,9 +147,9 @@ def _domain_polygon(project_folder, record) -> str:
             geometry_folder(project_folder),
             "Watersheds",
             "DomainDelineation",
-            "4_watershed_DEM.shp",
+            "4_watershed_DEM.tif",
         )
-    value = record.get("vector_path")
+    value = record.get("mask_path")
     if not value:
         return ""
     return str(resolve_output_path(project_folder, value))
@@ -163,7 +162,7 @@ def write_domain_dems(
         *,
         reference_path=None,
         log=None) -> list[dict[str, Any]]:
-    """Mask the cropped L0 DEM with each domain polygon and write its dem.asc."""
+    """Mask the cropped L0 DEM with each domain mask and write its dem.asc."""
     plan = domain_dem_plan(project_folder)
     if not plan:
         return []
@@ -175,10 +174,10 @@ def write_domain_dems(
 
     written: list[dict[str, Any]] = []
     for entry in plan:
-        polygon = entry["polygon"]
-        if not polygon or not Path(polygon).is_file():
+        mask = entry["mask"]
+        if not mask or not Path(mask).is_file():
             raise FileNotFoundError(
-                f"Domain {entry['name']} has no delineated polygon: {polygon}"
+                f"Domain {entry['name']} has no delineated mask: {mask}"
             )
         os.makedirs(entry["directory"], exist_ok=True)
         if log:
@@ -195,7 +194,7 @@ def write_domain_dems(
             cropped_dem,
             entry["dem_path"],
             l0_header,
-            polygon,
+            mask,
             reference_path=reference_path,
         )
         # v6 reads every shared layer from master's input.nc, so a domain folder

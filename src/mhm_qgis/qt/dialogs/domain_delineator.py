@@ -46,7 +46,6 @@ from ...core.handlers.raster.tasks import (
     delineate_domains_file,
     delineate_outlet_file,
 )
-from ...core.handlers.store.paths import geometry_folder
 from ...core.handlers.store.paths import domain_data_folder
 from ...core.handlers.store.layout import domain_dem_path
 from ...qt.controllers import domain_delineator as domain_delineator_controller
@@ -403,7 +402,6 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         outlet_id = self.current_outlet_id
         if not outlet_id:
             return
-        raster_path, _vector_path = self._outlet_paths(outlet_id, preview=True)
         self._watershed_layer = None
         self._refresh_canvas()
 
@@ -411,8 +409,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             "filled_dem": self.processor.filled_dem_path,
             "x": float(x),
             "y": float(y),
-            "raster_path": raster_path,
-            "vector_path": "",
+            "raster_path": self._outlet_mask_path(outlet_id, preview=True),
             "basin_id": self._basin_id(outlet_id),
         }
         self.main_dialog.task_coordinator.submit(
@@ -581,17 +578,13 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
                     raise ValueError(
                         f"Pick a map location for domain outlet {outlet_id}."
                     )
-                raster_path, vector_path = self._outlet_paths(
-                    outlet_id, state=proposed_state
-                )
                 x, y = self._picked_in_dem_crs(picked)
                 delineations.append(
                     (
                         outlet_id,
                         x,
                         y,
-                        raster_path,
-                        vector_path,
+                        self._outlet_mask_path(outlet_id, state=proposed_state),
                         int(record["domain_id"]),
                         domain_dem_path(self.project_folder, outlet_id),
                     )
@@ -599,18 +592,12 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             dem_crs_authid = self._filled_dem_layer.crs().authid()
             dem_domain = None
             if proposed_state.get("dem_domain"):
-                dem_raster, dem_vector = self.workflow.dem_paths()
                 dem_domain = (
                     int(proposed_state["dem_domain_id"]),
-                    dem_raster,
-                    dem_vector,
+                    self.workflow.dem_mask_path(),
                     domain_dem_path(self.project_folder, "dem_extent"),
                 )
-            merged_path = os.path.join(
-                geometry_folder(self.project_folder),
-                "Watersheds",
-                "4_watershed_merged_vector.shp",
-            )
+            merged_path = DomainWorkflow.merged_mask_path(self.project_folder)
             self._watershed_layer = None
             self._refresh_canvas()
             options = {
@@ -671,7 +658,6 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
                     },
                     "catchment_area_m2": delineation["catchment_area_m2"],
                     "mask_path": delineation["raster_path"],
-                    "vector_path": delineation["vector_path"],
                     "domain_directory": domain_data_folder(
                         self.project_folder, outlet_id
                     ),
@@ -753,15 +739,12 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
     def _domain_output_folder(self):
         return self.workflow.domain_output_folder()
 
-    def _outlet_paths(self, outlet_id, preview=False, state=None):
-        return self.workflow.outlet_paths(
+    def _outlet_mask_path(self, outlet_id, preview=False, state=None):
+        return self.workflow.outlet_mask_path(
             outlet_id,
             state or self.state,
             preview=preview,
         )
-
-    def _dem_paths(self):
-        return self.workflow.dem_paths()
 
     def _show_saved_watershed(self, record):
         self._watershed_layer = None

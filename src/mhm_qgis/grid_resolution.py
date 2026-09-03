@@ -570,13 +570,21 @@ def project_crs_from_dialog(dialog):
 
 
 def merged_watershed_extent_in_crs(dialog, target_crs):
-    """Return the merged watershed extent in the requested CRS."""
-    from qgis.core import QgsVectorLayer
+    """Return the merged domain extent in the requested CRS.
+
+    The delineator saves the merged domains as a mask raster; the legacy
+    watershed flow still writes a merged polygon, so both are accepted.
+    """
+    from qgis.core import QgsCoordinateReferenceSystem, QgsRectangle, QgsVectorLayer
+
+    from .core.handlers.raster.tasks import domain_mask_bounds
+    from .core.handlers.store.layout import MERGED_MASK_NAME
 
     candidates = []
     if getattr(dialog, "project_folder", None):
         geom = Path(geometry_folder(dialog.project_folder))
         candidates.extend([
+            geom / "Watersheds" / MERGED_MASK_NAME,
             geom / "Watersheds" / "4_watershed_merged_vector.shp",
             geom / "4_watershed_merged_vector.shp",
         ])
@@ -584,6 +592,15 @@ def merged_watershed_extent_in_crs(dialog, target_crs):
     for path in candidates:
         if not path.exists():
             continue
+        if path.suffix.lower() == ".tif":
+            mask = domain_mask_bounds(str(path))
+            if not mask:
+                continue
+            source_crs = QgsCoordinateReferenceSystem(mask["projection"] or "")
+            extent = _transform_extent(
+                QgsRectangle(*mask["bounds"]), source_crs, target_crs
+            )
+            return extent, str(path)
         layer = QgsVectorLayer(str(path), "Watershed_Merged", "ogr")
         if layer.isValid():
             extent = _transform_extent(layer.extent(), layer.crs(), target_crs)

@@ -14,6 +14,7 @@ from ....grid_resolution import (
     validate_l0_l2_alignment,
 )
 from ....core.handlers.raster.tasks import crop_aligned_l0_raster, mask_aligned_l0_raster
+from ....core.handlers.store.layout import MERGED_MASK_NAME
 
 
 class MaskingMixin(WatershedDelineationMixin):
@@ -136,6 +137,7 @@ class MaskingMixin(WatershedDelineationMixin):
 
         merged_watershed_path = self._restore_existing_path(
             "merged_watershed_path",
+            os.path.join("Watersheds", MERGED_MASK_NAME),
             os.path.join("Watersheds", "4_watershed_merged_vector.shp"),
             "4_watershed_merged_vector.shp",
         )

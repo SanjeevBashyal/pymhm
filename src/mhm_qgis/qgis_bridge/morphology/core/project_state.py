@@ -7,6 +7,7 @@ from ..common import (
     project_geometry_folder,
 )
 from .processing_state import ProcessingStateMixin
+from ....core.handlers.store.layout import MERGED_MASK_NAME
 from ... import layers
 
 
@@ -27,6 +28,7 @@ class ProjectStateMixin(ProcessingStateMixin):
             'watershed_raster_path': ("4_watershed_raster.tif", "1_watershed_raster.sdat"),
             'watershed_vector_path': "1_watershed_final.shp",
             'merged_watershed_path': (
+                os.path.join("Watersheds", MERGED_MASK_NAME),
                 os.path.join("Watersheds", "4_watershed_merged_vector.shp"),
                 "4_watershed_merged_vector.shp"
             ),

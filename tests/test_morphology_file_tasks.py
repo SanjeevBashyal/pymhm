@@ -23,7 +23,6 @@ from mhm_qgis.core.handlers.raster.tasks import (  # noqa: E402
     fill_dem_file,
     hydrology_files,
     mask_aligned_l0_raster,
-    materialize_domain_dem_file,
     terrain_files,
 )
 
@@ -210,6 +209,11 @@ def test_misaligned_l0_source_is_rejected_rather_than_resampled(tmp_path):
         )
 
 
+def _band(path):
+    dataset = gdal.Open(str(path))
+    return dataset.GetRasterBand(1).ReadAsArray()
+
+
 def test_file_jobs_create_hydrology_and_watershed_outputs(tmp_path):
     source = tmp_path / "dem.tif"
     _dem(source)
@@ -231,28 +235,18 @@ def test_file_jobs_create_hydrology_and_watershed_outputs(tmp_path):
         950,
         50,
         tmp_path / "watershed.tif",
-        tmp_path / "watershed.shp",
     )
 
     outputs = (
         *terrain.values(),
         *hydrology.values(),
         watershed["raster_path"],
-        watershed["vector_path"],
     )
     assert all(os.path.isfile(path) for path in outputs)
     assert watershed["cell_center"] == (950.0, 50.0)
     assert watershed["catchment_area_m2"] > 0
-    domain_dem = materialize_domain_dem_file(
-        filled["filled_dem"],
-        watershed["vector_path"],
-        tmp_path / "outlet" / "dem.asc",
-    )
-    assert os.path.isfile(domain_dem)
-    domain_dataset = gdal.Open(domain_dem)
-    assert domain_dataset.RasterXSize <= 10
-    assert domain_dataset.RasterYSize <= 10
-    assert domain_dataset.GetRasterBand(1).GetNoDataValue() == -9999
+    # Delineation writes the pyflwdir mask only; nothing is polygonized.
+    assert not os.path.exists(tmp_path / "watershed.shp")
 
     domains = delineate_domains_file(
         filled["filled_dem"],
@@ -262,7 +256,6 @@ def test_file_jobs_create_hydrology_and_watershed_outputs(tmp_path):
                 950,
                 50,
                 tmp_path / "domain.tif",
-                tmp_path / "domain.shp",
                 1,
                 tmp_path / "outlet-2" / "dem.asc",
             ),
@@ -270,12 +263,20 @@ def test_file_jobs_create_hydrology_and_watershed_outputs(tmp_path):
         dem_domain=(
             2,
             tmp_path / "dem_domain.tif",
-            tmp_path / "dem_domain.shp",
             tmp_path / "dem_extent" / "dem.asc",
         ),
-        merged_path=tmp_path / "merged.shp",
+        merged_path=tmp_path / "merged.tif",
     )
     assert os.path.isfile(domains["merged_path"])
+    merged_values = _band(domains["merged_path"])
+    outlet_values = _band(tmp_path / "domain.tif")
+    dem_values = _band(tmp_path / "dem_domain.tif")
+    assert (
+        (merged_values != 0)
+        == ((outlet_values != 0) | (dem_values != 0))
+    ).all()
+    # Domains nest, so the outlet keeps its id where the DEM extent overlaps it.
+    assert (merged_values[outlet_values != 0] == 1).all()
     assert domains["outlets"]["outlet"]["catchment_area_m2"] > 0
     # Delineation only records where the domain DEM will go; Morphology Setup
     # writes it later on the common L0 grid so every domain shares the extent.

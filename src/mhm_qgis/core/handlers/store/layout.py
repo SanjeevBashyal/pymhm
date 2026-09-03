@@ -23,6 +23,11 @@ from .paths import (data_folder, geometry_folder, master_data_folder,
 
 INPUT_STATE_FILENAME = "mhm_qgis_input_state.json"
 
+#: Union of every active domain mask, under <geometry>/Watersheds. Domains are
+#: delineated as pyflwdir masks, so the merged extent is a raster too; the
+#: legacy watershed flow still writes 4_watershed_merged_vector.shp beside it.
+MERGED_MASK_NAME = "4_watershed_merged_mask.tif"
+
 #: project folder -> version key, with the state file's mtime as the guard.
 _VERSION_CACHE: dict[str, tuple[float, str]] = {}
 
