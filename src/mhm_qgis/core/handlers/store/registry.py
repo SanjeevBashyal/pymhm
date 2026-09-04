@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 
 from ...utils.time import utc_timestamp
-from ..file import json as jsonio
+from ..state import processing
 from .paths import workspace_folder
 
 #: Section of the shared processing state this module owns.
@@ -83,12 +83,6 @@ def outputs_in(folder, suffix: str = ".nc") -> list[Path]:
     return sorted(folder.glob(f"*{suffix}"), key=lambda p: -p.stat().st_mtime)
 
 
-def _state_path(project_folder) -> Path:
-    from .state_link import processing_state_path
-
-    return processing_state_path(project_folder)
-
-
 def register(project_folder, path, *, name=None, loaded=False, algorithm=None,
              category=None):
     """Record that an output has been produced.
@@ -115,11 +109,8 @@ def register(project_folder, path, *, name=None, loaded=False, algorithm=None,
     if category:
         entry["category"] = category
 
-    state_file = _state_path(project_folder)
-    outputs = jsonio.read_mapping(state_file).get(SECTION) or {}
-    outputs[key] = {**outputs.get(key, {}), **entry}
-    jsonio.merge_sections(state_file, {SECTION: outputs})
-    return entry
+    return processing.set_entry(
+        project_folder, SECTION, key, entry, merge=True)
 
 
 def available(project_folder, path) -> bool:
@@ -132,22 +123,22 @@ def available(project_folder, path) -> bool:
     if not path:
         return False
     key = key_for(project_folder, path)
-    state_file = _state_path(project_folder)
-    outputs = jsonio.read_mapping(state_file).get(SECTION) or {}
+    outputs = registered(project_folder)
 
     if os.path.exists(str(path)):
-        if key not in outputs:
+        if key not in outputs or not outputs[key].get("exists"):
             register(project_folder, path, name=os.path.basename(str(path)))
         return True
     if key in outputs and outputs[key].get("exists"):
-        outputs[key]["exists"] = False
-        jsonio.merge_sections(state_file, {SECTION: outputs})
+        processing.set_entry(
+            project_folder, SECTION, key, {"exists": False}, merge=True)
     return False
 
 
 def registered(project_folder) -> dict:
     """Return every recorded output, keyed by its registry key."""
-    return jsonio.read_mapping(_state_path(project_folder)).get(SECTION) or {}
+    outputs = processing.section(project_folder, SECTION, {})
+    return outputs if isinstance(outputs, dict) else {}
 
 
 __all__ = [

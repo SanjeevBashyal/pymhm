@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from .paths import METEO_VARIABLES, expected_meteo_outputs
+from ..handlers.store.layout import METEO_VARIABLES, expected_meteo_outputs
 
 #: The forcing time axis is stored as days since this epoch.
 TIME_EPOCH = date(1900, 1, 1)

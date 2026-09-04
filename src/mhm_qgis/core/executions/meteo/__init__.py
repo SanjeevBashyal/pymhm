@@ -10,18 +10,23 @@ from __future__ import annotations
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Mapping
 
-from ...meteorology.forcing import MeteoFolderSpec, TargetGrid, process_meteo_inputs
+from ...meteorology.forcing import (
+    MeteoFolderSpec,
+    SpatialMetadata,
+    TargetGrid,
+    process_meteo_inputs,
+)
 from ...meteorology.mask import write_meteo_mask
-from ...meteorology.paths import (
+from ...handlers.store.layout import (
     expected_meteo_outputs,
+    is_v6,
     meteo_mask_path,
     meteo_output_root,
 )
-from ...meteorology.results import log_result_summary, record_forcing_outputs
 from ...meteorology.reuse import required_meteo_variables, stale_meteo_variables
 from ....grid_resolution import save_meteo_grid_metadata
-from ...handlers.store.layout import is_v6
 from ...utils.report import CRITICAL, INFORMATION
 
 
@@ -35,6 +40,7 @@ class MeteorologyRun:
     pet: MeteoFolderSpec | None
     target_grid: TargetGrid
     grid_metadata: dict
+    inspections: Mapping[str, SpatialMetadata] | None = None
 
 
 def _say(log, message):
@@ -105,6 +111,7 @@ def prepare_forcing(run: MeteorologyRun, state, *, log=None, report=None) -> boo
             target_grid=run.target_grid,
             flat_layout=flat,
             log=log,
+            inspections=run.inspections,
         )
         if flat:
             # v6 names a meteorology mask in config_input.
@@ -118,8 +125,13 @@ def prepare_forcing(run: MeteorologyRun, state, *, log=None, report=None) -> boo
                    f"Meteorology processing failed.\n{error}")
         return False
 
-    record_forcing_outputs(state, result)
-    log_result_summary(result, log)
+    for variable, output_path in result.outputs.items():
+        state.mark_prepared(output_path, Path(output_path).name)
+        header_path = result.headers.get(variable)
+        if header_path:
+            state.mark_prepared(header_path, Path(header_path).name)
+    _say(log, "Meteorology forcing preparation completed.")
+    _say(log, f"Prepared variables: {', '.join(sorted(result.outputs))}")
     save_meteo_grid_metadata(run.project_folder, run.grid_metadata)
     if report is not None:
         report(INFORMATION, "Success",
@@ -127,39 +139,8 @@ def prepare_forcing(run: MeteorologyRun, state, *, log=None, report=None) -> boo
     return True
 
 
-@dataclass(frozen=True)
-class SetupStep:
-    """One step of the morphology setup that follows meteorology."""
-
-    key: str
-    label: str
-    method: str
-    #: Whether the method takes `show_error_dialog`; three of the six do not.
-    takes_error_dialog: bool = False
-
-
-#: What `pushButton_executeMeteoMorphSetup` runs after the forcing is prepared.
-#: Publish must precede domain DEMs: it moves the staged rasters into
-#: `data/master`, and writing domain DEMs copies that shared set into every
-#: domain folder -- the other order left each domain with a bare `dem.asc`,
-#: silently.
-MORPH_SETUP_STEPS = (
-    SetupStep("crop", "Crop All Layers", "crop_all_layers", True),
-    SetupStep("mask", "Mask All Layers", "mask_all_layers", True),
-    SetupStep("latlon", "Create latlon.nc", "process_lat_lon"),
-    SetupStep("write", "Write All Layers", "write_all_layers", True),
-    # These two accept `show_error_dialog` and gate a dialog on it, but the
-    # old step list called them without it -- so they raised a modal even when
-    # the caller had asked for silence. All six honour the flag now.
-    SetupStep("publish", "Publish Model Inputs", "align_advanced_inputs_to_l0", True),
-    SetupStep("domain_dems", "Write Domain DEMs", "write_domain_dems_to_l0", True),
-)
-
-
 __all__ = [
-    "MORPH_SETUP_STEPS",
     "MeteorologyRun",
-    "SetupStep",
     "existing_outputs",
     "prepare_forcing",
     "reuse_prepared",

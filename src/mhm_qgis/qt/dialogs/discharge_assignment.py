@@ -19,25 +19,10 @@ from qgis.PyQt.QtWidgets import (
 from qgis.core import QgsMapLayer, QgsProject, QgsVectorLayer
 
 from ...qt.controllers import discharge_assignment as discharge_controller
+from ...core.morphology.hydrology.outlets import OutletAssignment
 from ...qt.ui.pyui.ui_discharge_table_assignment_dialog import (
     Ui_DischargeTableAssignmentDialog,
 )
-
-
-@dataclass(frozen=True)
-class OutletAssignment:
-    """One outlet row returned by an assignment dialog."""
-
-    outlet_id: str
-    is_gauge: bool
-    is_domain: bool = False
-    discharge_layer: object | None = None
-
-    @property
-    def discharge_source(self) -> str:
-        """Return the selected layer source, if one is available."""
-        source = getattr(self.discharge_layer, "source", None)
-        return str(source() or "") if callable(source) else ""
 
 
 @dataclass

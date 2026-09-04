@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 from typing import Callable, Iterable
 
-from ..config import VARIABLE_NAME_MAPPINGS
 from .aggregation import aggregate_daily, drop_duplicate_times
 from .dataset import find_source_variable, open_dataset, standardize_dataset
 from .dependencies import import_dependencies
@@ -20,6 +19,7 @@ from .grid import (
 )
 from .logging import log_message
 from .metadata import add_time_bounds, finalize_geospatial_metadata
+from .specs import VARIABLE_NAME_MAPPINGS
 from .types import ForcingSpec
 
 

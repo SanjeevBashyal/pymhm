@@ -12,9 +12,10 @@ from mhm_qgis import standalone  # noqa: E402
 
 standalone.install(force=True)
 
-from mhm_qgis.core.meteorology import inspection_cache  # noqa: E402
-from mhm_qgis.core.meteorology.inspection_cache import (  # noqa: E402
+from mhm_qgis.core.meteorology.forcing import cache as inspection_cache  # noqa: E402
+from mhm_qgis.core.meteorology.forcing import (  # noqa: E402
     inspect_meteo_folder_cached,
+    inspect_meteo_inputs_cached,
     inspection_fingerprint,
 )
 from mhm_qgis.core.meteorology.forcing import MeteoFolderSpec  # noqa: E402
@@ -115,3 +116,31 @@ def test_inspection_without_a_project_folder_still_works(tmp_path):
     metadata = inspect_meteo_folder_cached(
         None, folder, "precipitation", "ERA5Land")
     assert len(metadata.files) == 1
+
+
+def test_input_inspection_uses_the_folder_cache_for_each_selection(
+        tmp_path, monkeypatch):
+    calls = []
+
+    def _cached(project, folder, kind, source, crs, log=None):
+        calls.append((project, folder, kind, source, crs, log))
+        return kind
+
+    monkeypatch.setattr(
+        inspection_cache, "inspect_meteo_folder_cached", _cached)
+    log = object()
+    result = inspect_meteo_inputs_cached(
+        tmp_path,
+        MeteoFolderSpec("precipitation", tmp_path / "pre", "ERA5Land"),
+        MeteoFolderSpec("temperature", tmp_path / "temp", "mHM ready", "EPSG:4326"),
+        MeteoFolderSpec("pet", tmp_path / "pet", "ERA5Land"),
+        log=log,
+    )
+
+    assert result == {
+        "precipitation": "precipitation",
+        "temperature": "temperature",
+        "pet": "pet",
+    }
+    assert [call[2] for call in calls] == ["precipitation", "temperature", "pet"]
+    assert all(call[-1] is log for call in calls)

@@ -12,6 +12,7 @@ is called inside loops; uncached, each call opened and parsed
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from ..file import json as jsonio
 from .paths import (data_folder, geometry_folder, master_data_folder,
@@ -30,6 +31,8 @@ MERGED_MASK_NAME = "4_watershed_merged_mask.tif"
 
 #: project folder -> version key, with the state file's mtime as the guard.
 _VERSION_CACHE: dict[str, tuple[float, str]] = {}
+
+METEO_VARIABLES = ("pre", "tavg", "tmin", "tmax", "pet")
 
 
 def input_state_path(project_folder) -> str:
@@ -69,6 +72,33 @@ def forget_project_version(project_folder=None) -> None:
 def is_v6(project_folder) -> bool:
     """Return True when the project uses the v6 input layout."""
     return project_version(project_folder) == "v6"
+
+
+def meteo_output_root(project_folder) -> Path:
+    """Return the project-local mHM meteorology forcing root."""
+    return Path(meteo_folder(project_folder))
+
+
+def meteo_mask_path(project_folder) -> Path:
+    """Return the v6 meteorology mask path."""
+    return meteo_output_root(project_folder) / "mask.nc"
+
+
+def expected_meteo_outputs(project_folder) -> dict[str, dict[str, Path | None]]:
+    """Return final meteorology paths for the project's mHM version."""
+    root = meteo_output_root(project_folder)
+    if is_v6(project_folder):
+        return {
+            variable: {"netcdf": root / f"{variable}.nc", "header": None}
+            for variable in METEO_VARIABLES
+        }
+    return {
+        variable: {
+            "netcdf": root / variable / f"{variable}.nc",
+            "header": root / variable / "header.txt",
+        }
+        for variable in METEO_VARIABLES
+    }
 
 
 def project_template_root() -> str:

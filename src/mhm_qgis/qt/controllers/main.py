@@ -28,10 +28,11 @@ from ..dialogs.input_selection import (INPUT_EXTENSIONS, InputComboAdapter,
                                 SingleLayerInputDialog, loaded_qgis_items,
                                 scan_project_folders, scan_project_inputs)
 from ...core.meteorology.forcing import MeteoFolderSpec, resolution_in_crs
-from ...core.meteorology.inspection_cache import inspect_meteo_folder_cached
+from ...core.meteorology.forcing import inspect_meteo_folder_cached
 from ...morphology_display import DISPLAY_KEYS
 from ...core.morphology.hydrology.outlets import StationIdError, outlet_ids_from_layer
-from ...core.handlers.store.paths import data_folder
+from ...core.handlers.state import processing
+from ...core.handlers.store.paths import data_folder, master_data_folder
 
 def configure_input_adapters(dialog):
     """Wrap each plain input combo in the layer-combo interface the code uses."""
@@ -1033,14 +1034,14 @@ def refresh_morphology_workflow_button_state(dialog, workflow_key):
     if dialog.running_morphology_workflow_key() == workflow_key:
         return
 
-    workflow = dialog.morphology_processor.workflow_status(workflow_key)
+    workflow = processing.workflow(dialog.project_folder, workflow_key)
     if workflow.get("status") == "completed":
         if (
                 workflow_key == "meteo_morph_setup"
                 and dialog.project_folder
                 and not os.path.isfile(
                     os.path.join(
-                        data_folder(dialog.project_folder),
+                        master_data_folder(dialog.project_folder),
                         "latlon.nc",
                     )
                 )):

@@ -2,6 +2,8 @@
 """Gauge outlet helpers for the Hydrology page."""
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from ...handlers.state.domain_state import gauged_outlet_ids, load_state, state_path
 
 STATION_ID_FIELD = "STATION_ID"
@@ -9,6 +11,21 @@ STATION_ID_FIELD = "STATION_ID"
 
 class StationIdError(ValueError):
     """Raised when a pour-point layer does not provide usable station IDs."""
+
+
+@dataclass(frozen=True)
+class OutletAssignment:
+    """One outlet choice, independent of the Qt dialog that collected it."""
+
+    outlet_id: str
+    is_gauge: bool
+    is_domain: bool = False
+    discharge_layer: object | None = None
+
+    @property
+    def discharge_source(self) -> str:
+        source = getattr(self.discharge_layer, "source", None)
+        return str(source() or "") if callable(source) else ""
 
 
 def selected_outlet_id_field(dialog) -> str | None:

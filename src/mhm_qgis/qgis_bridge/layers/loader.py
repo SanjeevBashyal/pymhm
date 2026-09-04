@@ -19,6 +19,22 @@ def source_uri(path, variable: str | None = None) -> str:
     return str(path)
 
 
+def raster_source(layer) -> str | None:
+    """Return a raster layer's provider source, or None for another layer type."""
+    if layer is None:
+        return None
+    try:
+        from qgis.core import QgsRasterLayer
+    except ImportError:
+        return None
+    if not isinstance(layer, QgsRasterLayer):
+        return None
+    try:
+        return str(layer.source() or "") or None
+    except Exception:
+        return None
+
+
 def _readable_path(source) -> str:
     """Return the filesystem path behind a source, unwrapping a NetCDF URI."""
     source = str(source)
@@ -65,4 +81,4 @@ def load(path, name: str, *, is_raster: bool = True, log=None):
     return layer
 
 
-__all__ = ["load", "open_layer", "source_uri"]
+__all__ = ["load", "open_layer", "raster_source", "source_uri"]

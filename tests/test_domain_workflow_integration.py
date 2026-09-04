@@ -10,17 +10,13 @@ from mhm_qgis import standalone
 standalone.install(force=True)
 
 # isort: off
-from mhm_qgis.qgis_bridge.morphology.core.predecessors import PredecessorMixin  # noqa: E402
-from mhm_qgis.qgis_bridge.morphology.hydrology.gauge import GaugePositionMixin  # noqa: E402
-from mhm_qgis.qt.controllers.main import update_gauged_outlet_count  # noqa: E402
-from mhm_qgis.qgis_bridge.morphology.orchestration.reset_geometry import (  # noqa: E402
-    ResetGeometryMixin,
-)
-from mhm_qgis.core.handlers.state.domain_state import (  # noqa: E402
-    load_state,
-    save_state,
-)
+from qgis.core import QgsCoordinateReferenceSystem  # noqa: E402
+
+from mhm_qgis.core.executions.morphology.reset import clear_geometry  # noqa: E402
+from mhm_qgis.core.handlers.state.domain_state import load_state, save_state  # noqa: E402
 from mhm_qgis.core.handlers.store.layout import geometry_folder  # noqa: E402
+from mhm_qgis.qgis_bridge.layers import gauges  # noqa: E402
+from mhm_qgis.qt.controllers.main import update_gauged_outlet_count  # noqa: E402
 from mhm_qgis.vSpecific.common import domain_count  # noqa: E402
 # isort: on
 
@@ -33,35 +29,66 @@ class _Label:
         self.value = value
 
 
+class _Fields:
+    def names(self):
+        return ["outlet_id"]
+
+
+class _Point:
+    def __init__(self, x, y):
+        self._x = x
+        self._y = y
+
+    def x(self):
+        return self._x
+
+    def y(self):
+        return self._y
+
+
+class _Geometry:
+    def __init__(self, x=0.0, y=0.0):
+        self.point = _Point(x, y)
+
+    def isEmpty(self):
+        return False
+
+    def asPoint(self):
+        return self.point
+
+
+class _Feature:
+    def __init__(self, outlet_id, x=0.0, y=0.0):
+        self.outlet_id = outlet_id
+        self._geometry = _Geometry(x, y)
+
+    def attribute(self, _field):
+        return self.outlet_id
+
+    def geometry(self):
+        return self._geometry
+
+
 class _Layer:
     def __init__(self, features=None, count=0):
         self._features = list(features or [])
         self._count = count
+        self._crs = QgsCoordinateReferenceSystem("EPSG:4326")
 
     def isValid(self):
         return True
+
+    def fields(self):
+        return _Fields()
+
+    def crs(self):
+        return self._crs
 
     def getFeatures(self):
         return iter(self._features)
 
     def featureCount(self):
         return self._count
-
-
-class _Feature:
-    def __init__(self, outlet_id):
-        self.outlet_id = outlet_id
-
-    def attribute(self, _field):
-        return self.outlet_id
-
-    def geometry(self):
-        return _Geometry()
-
-
-class _Geometry:
-    def isEmpty(self):
-        return False
 
 
 def test_saved_state_controls_gauge_and_domain_counts(tmp_path: Path) -> None:
@@ -78,11 +105,7 @@ def test_saved_state_controls_gauge_and_domain_counts(tmp_path: Path) -> None:
         },
     )
     label = _Label()
-    selector = type(
-        "Selector",
-        (),
-        {"currentLayer": lambda self: _Layer(count=20)},
-    )()
+    selector = type("Selector", (), {"currentLayer": lambda self: _Layer(count=20)})()
     dialog = type(
         "Dialog",
         (),
@@ -92,6 +115,7 @@ def test_saved_state_controls_gauge_and_domain_counts(tmp_path: Path) -> None:
             "label_numberOfGaugedOutletsValue": label,
         },
     )()
+
     assert update_gauged_outlet_count(dialog) == "1"
     assert label.value == "1"
     assert domain_count(dialog) == 3
@@ -100,118 +124,57 @@ def test_saved_state_controls_gauge_and_domain_counts(tmp_path: Path) -> None:
 def test_configured_project_keeps_one_domain_minimum(tmp_path: Path) -> None:
     save_state(
         tmp_path,
-        {
-            "outlet_id_field": "outlet_id",
-            "outlets": {"1": {"is_domain": False}},
-        },
+        {"outlet_id_field": "outlet_id", "outlets": {"1": {"is_domain": False}}},
     )
-    dialog = type(
-        "Dialog", (), {"project_folder": str(tmp_path)}
-    )()
+    dialog = type("Dialog", (), {"project_folder": str(tmp_path)})()
 
     assert domain_count(dialog) == 1
 
 
-def test_gauge_features_only_include_saved_gauged_ids() -> None:
-    layer = _Layer([_Feature("1"), _Feature("2")])
-
-    features = GaugePositionMixin._gauge_features(
-        object(),
-        layer,
-        "outlet_id",
-        ["2"],
-    )
-
-    assert [feature["station_text"] for feature in features] == ["2"]
-    with pytest.raises(ValueError, match="No outlets are marked as gauged"):
-        GaugePositionMixin._gauge_features(
-            object(),
-            layer,
-            "outlet_id",
-            [],
-        )
-
-
-def test_configured_state_prevents_legacy_automatic_delineation(
-    tmp_path: Path,
-) -> None:
+def test_gauge_coordinates_only_include_saved_gauged_ids(tmp_path, monkeypatch):
     save_state(
         tmp_path,
         {
             "outlet_id_field": "outlet_id",
-            "outlets": {"1": {"is_domain": True}},
+            "outlet_order": ["1", "2"],
+            "outlets": {
+                "1": {"is_gauged": False},
+                "2": {"is_gauged": True},
+            },
         },
     )
-    messages = []
-    harness = type(
-        "Harness",
-        (),
+    layer = _Layer([_Feature("1", 10, 11), _Feature("2", 20, 21)])
+    monkeypatch.setattr(gauges, "open_layer", lambda *_args, **_kwargs: layer)
+    monkeypatch.setattr(gauges, "crs_of", lambda _path: layer.crs())
+    monkeypatch.setattr(gauges, "transform_between", lambda *_args: None)
+
+    result = gauges.gauge_coordinates(tmp_path, "snapped.shp", "dem.tif")
+
+    assert result == ((2, 20.0, 21.0),)
+
+
+def test_configured_project_with_no_gauges_is_rejected(tmp_path, monkeypatch):
+    save_state(
+        tmp_path,
         {
-            "dialog": type(
-                "Dialog", (), {"project_folder": str(tmp_path)}
-            )(),
-            "_restore_existing_path": lambda self, *args: None,
-            "log_message": messages.append,
+            "outlet_id_field": "outlet_id",
+            "outlets": {"1": {"is_gauged": False}},
         },
-    )()
-
-    assert not PredecessorMixin._ensure_merged_watershed(
-        harness,
-        lambda: None,
-        lambda: None,
-        lambda: None,
-        lambda: None,
-        lambda: None,
     )
-    assert any("Domain Delineator" in message for message in messages)
+    layer = _Layer([_Feature("1")])
+    monkeypatch.setattr(gauges, "open_layer", lambda *_args, **_kwargs: layer)
+    monkeypatch.setattr(gauges, "crs_of", lambda _path: layer.crs())
+    monkeypatch.setattr(gauges, "transform_between", lambda *_args: None)
+
+    with pytest.raises(ValueError, match="No outlets are marked as gauged"):
+        gauges.gauge_coordinates(tmp_path, "snapped.shp", "dem.tif")
 
 
-def test_legacy_delineation_remains_without_domain_state(
-    tmp_path: Path,
-) -> None:
-    output = Path(geometry_folder(tmp_path)) / "legacy.shp"
-
-    class Harness:
-        def __init__(self):
-            self.dialog = type(
-                "Dialog", (), {"project_folder": str(tmp_path)}
-            )()
-            self.merged_watershed_path = None
-
-        def _restore_existing_path(self, *args):
-            return None
-
-        def _ensure_snapped_points(self, *args):
-            return True
-
-        def without_layer_loading(self, callback):
-            callback()
-
-        def log_message(self, _message):
-            pass
-
-    harness = Harness()
-
-    def delineate():
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.touch()
-        harness.merged_watershed_path = str(output)
-
-    assert PredecessorMixin._ensure_merged_watershed(
-        harness,
-        delineate,
-        lambda: None,
-        lambda: None,
-        lambda: None,
-        lambda: None,
-    )
-
-
-def test_geometry_reset_invalidates_only_domain_outputs(
-    tmp_path: Path,
-) -> None:
-    mask = Path(geometry_folder(tmp_path)) / "Watersheds" / "mask.tif"
-    vector = mask.with_suffix(".gpkg")
+def test_geometry_reset_invalidates_only_derived_domain_outputs(tmp_path: Path) -> None:
+    geometry = Path(geometry_folder(tmp_path))
+    generated = geometry / "Watersheds" / "mask.tif"
+    generated.parent.mkdir(parents=True, exist_ok=True)
+    generated.write_text("generated", encoding="utf-8")
     save_state(
         tmp_path,
         {
@@ -226,28 +189,16 @@ def test_geometry_reset_invalidates_only_domain_outputs(
                     "threshold_cells": 42,
                     "picked": {"x": 1.0, "y": 2.0},
                     "catchment_area_m2": 123.0,
-                    "mask_path": str(mask),
-                    "vector_path": str(vector),
+                    "mask_path": str(generated),
+                    "vector_path": str(generated.with_suffix(".gpkg")),
                 }
             },
         },
     )
-    messages = []
-    harness = type(
-        "Harness",
-        (),
-        {
-            "dialog": type(
-                "Dialog", (), {"project_folder": str(tmp_path)}
-            )(),
-            "log_message": messages.append,
-        },
-    )()
 
-    ResetGeometryMixin._invalidate_domain_delineation_outputs(harness)
+    assert clear_geometry(tmp_path) == 1
 
-    state = load_state(tmp_path)
-    record = state["outlets"]["7"]
+    record = load_state(tmp_path)["outlets"]["7"]
     assert record["is_gauged"] is True
     assert record["is_domain"] is True
     assert record["discharge_file"] == "inputs/gauge.csv"
@@ -256,4 +207,3 @@ def test_geometry_reset_invalidates_only_domain_outputs(
     assert "catchment_area_m2" not in record
     assert "mask_path" not in record
     assert "vector_path" not in record
-    assert state["dem_domain"] is True

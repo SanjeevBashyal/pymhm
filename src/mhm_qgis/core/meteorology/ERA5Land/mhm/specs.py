@@ -7,6 +7,20 @@ from .types import ForcingSpec
 TEMPERATURE_FILE_VARIABLE = "2m_temperature"
 PRECIPITATION_FILE_VARIABLE = "total_precipitation"
 
+VARIABLE_NAME_MAPPINGS = {
+    "precipitation": (
+        "tp",
+        "Total_precipitation_surface_1_Hour_Accumulation",
+        "total_precipitation",
+    ),
+    "temperature": (
+        "t2m",
+        "Temperature_height_above_ground",
+        "2m_temperature",
+    ),
+    "potential_evaporation": ("pev", "potential_evaporation"),
+}
+
 FORCING_SPECS = (
     ForcingSpec(
         output_variable="pre",

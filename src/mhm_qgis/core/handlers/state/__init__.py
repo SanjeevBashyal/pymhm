@@ -5,15 +5,14 @@ Every JSON file the plugin keeps inside a user project is read and written from
 here. Qt-free by contract, so the state can be exercised and migrated without a
 dialog: the modules take a project folder, not a dialog.
 
-- `input_state`      mhm_qgis_input_state.json
-- `processing_state` mhm_qgis_processing_state.json (three writers -- see below)
+- `processing`       mhm_qgis_processing_state.json (the sole writer)
 - `domain_state`     mhm_qgis_domain_delineation_state.json
 - `nml_settings`     nml-settings.json, the handoff to nml-tools
 - `cache`            fingerprinted stage reuse, inside the processing state
-- `metadata`         meteo grid and geology class metadata
+- `meteo_outputs`    temporary compatibility facade over `processing`
+- `morphology`       temporary compatibility facade over `processing`
 
-`mhm_qgis_processing_state.json` has three independent writers. Each owns named
-sections and must merge rather than overwrite: dumping a whole in-memory copy
-erases what the others added since it was loaded, which silently disables stage
-reuse. That has broken once already.
+Feature modules may calculate cache, morphology and meteorology entries, but
+all mutations of `mhm_qgis_processing_state.json` go through `processing` so a
+read-modify-write operation is atomic within the plugin process.
 """

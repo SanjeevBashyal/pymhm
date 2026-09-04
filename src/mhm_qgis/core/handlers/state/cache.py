@@ -13,43 +13,28 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import tempfile
 from pathlib import Path
-from ....core.handlers.store.paths import workspace_folder
 from ...utils.time import utc_timestamp
+from . import processing
 
 
-STATE_FILENAME = "mhm_qgis_processing_state.json"
+STATE_FILENAME = processing.STATE_FILENAME
 CACHE_VERSION = 1
 
 
 def state_path(project_folder) -> Path:
     """Return the project-local processing state path."""
-    return Path(workspace_folder(project_folder)) / STATE_FILENAME
+    return processing.state_path(project_folder)
 
 
 def load_state(project_folder) -> dict:
     """Load the processing state, returning an empty mapping when unusable."""
-    try:
-        value = json.loads(state_path(project_folder).read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, ValueError):
-        return {}
-    return value if isinstance(value, dict) else {}
+    return processing.load(project_folder)
 
 
 def save_state(project_folder, state: dict) -> None:
-    """Atomically write the processing state."""
-    path = state_path(project_folder)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            json.dump(state, stream, indent=2, sort_keys=True)
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+    """Compatibility wrapper that overlays the supplied sections atomically."""
+    processing.overlay(project_folder, state)
 
 
 def fingerprint(paths=(), config=None) -> str:
@@ -84,17 +69,11 @@ def cached_payload(project_folder, section: str, key: str, digest: str):
 def store_payload(project_folder, section: str, key: str, digest: str,
                   payload) -> None:
     """Record a payload against the fingerprint of the inputs that produced it."""
-    state = load_state(project_folder)
-    entries = state.setdefault(section, {})
-    if not isinstance(entries, dict):
-        entries = {}
-        state[section] = entries
-    entries[key] = {
+    processing.set_entry(project_folder, section, key, {
         "fingerprint": digest,
         "payload": payload,
         "updated_at": utc_timestamp(),
-    }
-    save_state(project_folder, state)
+    })
 
 
 def outputs_present(payload) -> bool:

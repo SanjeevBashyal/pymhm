@@ -106,9 +106,11 @@ def test_the_bridge_sends_lookup_jobs_to_the_worker():
     """The in-process lookup runner must be gone, or QGIS is exposed again."""
     import inspect
 
-    from mhm_qgis import morphology_task_bridge as bridge
+    from mhm_qgis.core.executions.morphology import commands
+    from mhm_qgis.qt.objects import morphology_tasks
 
-    source = inspect.getsource(bridge._run_lookup)
-    assert "_run_in_worker" in source
-    # The heavy call must not be reachable from the bridge module itself.
-    assert not hasattr(bridge, "prepare_categorical_file")
+    source = inspect.getsource(commands.lookup)
+    assert "native_worker" in source
+    assert morphology_tasks._run_lookup is commands.lookup
+    # The Qt scheduler must not expose the heavy formatter directly.
+    assert not hasattr(morphology_tasks, "prepare_categorical_file")

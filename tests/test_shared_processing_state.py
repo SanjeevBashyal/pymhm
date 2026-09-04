@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
 from mhm_qgis.core.handlers.file import json as jsonio
 from mhm_qgis.core.handlers.state import cache
+from mhm_qgis.core.handlers.state import processing
 from mhm_qgis.core.handlers.state.meteo_outputs import MeteorologyOutputState
 
 
@@ -68,3 +70,17 @@ def test_unrelated_sections_written_by_anyone_else_survive(project):
     assert state["workflows"] == {"execute_all": "done"}
     assert state["grid"] == {"ncols": 10}
     assert "stages" in state and "outputs" in state
+
+
+def test_parallel_updates_to_one_section_do_not_lose_entries(project):
+    def record(index):
+        processing.set_entry(
+            project, "stages", f"stage-{index}", {"value": index})
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(record, range(40)))
+
+    stages = processing.section(project, "stages")
+    assert stages == {
+        f"stage-{index}": {"value": index} for index in range(40)
+    }

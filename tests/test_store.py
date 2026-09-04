@@ -106,6 +106,12 @@ def test_the_filesystem_beats_the_journal(project):
         "exists"
     ] is False
 
+    output.write_bytes(b"")
+    assert registry.available(project, output) is True
+    assert registry.registered(project)[registry.key_for(project, output)][
+        "exists"
+    ] is True
+
 
 def test_a_file_produced_outside_the_plugin_is_adopted(project):
     output = project / "appeared.tif"

@@ -1,357 +1,148 @@
-"""Focused tests for mhm_qgis categorical workflow orchestration."""
+"""Focused tests for the path-only categorical morphology API."""
+from __future__ import annotations
 
 from pathlib import Path
 
-from mhm_qgis import standalone
+import pytest
 
-standalone.install(force=True)
-
-# isort: off
-from qgis.core import (  # noqa: E402
-    QgsCoordinateReferenceSystem,
-    QgsRasterLayer,
-    QgsVectorLayer,
-)
-
-from mhm_qgis.qgis_bridge.morphology.layers import categorical  # noqa: E402
-from mhm_qgis.core.handlers.store.paths import geometry_folder, morph_staging_folder
-from mhm_qgis.core.handlers.store.layout import morph_folder  # noqa: E402
-# isort: on
+from mhm_qgis.core.handlers.state.nml_settings import load_settings, update_section
+from mhm_qgis.core.handlers.store.layout import ensure_project_structure, morph_folder
+from mhm_qgis.core.morphology.layers import categorical
 
 
-class _Combo:
-    def __init__(self, layer):
-        self.layer = layer
-
-    def currentLayer(self):
-        return self.layer
-
-    def source_path(self):
-        return self.layer.source()
-
-
-class _Dialog:
-    def __init__(self, project, kind, layer, mode, lookup=None):
-        self.project_folder = str(project)
-        self._input_adapters = {categorical._SPECS[kind]["kind"]: _Combo(layer)}
-        self.mode = mode
-        self.lookup = lookup
-
-    def input_combo(self, kind):
-        return self._input_adapters.get(kind)
-
-    def categorical_input_mode(self, _kind):
-        return self.mode
-
-    def categorical_lookup_config(self, _kind):
-        return self.lookup
-
-    def get_crs(self):
-        return QgsCoordinateReferenceSystem("EPSG:32645")
-
-
-class _Processor(categorical.CategoricalProcessingMixin):
-    def __init__(self, dialog, dem):
-        self.dialog = dialog
-        self.filled_dem_path = str(dem)
-        self.messages = []
-        self.loaded = []
-        self.prepared = []
-        self.land_use_layer = None
-        self.geology_path = None
-        self.categorical_ready_outputs = {}
-        self.prerequisite_calls = 0
-
-    def check_prerequisites(self):
-        self.prerequisite_calls += 1
-        return True
-
-    def _ensure_filled_dem(self, _callback):
-        return True
-
-    def log_message(self, message):
-        self.messages.append(message)
-
-    def load_layer(self, path, name):
-        self.loaded.append((path, name))
-
-    def mark_output_prepared(self, path, **_kwargs):
-        self.prepared.append(path)
-
-
-def _touch(path, content=b""):
+def _touch(path: Path, content: bytes = b"") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
     return path
 
 
-def _lookup(path):
-    return {
-        "lookup_table": str(_touch(path)),
-        "mapping_field": "source_code",
-        "class_field": "class_id",
-    }
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("Lookup Table", "lookup_table"),
+        ("lookup-table", "lookup_table"),
+        ("mHM_ready", "mhm_ready"),
+        (None, ""),
+    ],
+)
+def test_modes_have_stable_api_names(value, expected):
+    assert categorical.normalized_mode(value) == expected
 
 
-def test_raster_land_cover_delegates_to_unified_adapter(tmp_path, monkeypatch):
-    project = tmp_path / "project"
-    source = _touch(tmp_path / "input" / "land_cover.tif")
-    geometry = Path(geometry_folder(project))
-    dem = _touch(geometry / "1_dem_filled.tif")
-    stale_crop = _touch(geometry / "3_land_use_crop.tif", b"old")
-    stale_mask = _touch(geometry / "3_land_use_masked.tif", b"old")
-    layer = QgsRasterLayer(str(source), "land cover")
-    config = _lookup(tmp_path / "input" / "lookup.csv")
-    processor = _Processor(
-        _Dialog(project, "lc", layer, "Lookup Table", config), dem
-    )
-    calls = {}
+def test_path_helpers_keep_intermediates_out_of_model_inputs(tmp_path):
+    ensure_project_structure(tmp_path, "5.13")
 
-    def prepare(*args, **kwargs):
-        calls["args"] = args
-        calls["kwargs"] = kwargs
-        _touch(Path(args[3]), b"lc")
+    raw, cropped, masked = categorical.intermediate_paths(tmp_path, "soil")
+    ready = categorical.ready_paths(tmp_path, "soil")
 
-    monkeypatch.setattr(categorical, "prepare_categorical_file", prepare)
-
-    assert processor.process_land_use()
-    assert calls["args"][0] == "lc"
-    assert calls["args"][1] == str(source)
-    assert calls["args"][4:7] == (
-        config["lookup_table"],
-        "source_code",
-        "class_id",
-    )
-    assert calls["kwargs"]["is_vector"] is False
-    assert Path(processor.land_use_layer).name == "3_land_use.tif"
-    assert not stale_crop.exists()
-    assert not stale_mask.exists()
+    assert raw.name == "3_soil.tif"
+    assert cropped.name == "3_soil_crop.tif"
+    assert masked.name == "3_soil_masked.tif"
+    assert all(path.parent == Path(morph_folder(tmp_path)) for path in ready)
+    assert {path.suffix.lower() for path in ready} >= {".asc", ".nc", ".tif"}
 
 
-def test_vector_soil_passes_vector_mode_and_definition_target(tmp_path, monkeypatch):
-    project = tmp_path / "project"
-    source = _touch(tmp_path / "input" / "soil.shp")
-    dem = _touch(Path(geometry_folder(project)) / "1_dem_filled.tif")
-    layer = QgsVectorLayer(str(source), "soil", "ogr")
-    config = _lookup(tmp_path / "input" / "lookup.csv")
-    processor = _Processor(
-        _Dialog(project, "soil", layer, "Lookup Table", config), dem
-    )
-    calls = {}
+def test_ready_land_cover_is_published_and_recorded(tmp_path):
+    ensure_project_structure(tmp_path, "5.13")
+    source = _touch(tmp_path / "input" / "land_cover.asc", b"new raster")
+    _touch(source.with_suffix(".prj"), b"projection")
+    stale = [
+        _touch(path, b"stale")
+        for path in categorical.intermediate_paths(tmp_path, "lc")
+    ]
 
-    def prepare(*args, **kwargs):
-        calls["args"] = args
-        calls["kwargs"] = kwargs
-        _touch(Path(args[3]), b"soil")
-        _touch(Path(kwargs["classdefinition_file"]), b"definition")
+    outputs = categorical.copy_ready(tmp_path, "lc", source)
 
-    monkeypatch.setattr(categorical, "prepare_categorical_file", prepare)
-
-    assert processor.process_soil()
-    assert calls["kwargs"]["is_vector"] is True
-    assert Path(calls["kwargs"]["classdefinition_file"]).name == (
-        "soil_classdefinition.txt"
-    )
-    assert Path(calls["args"][3]).name == "3_soil.tif"
-
-
-def test_ready_soil_copies_raster_and_removes_stale_intermediates(
-    tmp_path, monkeypatch
-):
-    project = tmp_path / "project"
-    source = _touch(tmp_path / "input" / "soil.asc", b"ready")
-    geometry = Path(geometry_folder(project))
-    staging = Path(morph_staging_folder(project))
-    morph = Path(morph_folder(project))
-    dem = _touch(geometry / "1_dem_filled.tif")
-    stale = _touch(geometry / "3_soil.tif", b"stale")
-    # mHM-ready bypasses crop/mask/write, so its definition is already final and
-    # lives next to the published raster rather than in staging.
-    definition = _touch(
-        morph / "soil_classdefinition.txt",
-        b"definition",
-    )
-    layer = QgsRasterLayer(str(source), "soil")
-    processor = _Processor(_Dialog(project, "soil", layer, "mHM_ready"), dem)
-    monkeypatch.setattr(
-        categorical,
-        "prepare_categorical_file",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("ready data must not be formatted")
-        ),
-    )
-
-    assert processor.process_soil()
-    target = morph / "soil_class.asc"
-    assert target.read_bytes() == b"ready"
-    assert definition.is_file()
-    assert not stale.exists()
-    assert processor.categorical_ready_outputs["soil"] == str(target)
-    assert processor.prerequisite_calls == 0
-
-
-def test_ready_mode_rejects_vector_input(tmp_path, monkeypatch):
-    project = tmp_path / "project"
-    source = _touch(tmp_path / "input" / "soil.shp")
-    dem = _touch(Path(geometry_folder(project)) / "dem.tif")
-    processor = _Processor(
-        _Dialog(
-            project,
-            "soil",
-            QgsVectorLayer(str(source), "soil", "ogr"),
-            "mHM_ready",
-        ),
-        dem,
-    )
-    monkeypatch.setattr(type(processor), "warn", lambda *_a: None)
-
-    assert not processor.process_soil()
-
-
-def test_ready_land_cover_is_available_to_elevation_bands(tmp_path):
-    from mhm_qgis.others.elevation_bands.band_landcover_helpers import \
-        BandLandCoverHelperMixin
-
-    project = tmp_path / "project"
-    ready = _touch(Path(morph_folder(project)) / "lc.asc")
-    processor = _Processor.__new__(_Processor)
-    processor.dialog = type("Dialog", (), {"project_folder": str(project)})()
-    processor.land_use_layer = None
-    processor.categorical_ready_outputs = {"lc": str(ready)}
-
-    result = BandLandCoverHelperMixin._ensure_land_use_raster(
-        processor,
-        lambda: (_ for _ in ()).throw(
-            AssertionError("ready land cover must not be processed again")
-        ),
-    )
-
-    assert result == str(ready)
-
-
-def test_lookup_replaces_ready_state_and_files(tmp_path, monkeypatch):
-    project = tmp_path / "project"
-    source = _touch(tmp_path / "input" / "land_cover.tif")
-    geometry = Path(geometry_folder(project))
-    dem = _touch(geometry / "1_dem_filled.tif")
-    config = _lookup(tmp_path / "input" / "lookup.csv")
-    processor = _Processor(
-        _Dialog(
-            project,
-            "lc",
-            QgsRasterLayer(str(source), "land cover"),
-            "Lookup Table",
-            config,
-        ),
-        dem,
-    )
-    staging = Path(morph_staging_folder(project))
-    morph = Path(morph_folder(project))
-    stale = [_touch(morph / f"lc{suffix}", b"stale") for suffix in (".asc", ".nc")]
-    processor.categorical_ready_outputs["lc"] = str(stale[0])
-
-    def prepare(*args, **_kwargs):
-        _touch(Path(args[3]), b"lookup")
-
-    monkeypatch.setattr(categorical, "prepare_categorical_file", prepare)
-
-    assert processor.process_land_use()
+    target = Path(morph_folder(tmp_path)) / "lc.asc"
+    assert target.read_bytes() == b"new raster"
+    assert target.with_suffix(".prj").read_bytes() == b"projection"
+    assert set(outputs) == {target, target.with_suffix(".prj")}
     assert all(not path.exists() for path in stale)
-    assert "lc" not in processor.categorical_ready_outputs
-    assert (geometry / "3_land_use.tif").read_bytes() == b"lookup"
-
-
-def test_failed_geology_publish_restores_previous_outputs(tmp_path, monkeypatch):
-    project = tmp_path / "project"
-    source = _touch(tmp_path / "input" / "geology.tif")
-    geometry = Path(geometry_folder(project))
-    staging = Path(morph_staging_folder(project))
-    dem = _touch(geometry / "1_dem_filled.tif")
-    config = _lookup(tmp_path / "input" / "lookup.csv")
-    processor = _Processor(
-        _Dialog(
-            project,
-            "geology",
-            QgsRasterLayer(str(source), "geology"),
-            "Lookup Table",
-            config,
-        ),
-        dem,
-    )
-    output = _touch(
-        geometry / "3_geology_processed.tif", b"old raster"
-    )
-    definition = _touch(
-        staging / "geology_classdefinition.txt",
-        b"old definition",
-    )
-    metadata = _touch(
-        geometry / "geology_class_metadata.json",
-        b"old metadata",
+    assert load_settings(tmp_path)["land_cover"]["output_path"] == (
+        "data/master/static/morph/lc.asc"
     )
 
-    def prepare(*args, **kwargs):
-        _touch(Path(args[3]), b"new raster")
-        _touch(Path(kwargs["classdefinition_file"]), b"new definition")
 
-    def write_metadata(_lookup, _field, path):
-        return _touch(Path(path), b"new metadata")
+def test_ready_soil_requires_and_publishes_its_class_definition(tmp_path):
+    ensure_project_structure(tmp_path, "5.13")
+    source = _touch(tmp_path / "input" / "soil.tif", b"soil")
+
+    with pytest.raises(FileNotFoundError, match="class-definition"):
+        categorical.copy_ready(tmp_path, "soil", source)
+
+    definition = _touch(tmp_path / "input" / "soil_classes.txt", b"classes")
+    outputs = categorical.copy_ready(
+        tmp_path, "soil", source, definition_source=definition
+    )
+
+    target = Path(morph_folder(tmp_path)) / "soil_class.tif"
+    target_definition = target.parent / "soil_classdefinition.txt"
+    assert set(outputs) == {target, target_definition}
+    assert target.read_bytes() == b"soil"
+    assert target_definition.read_bytes() == b"classes"
+
+
+def test_ready_mode_rejects_non_raster_input(tmp_path):
+    source = _touch(tmp_path / "soil.shp")
+
+    with pytest.raises(ValueError, match="ASC, NetCDF, or TIFF"):
+        categorical.copy_ready(tmp_path, "soil", source)
+
+
+def test_failed_publish_restores_the_previous_output_set(tmp_path, monkeypatch):
+    ensure_project_structure(tmp_path, "5.13")
+    source = _touch(tmp_path / "input" / "geology.tif", b"new raster")
+    definition_source = _touch(tmp_path / "input" / "new.txt", b"new definition")
+    folder = Path(morph_folder(tmp_path))
+    output = _touch(folder / "geology_class.tif", b"old raster")
+    definition = _touch(folder / "geology_classdefinition.txt", b"old definition")
 
     real_replace = categorical.os.replace
     failed = False
 
     def fail_definition_publish(source_path, destination_path):
         nonlocal failed
-        if Path(destination_path) == definition and not failed:
+        source_path = Path(source_path)
+        destination_path = Path(destination_path)
+        if (
+            destination_path == definition
+            and source_path.name == definition.name
+            and not failed
+        ):
             failed = True
             raise OSError("simulated publish failure")
         return real_replace(source_path, destination_path)
 
-    monkeypatch.setattr(categorical, "prepare_categorical_file", prepare)
-    monkeypatch.setattr(categorical, "write_geology_metadata", write_metadata)
     monkeypatch.setattr(categorical.os, "replace", fail_definition_publish)
-    monkeypatch.setattr(type(processor), "error", lambda *_a: None)
 
-    assert not processor.process_geology()
+    with pytest.raises(OSError, match="simulated"):
+        categorical.copy_ready(
+            tmp_path,
+            "geology",
+            source,
+            definition_source=definition_source,
+        )
+
     assert output.read_bytes() == b"old raster"
     assert definition.read_bytes() == b"old definition"
-    assert metadata.read_bytes() == b"old metadata"
 
 
-def test_failed_backup_does_not_delete_existing_output(tmp_path, monkeypatch):
-    project = tmp_path / "project"
-    source = _touch(tmp_path / "input" / "land_cover.tif")
-    geometry = Path(geometry_folder(project))
-    dem = _touch(geometry / "1_dem_filled.tif")
-    config = _lookup(tmp_path / "input" / "lookup.csv")
-    processor = _Processor(
-        _Dialog(
-            project,
-            "lc",
-            QgsRasterLayer(str(source), "land cover"),
-            "Lookup Table",
-            config,
-        ),
-        dem,
-    )
-    output = _touch(
-        geometry / "3_land_use.tif",
-        b"existing",
+def test_saved_outputs_requires_the_complete_recorded_set(tmp_path):
+    ensure_project_structure(tmp_path, "5.13")
+    folder = Path(morph_folder(tmp_path))
+    output = _touch(folder / "soil_class.asc")
+    definition = folder / "soil_classdefinition.txt"
+    update_section(
+        tmp_path,
+        "soil",
+        {
+            "output_path": "data/master/static/morph/soil_class.asc",
+            "classdefinition_path": (
+                "data/master/static/morph/soil_classdefinition.txt"
+            ),
+        },
     )
 
-    def prepare(*args, **_kwargs):
-        _touch(Path(args[3]), b"new")
-
-    real_replace = categorical.os.replace
-
-    def fail_backup(source_path, destination_path):
-        if Path(source_path) == output:
-            raise OSError("simulated backup failure")
-        return real_replace(source_path, destination_path)
-
-    monkeypatch.setattr(categorical, "prepare_categorical_file", prepare)
-    monkeypatch.setattr(categorical.os, "replace", fail_backup)
-    monkeypatch.setattr(type(processor), "error", lambda *_a: None)
-
-    assert not processor.process_land_use()
-    assert output.read_bytes() == b"existing"
+    assert categorical.saved_outputs(tmp_path, "soil") == ()
+    _touch(definition)
+    assert categorical.saved_outputs(tmp_path, "soil") == (output, definition)

@@ -1,0 +1,144 @@
+"""Path-only LAI preparation for morphology workflows."""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from ....applications.mhm_tools_handler import copy_lai_file_to_grid, lai_time_step
+from ....grid_resolution import write_header_file
+from ...handlers.state.nml_settings import relative_workspace_path, update_section
+from ...handlers.store.layout import lai_folder
+from ...handlers.store.paths import lai_dem_staging_path
+
+
+DEFAULT_TIMESTEP = "Long Term Mean Monthly Gridded Data"
+
+
+def parse_source(source: str) -> tuple[str | None, str | None]:
+    """Extract a NetCDF path and variable from a QGIS/GDAL source string."""
+    if not source:
+        return None, None
+    value = source.split("|", 1)[0].strip()
+    if not value.upper().startswith("NETCDF:"):
+        return os.path.normpath(value), None
+    value = value[len("NETCDF:") :]
+    if value.startswith(('"', "'")):
+        quote = value[0]
+        end = value.find(quote, 1)
+        if end > 0:
+            variable = value[end + 2 :] if value[end + 1 :].startswith(":") else ""
+            return os.path.normpath(value[1:end]), variable.strip('"\'') or None
+    if os.path.exists(value):
+        return os.path.normpath(value), None
+    if ":" in value:
+        path, variable = value.rsplit(":", 1)
+        return os.path.normpath(path), variable.strip().strip('"\'') or None
+    return os.path.normpath(value), None
+
+
+def task_options(
+    project_folder,
+    source: str,
+    filled_dem: str,
+    *,
+    crs: str = "",
+    target_timestep: str = DEFAULT_TIMESTEP,
+) -> dict | None:
+    """Build primitive-only arguments for the LAI resampling command."""
+    source_path, source_variable = parse_source(source)
+    if not source_path or not Path(source_path).is_file():
+        return None
+    return {
+        "source_path": source_path,
+        "source_variable": source_variable,
+        "output_path": lai_dem_staging_path(project_folder),
+        "filled_dem": str(filled_dem),
+        "dem_crs": str(crs or ""),
+        "target_timestep": target_timestep or DEFAULT_TIMESTEP,
+        "method": "bilinear",
+    }
+
+
+def crop_to_l0(project_folder, l0_header: dict, crs: str = "", *, log=None) -> Path:
+    """Window-copy staged DEM-grid LAI onto the common L0 grid."""
+    staged = Path(lai_dem_staging_path(project_folder))
+    if not staged.is_file():
+        raise FileNotFoundError(
+            "LAI has not been resampled to the filled DEM grid. "
+            "Run Execute All before Morphology Setup."
+        )
+    folder = Path(lai_folder(project_folder))
+    folder.mkdir(parents=True, exist_ok=True)
+    output = folder / "lai_crop.nc"
+    copy_lai_file_to_grid(
+        staged,
+        output,
+        l0_header,
+        crs or "",
+        "Monthly LAI cropped to the common L0 model extent",
+        log=log,
+    )
+    for stale in (folder / "lai_masked.nc", folder / "lai.nc"):
+        stale.unlink(missing_ok=True)
+    _write_header(folder, l0_header)
+    return output
+
+
+def publish_to_l0(
+    project_folder,
+    l0_header: dict,
+    crs: str = "",
+    *,
+    source: str = "",
+    target_timestep: str = DEFAULT_TIMESTEP,
+    log=None,
+) -> Path:
+    """Publish unmasked LAI over the complete common L0 extent."""
+    folder = Path(lai_folder(project_folder))
+    crop = folder / "lai_crop.nc"
+    if not crop.is_file():
+        crop = crop_to_l0(project_folder, l0_header, crs, log=log)
+    output = folder / "lai.nc"
+    copy_lai_file_to_grid(
+        crop,
+        output,
+        l0_header,
+        crs or "",
+        "Monthly LAI on the common L0 model extent",
+        log=log,
+    )
+    (folder / "lai_masked.nc").unlink(missing_ok=True)
+    _write_header(folder, l0_header)
+    if source:
+        source_path, source_variable = parse_source(source)
+        update_section(
+            project_folder,
+            "lai",
+            {
+                "mode": "netcdf",
+                "source_path": str(Path(source_path).resolve()) if source_path else "",
+                "source_variable": str(source_variable or ""),
+                "target_timestep": target_timestep or DEFAULT_TIMESTEP,
+                "time_step": lai_time_step(target_timestep or DEFAULT_TIMESTEP),
+                "output_path": relative_workspace_path(project_folder, output),
+                "variable": "lai",
+            },
+        )
+    return output
+
+
+def _write_header(folder: Path, l0_header: dict) -> Path:
+    path = folder / "header.txt"
+    header = dict(l0_header)
+    header["nodata_value"] = -9999.0
+    write_header_file(path, header)
+    return path
+
+
+__all__ = [
+    "DEFAULT_TIMESTEP",
+    "crop_to_l0",
+    "parse_source",
+    "publish_to_l0",
+    "task_options",
+]

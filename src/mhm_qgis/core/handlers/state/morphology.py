@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 """The morphology half of `mhm_qgis_processing_state.json`.
 
-Three writers share that file: `cache` records stage fingerprints,
-`meteo_outputs` records prepared forcing, and this records prepared morphology
-outputs, workflow status, the domain plan and the L0/L2 grid contract. Each
-overlays only its own sections -- dumping a whole in-memory copy erases what the
-others added since it was loaded, which silently disabled stage reuse once.
+This compatibility module keeps the former session-facing API while all
+persistence is performed by :mod:`processing`. New code should use explicit
+project-folder APIs rather than carrying a mutable state copy on a session.
 
 Functions take the session, so nothing here needs a dialog or a processor.
 """
@@ -14,11 +12,10 @@ from __future__ import annotations
 import os
 
 from ...utils.time import utc_timestamp
-from ..file import json as jsonio
-from ..store.paths import workspace_folder
 from ..store.registry import available, key_for, register
+from . import processing
 
-STATE_FILENAME = "mhm_qgis_processing_state.json"
+STATE_FILENAME = processing.STATE_FILENAME
 
 #: The only sections this writer owns in the shared state file.
 OWNED_SECTIONS = ("version", "outputs", "workflows", "grid", "domains")
@@ -31,22 +28,16 @@ def state_path(session):
     """Return the project-local processing state file, or None without a project."""
     if not session.project_folder:
         return None
-    return os.path.join(workspace_folder(session.project_folder), STATE_FILENAME)
+    return str(processing.state_path(session.project_folder))
 
 
 def load(session) -> dict:
     """Load the morphology registry onto the session and return it."""
-    path = state_path(session)
-    if not path or not os.path.exists(path):
-        session.processing_state = dict(EMPTY)
+    if not session.project_folder:
+        session.processing_state = _empty()
         return session.processing_state
 
-    state = jsonio.read(path)
-    if not isinstance(state, dict):
-        session.say("WARNING: Could not read processing state: not a JSON object.")
-        session.processing_state = dict(EMPTY)
-        return session.processing_state
-
+    state = processing.load(session.project_folder)
     for key, default in EMPTY.items():
         state.setdefault(key, default if not isinstance(default, dict) else {})
     session.processing_state = state
@@ -56,18 +47,25 @@ def load(session) -> dict:
 def save(session) -> None:
     """Write the sections this registry owns, preserving the others.
 
-    Atomic, via `jsonio.merge_sections`: this used to write the file in place,
-    so a crash mid-write could corrupt state the other two writers share.
+    Kept only for callers that still mutate the compatibility session directly.
+    New operations below update exactly one section or entry atomically.
     """
-    path = state_path(session)
-    if not path:
+    if not session.project_folder:
         return
     state = session.processing_state or {}
     owned = {name: state[name] for name in OWNED_SECTIONS if name in state}
     try:
-        jsonio.merge_sections(path, owned)
+        session.processing_state = processing.overlay(
+            session.project_folder, owned)
     except Exception as error:
         session.say(f"WARNING: Could not save processing state: {error}")
+
+
+def _empty() -> dict:
+    return {
+        key: value if not isinstance(value, dict) else {}
+        for key, value in EMPTY.items()
+    }
 
 
 def output_key(session, path) -> str:
@@ -80,7 +78,7 @@ def mark_prepared(session, path, name=None, loaded=False, algorithm=None) -> Non
     entry = register(session.project_folder, path,
                      name=name, loaded=loaded, algorithm=algorithm)
     if entry is not None:
-        session.processing_state.setdefault("outputs", {})[entry["path"]] = entry
+        session.processing_state = processing.load(session.project_folder)
 
 
 def is_prepared(session, path) -> bool:
@@ -111,8 +109,12 @@ def mark_workflow(session, workflow, status, message="", **metadata) -> None:
         return
 
     timestamp = utc_timestamp()
-    workflows = session.processing_state.setdefault("workflows", {})
+    workflows = processing.section(session.project_folder, "workflows", {})
+    if not isinstance(workflows, dict):
+        workflows = {}
     entry = workflows.get(workflow, {})
+    if not isinstance(entry, dict):
+        entry = {}
     entry.update({"status": status, "updated_at": timestamp})
     if status == "running":
         entry["started_at"] = timestamp
@@ -132,29 +134,34 @@ def mark_workflow(session, workflow, status, message="", **metadata) -> None:
         if value is not None:
             entry[key] = value
 
-    workflows[workflow] = entry
-    save(session)
+    processing.set_entry(
+        session.project_folder, "workflows", workflow, entry)
+    session.processing_state = processing.load(session.project_folder)
 
 
 def workflow_status(session, workflow) -> dict:
     """Return a saved workflow status entry."""
-    return session.processing_state.get("workflows", {}).get(workflow, {})
+    workflows = processing.section(session.project_folder, "workflows", {})
+    return workflows.get(workflow, {}) if isinstance(workflows, dict) else {}
 
 
 def save_domain_plan(session, plan) -> list:
     """Record each domain's mask and target DEM for Morphology Setup."""
-    session.processing_state["domains"] = [
+    domains = [
         {key: entry[key] for key in
          ("domain_id", "outlet_id", "name", "mask", "directory", "dem_path")}
         for entry in plan
     ]
-    save(session)
-    return session.processing_state["domains"]
+    session.processing_state = processing.overlay(
+        session.project_folder, {"domains": domains})
+    return domains
 
 
 def saved_domain_plan(session) -> list:
     """Return the recorded domain plan."""
     plan = session.processing_state.get("domains")
+    if not isinstance(plan, list) and session.project_folder:
+        plan = processing.section(session.project_folder, "domains")
     return list(plan) if isinstance(plan, list) else []
 
 
@@ -164,14 +171,15 @@ def save_grid_contract(session, l0_header, l2_header, multiplier) -> dict:
 
     ratio = int(multiplier)
     validate_l0_l2_alignment(l0_header, l2_header, ratio)
-    session.processing_state["grid"] = {
+    grid = {
         "l0_header": dict(l0_header),
         "l2_header": dict(l2_header),
         "l2_ratio_to_l0": ratio,
         "updated_at": utc_timestamp(),
     }
-    save(session)
-    return session.processing_state["grid"]
+    session.processing_state = processing.overlay(
+        session.project_folder, {"grid": grid})
+    return grid
 
 
 def saved_grid_contract(session):
@@ -179,6 +187,8 @@ def saved_grid_contract(session):
     from ....grid_resolution import validate_l0_l2_alignment
 
     grid = session.processing_state.get("grid") or {}
+    if not grid and session.project_folder:
+        grid = processing.section(session.project_folder, "grid", {}) or {}
     l0_header, l2_header = grid.get("l0_header"), grid.get("l2_header")
     if not isinstance(l0_header, dict) or not isinstance(l2_header, dict):
         return None

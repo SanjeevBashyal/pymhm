@@ -14,7 +14,7 @@ from mhm_qgis import standalone  # noqa: E402
 
 standalone.install(force=True)
 
-from mhm_qgis.core.meteorology.paths import (  # noqa: E402
+from mhm_qgis.core.handlers.store.layout import (  # noqa: E402
     expected_meteo_outputs,
     meteo_mask_path,
 )

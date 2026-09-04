@@ -714,6 +714,60 @@ def terrain_files(filled_dem, slope_path, aspect_path, scale=1.0, *, task=None):
     return outputs
 
 
+def gauge_position_file(filled_dem, gauges, output_path, *, task=None):
+    """Burn explicit gauge IDs onto their nearest stream cells."""
+    np, _pfd, _affine, gdal, _ogr, _osr = _dependencies()
+    _cancelled(task)
+    context = _flow_context(filled_dem)
+    cells = context["flwdir"].upstream_area(unit="cell")
+    cells[context["invalid"]] = 0
+    valid = cells[cells > 0]
+    if valid.size == 0:
+        raise RuntimeError("No stream cells were found in the filled DEM.")
+    threshold = max(
+        1,
+        int(
+            round(
+                10_000_000.0
+                / pyflwdir_handler.cell_area_m2(context["reference"])
+            )
+        ),
+    )
+    if threshold > int(np.nanmax(valid)):
+        threshold = max(1, int(np.nanpercentile(valid, 95)))
+    streams = cells >= threshold
+    candidates = np.argwhere(streams)
+    if candidates.size == 0:
+        raise RuntimeError("No stream cells satisfy the channel threshold.")
+
+    output = np.full(
+        (context["reference"]["rows"], context["reference"]["cols"]),
+        -9999,
+        dtype=np.int32,
+    )
+    inverse = ~context["transform"]
+    for index, (station_id, x, y) in enumerate(gauges):
+        _cancelled(task)
+        col_value, row_value = inverse * (float(x), float(y))
+        row = min(max(int(np.floor(row_value)), 0), output.shape[0] - 1)
+        col = min(max(int(np.floor(col_value)), 0), output.shape[1] - 1)
+        local = candidates.astype(float)
+        local[:, 0] -= row
+        local[:, 1] -= col
+        target = candidates[int(np.argmin(np.hypot(local[:, 0], local[:, 1])))]
+        output[int(target[0]), int(target[1])] = int(station_id)
+        _progress(task, 15 + 80 * (index + 1) / max(1, len(gauges)))
+    written = _write_raster(
+        output_path,
+        output,
+        context["reference"],
+        -9999,
+        gdal.GDT_Int32,
+    )
+    _progress(task, 100)
+    return written
+
+
 def _remove_vector(path, ogr):
     if os.path.exists(path):
         ogr.GetDriverByName("ESRI Shapefile").DeleteDataSource(str(path))
@@ -948,6 +1002,7 @@ __all__ = [
     "delineate_domains_file",
     "delineate_outlet_file",
     "fill_dem_file",
+    "gauge_position_file",
     "hydrology_files",
     "mask_aligned_l0_raster",
     "write_domain_dem_ascii",

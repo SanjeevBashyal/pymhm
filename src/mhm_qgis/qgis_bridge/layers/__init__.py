@@ -12,7 +12,14 @@ stays importable in tests and under the standalone shim.
 """
 from .compat import create_vector_file_writer, map_layer_filters, qgs_field
 from .crs import crs_of, transform_between, transform_to_raster
-from .loader import load, open_layer, source_uri
+from .gauges import gauge_coordinates
+from .loader import load, open_layer, raster_source, source_uri
+from .materialize import (
+    local_layer_source,
+    materialize_raster_layer,
+    materialize_vector_layer,
+    remove_vector_dataset,
+)
 from .project import (
     add,
     find_by_name,
@@ -28,12 +35,18 @@ __all__ = [
     "transform_between",
     "find_by_name",
     "find_by_source",
+    "gauge_coordinates",
     "load",
+    "local_layer_source",
     "map_layer_filters",
     "normalized_source",
+    "materialize_vector_layer",
+    "materialize_raster_layer",
     "open_layer",
     "qgs_field",
+    "raster_source",
     "remove_under",
+    "remove_vector_dataset",
     "source_uri",
     "transform_to_raster",
 ]

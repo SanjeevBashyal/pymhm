@@ -12,7 +12,7 @@ standalone.install(force=True)
 # isort: off
 from qgis.core import QgsVectorLayer  # noqa: E402
 
-from mhm_qgis.qt.dialogs.discharge_assignment import (  # noqa: E402
+from mhm_qgis.core.morphology.hydrology.outlets import (  # noqa: E402
     OutletAssignment,
 )
 from mhm_qgis.core.handlers.state.domain_state import (  # noqa: E402
@@ -20,7 +20,7 @@ from mhm_qgis.core.handlers.state.domain_state import (  # noqa: E402
     DOMAIN_MODE_DELINEATOR,
     gauge_records,
 )
-from mhm_qgis.qgis_bridge.morphology.watershed.domain_workflow import (  # noqa: E402
+from mhm_qgis.qgis_bridge.layers.domain import (  # noqa: E402
     DomainWorkflow,
 )
 # isort: on
@@ -33,45 +33,6 @@ class _MainDialog:
 
     def log_message(self, message):
         self.messages.append(message)
-
-
-class _Processor:
-    def __init__(self):
-        self.processing_state = {"outputs": {}}
-
-
-class _SnapProcessor(_Processor):
-    def __init__(self, snapped_path: Path):
-        super().__init__()
-        self._snapped_path = str(snapped_path)
-        self.snapped_points_path = str(snapped_path)
-        self.removed = []
-        self.channel_prepared = False
-
-    def process_channel_network(self):
-        pass
-
-    def process_flow_accumulation(self):
-        pass
-
-    def fill_dem(self):
-        pass
-
-    def snap_points(self):
-        pass
-
-    def _ensure_channel_network(self, *_callbacks):
-        self.channel_prepared = True
-        return True
-
-    def _remove_stale_vector_output(self, path):
-        self.removed.append(path)
-        Path(path).unlink()
-
-    def _ensure_snapped_points(self, *_callbacks):
-        self.snapped_points_path = self._snapped_path
-        Path(self.snapped_points_path).write_text("fresh", encoding="utf-8")
-        return True
 
 
 class _PourPoints:
@@ -105,12 +66,13 @@ def _table(path: Path) -> QgsVectorLayer:
 
 
 def _workflow(tmp_path: Path, outlet_ids=("001", "2")) -> DomainWorkflow:
+    dialog = _MainDialog(tmp_path)
     return DomainWorkflow(
-        _MainDialog(tmp_path),
-        _Processor(),
+        tmp_path,
         _PourPoints(tmp_path / "outlets.gpkg"),
         "outlet_id",
         outlet_ids,
+        log=dialog.log_message,
     )
 
 
@@ -209,22 +171,40 @@ def test_delineator_mode_requires_at_least_one_selected_domain(tmp_path):
     workflow.require_active_domain(state)
 
 
-def test_snapped_points_are_regenerated_after_inputs_may_have_moved(tmp_path):
-    snapped = tmp_path / "2_pour_points_snapped.shp"
-    snapped.write_text("stale", encoding="utf-8")
-    processor = _SnapProcessor(snapped)
+def test_snapped_points_are_regenerated_after_inputs_may_have_moved(
+    tmp_path, monkeypatch
+):
+    from mhm_qgis.qgis_bridge.layers import domain
+
+    prepared = []
+
+    def prepare():
+        prepared.append(True)
+        channel = Path(workflow.channel_network_path)
+        channel.parent.mkdir(parents=True, exist_ok=True)
+        channel.write_text("channel", encoding="utf-8")
+
     workflow = DomainWorkflow(
-        _MainDialog(tmp_path),
-        processor,
+        tmp_path,
         _PourPoints(tmp_path / "outlets.gpkg"),
         "outlet_id",
         ["1"],
+        prepare=prepare,
     )
+    channel_layer = object()
+    monkeypatch.setattr(domain, "open_layer", lambda *_args, **_kwargs: channel_layer)
+
+    def snap(points, channel, output, **_kwargs):
+        assert points is workflow.pour_points_layer
+        assert channel is channel_layer
+        path = Path(output)
+        path.write_text("fresh", encoding="utf-8")
+        return str(path)
+
+    monkeypatch.setattr(domain, "snap_points_to_network", snap)
 
     result = workflow.regenerate_snapped_points()
 
-    assert processor.channel_prepared
-    assert processor.removed == [str(snapped)]
-    assert result == str(snapped)
-    assert snapped.read_text(encoding="utf-8") == "fresh"
-
+    assert prepared == [True]
+    assert result == workflow.snapped_points_path
+    assert Path(result).read_text(encoding="utf-8") == "fresh"

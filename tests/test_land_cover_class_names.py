@@ -6,25 +6,9 @@ from mhm_qgis import standalone
 
 standalone.install(force=True)
 
-from mhm_qgis.qgis_bridge.morphology.layers.land_cover_class_names import (  # noqa: E402
-    LandCoverClassNameMixin,
+from mhm_qgis.core.morphology.elevation_bands import (  # noqa: E402
+    read_land_cover_class_names,
 )
-
-
-class _Dialog:
-    def categorical_lookup_config(self, _kind):
-        return {
-            "lookup_table": "lookup.csv",
-            "mapping_field": "source_value",
-            "class_field": "class_id",
-        }
-
-
-class _Reader(LandCoverClassNameMixin):
-    dialog = _Dialog()
-
-    def log_message(self, _message):
-        pass
 
 
 def test_names_are_keyed_by_formatted_class_field(monkeypatch):
@@ -44,7 +28,27 @@ def test_names_are_keyed_by_formatted_class_field(monkeypatch):
         lookup, "read", lambda _path: table
     )
 
-    assert _Reader()._read_land_cover_class_names() == {
+    assert read_land_cover_class_names(
+        {
+            "lookup_table": "lookup.csv",
+            "mapping_field": "source_value",
+            "class_field": "class_id",
+        }
+    ) == {
         1: "Forest",
         2: "Urban",
     }
+
+
+def test_missing_optional_label_column_is_not_an_error(monkeypatch):
+    from mhm_qgis.core.handlers import lookup
+
+    monkeypatch.setattr(
+        lookup,
+        "read",
+        lambda _path: pd.DataFrame({"class_id": [1], "source_value": [10]}),
+    )
+
+    assert read_land_cover_class_names(
+        {"lookup_table": "lookup.csv", "class_field": "class_id"}
+    ) == {}

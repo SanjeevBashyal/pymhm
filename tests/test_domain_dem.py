@@ -206,26 +206,17 @@ def test_no_active_domains_is_a_no_op(tmp_path):
 
 
 def test_the_state_records_the_domain_plan(tmp_path):
-    from mhm_qgis.qgis_bridge.morphology.core.processing_state import ProcessingStateMixin
-    from mhm_qgis.core.handlers.state.cache import load_state
+    from mhm_qgis.core.handlers.state import processing
 
-    class _State(ProcessingStateMixin):
-        def __init__(self, project):
-            self.dialog = type("D", (), {"project_folder": str(project)})()
-            self.processing_state_filename = "mhm_qgis_processing_state.json"
-            self.processing_state = {"version": 1, "outputs": {}, "workflows": {}}
-            self.log_message = lambda _m: None
-
-    state = _State(tmp_path)
     plan = [{
         "domain_id": 1, "outlet_id": "001", "name": "001",
         "mask": "/p/masks/001.tif", "directory": "/p/data/001",
         "dem_path": "/p/data/001/dem.asc",
     }]
-    state.save_domain_plan(plan)
+    saved = processing.save_domains(tmp_path, plan)
 
-    assert state.saved_domain_plan() == plan
-    assert load_state(tmp_path)["domains"] == plan
+    assert saved == plan
+    assert processing.section(tmp_path, "domains") == plan
 
 
 def _master_inputs(project, names):

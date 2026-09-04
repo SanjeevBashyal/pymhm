@@ -1,3 +1,4 @@
+import importlib
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +11,7 @@ from mhm_qgis.core.meteorology.forcing import (
     MeteoFolderSpec,
     TargetGrid,
     inspect_meteo_folder,
+    inspect_meteo_inputs,
     process_meteo_inputs,
     resolution_in_crs,
 )
@@ -17,6 +19,18 @@ from mhm_qgis.core.meteorology.forcing import (
 
 LAT = np.array([51.0, 50.0])
 LON = np.array([10.0, 11.0])
+
+
+def test_legacy_era5land_apis_are_removed():
+    from mhm_qgis.core.meteorology import ERA5Land
+
+    assert not hasattr(ERA5Land, "process_era5_to_swat")
+    assert not hasattr(ERA5Land, "process_era5_to_mhm")
+    assert not hasattr(ERA5Land, "inspect_era5_folder")
+    for module in ("mhm_forcing", "mhm.api"):
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(
+                f"mhm_qgis.core.meteorology.ERA5Land.{module}")
 
 
 def _write_nc(
@@ -195,10 +209,10 @@ def test_processes_separate_era5land_folders_and_optional_pet(
     assert not (tmp_path / "out" / "pet" / "pet.nc").exists()
     assert not (tmp_path / "out" / "pet" / "header.txt").exists()
 
-    from mhm_qgis.core.meteorology import forcing
+    from mhm_qgis.core.meteorology.forcing import api as forcing_api
 
     previous_pre = without_pet.outputs["pre"].read_bytes()
-    original_writer = forcing.write_netcdf
+    original_writer = forcing_api.write_netcdf
 
     def fail_after_staging_some_outputs(ds, variable, output):
         if variable == "tmin":
@@ -206,7 +220,7 @@ def test_processes_separate_era5land_folders_and_optional_pet(
         return original_writer(ds, variable, output)
 
     monkeypatch.setattr(
-        forcing,
+        forcing_api,
         "write_netcdf",
         fail_after_staging_some_outputs,
     )
@@ -323,3 +337,52 @@ def test_processes_projected_mhm_ready_files_on_exact_header_grid(tmp_path):
         assert ds["lat2d"].shape == (2, 2)
         assert "crs" in ds
         assert ds["pre"].attrs["grid_mapping"] == "crs"
+
+
+def test_supplied_inspections_publish_a_flat_layout_without_headers(
+        tmp_path, monkeypatch):
+    pre = tmp_path / "ready" / "pre"
+    temp = tmp_path / "ready" / "temp"
+    _write_nc(pre / "pre.nc", "pre")
+    for variable in ("tavg", "tmin", "tmax"):
+        _write_nc(temp / f"{variable}.nc", variable)
+
+    precipitation = MeteoFolderSpec("precipitation", pre, MHM_READY)
+    temperature = MeteoFolderSpec("temperature", temp, MHM_READY)
+    inspections = inspect_meteo_inputs(precipitation, temperature)
+
+    from mhm_qgis.core.meteorology.forcing import api as forcing_api
+
+    def fail_if_reinspected(*_args, **_kwargs):
+        raise AssertionError("already-inspected input was opened again")
+
+    monkeypatch.setattr(
+        forcing_api, "inspect_meteo_inputs", fail_if_reinspected)
+    output_root = tmp_path / "out"
+    output_root.mkdir()
+    (output_root / "pet.nc").write_bytes(b"stale")
+    header = {
+        "ncols": 2,
+        "nrows": 2,
+        "xllcorner": 9.5,
+        "yllcorner": 49.5,
+        "cellsize": 1.0,
+        "nodata_value": -9999.0,
+    }
+
+    result = process_meteo_inputs(
+        precipitation,
+        temperature,
+        output_root,
+        TargetGrid(lon=LON, lat=LAT, header=header),
+        flat_layout=True,
+        inspections=inspections,
+    )
+
+    assert result.headers == {}
+    assert set(result.outputs) == {"pre", "tavg", "tmin", "tmax"}
+    assert all(path == output_root / f"{variable}.nc"
+               for variable, path in result.outputs.items())
+    assert all(path.is_file() for path in result.outputs.values())
+    assert not (output_root / "pet.nc").exists()
+    assert not list(output_root.glob("*/header.txt"))

@@ -12,8 +12,9 @@ from mhm_qgis import standalone  # noqa: E402
 
 standalone.install(force=True)
 
-from mhm_qgis.core.meteorology import forcing  # noqa: E402
-from mhm_qgis.core.meteorology.forcing import TargetGrid, _resample_ready  # noqa: E402
+from mhm_qgis.core.meteorology.forcing import TargetGrid  # noqa: E402
+from mhm_qgis.core.meteorology.forcing.api import _resample_ready  # noqa: E402
+from mhm_qgis.core.meteorology.ERA5Land.mhm.io import write_header  # noqa: E402
 from mhm_qgis.core.meteorology.l2_grid import (  # noqa: E402
     assert_header_file_matches,
     assert_matches_header,
@@ -120,7 +121,7 @@ def test_prepared_grid_and_written_header_are_validated(tmp_path):
         assert_matches_header(wrong, "pre", L2_HEADER)
 
     header_file = tmp_path / "header.txt"
-    forcing.write_header(dataset, "pre", header_file, header=dict(L2_HEADER))
+    write_header(dataset, "pre", header_file, header=dict(L2_HEADER))
     assert_header_file_matches(header_file, L2_HEADER)
 
     with pytest.raises(ValueError):

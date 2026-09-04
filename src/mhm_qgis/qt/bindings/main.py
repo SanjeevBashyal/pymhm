@@ -19,6 +19,7 @@ except ImportError:
 from ...qgis_bridge.display import meteo as meteo_display
 from ...qgis_bridge.display import morphology as morphology_display
 from ...qgis_bridge.display import output as output_display
+from ..controllers import elevation_band
 
 
 def _bind_input_sources(dialog):
@@ -82,58 +83,55 @@ def bind(dialog):
     _bind_input_sources(dialog)
     dialog.pushButton_threads.clicked.connect(dialog.open_thread_display)
 
-    # Morphology/Geometry processing - delegate to processor
+    # Morphology/Geometry processing is dispatched by the Qt task API. The
+    # callback is intentionally empty for background actions: the dispatcher
+    # selects the API command by its stable action name.
     dialog.connect_optional_processor_button(
-        "pushButton_convertDEMtoASC",
-        "Convert DEM to ASC",
-        dialog.morphology_processor.convert_dem_to_asc,
-    )
-    dialog.connect_optional_processor_button(
-        "pushButton_fillDem", "Fill DEM", dialog.morphology_processor.fill_dem
+        "pushButton_fillDem", "Fill DEM", lambda: None
     )
     dialog.connect_optional_processor_button(
         "pushButton_createNetwork",
         "Create Channel Network",
-        dialog.morphology_processor.process_channel_network,
+        lambda: None,
     )
     dialog.connect_optional_processor_button(
         "pushButton_snapPoints",
         "Snap Pour Points",
-        dialog.morphology_processor.snap_points,
+        lambda: None,
     )
     dialog.pushButton_delineate.clicked.connect(dialog.open_domain_delineator)
     dialog.connect_processor_button(
         dialog.pushButton_elevation_bands,
         "Elevation Bands",
-        dialog.morphology_processor.process_elevation_bands,
+        lambda: elevation_band.process_elevation_bands(dialog),
     )
     dialog.connect_processor_button(
         dialog.pushButton_bandDetails,
         "Elevation Band Land Cover Details",
-        dialog.morphology_processor.process_band_details,
+        lambda: elevation_band.process_band_details(dialog),
     )
 
-    # Hydrological processing - delegate to processor
+    # Hydrological processing
     dialog.connect_optional_processor_button(
-        "pushButton_aspect", "Aspect", dialog.morphology_processor.process_aspect
+        "pushButton_aspect", "Aspect", lambda: None
     )
     dialog.connect_optional_processor_button(
-        "pushButton_slope", "Slope", dialog.morphology_processor.process_slope
+        "pushButton_slope", "Slope", lambda: None
     )
     dialog.connect_optional_processor_button(
         "pushButton_flowAccumulation",
         "Flow Accumulation",
-        dialog.morphology_processor.process_flow_accumulation,
+        lambda: None,
     )
     dialog.connect_optional_processor_button(
         "pushButton_flowDirection",
         "Flow Direction",
-        dialog.morphology_processor.process_flow_direction,
+        lambda: None,
     )
     dialog.connect_optional_processor_button(
         "pushButton_gaugePosition",
         "Gauge Position",
-        dialog.morphology_processor.process_gauge_position,
+        lambda: None,
     )
     try:
         dialog.input_combo("pour_points").layerChanged.connect(
@@ -158,25 +156,25 @@ def bind(dialog):
         dialog.handle_domain_definition_type
     )
 
-    # Layer processing - delegate to processor
+    # Layer processing
     dialog.connect_optional_processor_button(
         "pushButton_landUse",
         "Land Use",
-        dialog.morphology_processor.process_land_use,
+        lambda: None,
     )
     dialog.connect_optional_processor_button(
-        "pushButton_soil", "Soil", dialog.morphology_processor.process_soil
+        "pushButton_soil", "Soil", lambda: None
     )
     dialog.connect_optional_processor_button(
         "pushButton_hydrogeology",
         "Hydrogeology",
-        dialog.morphology_processor.process_geology,
+        lambda: None,
     )
     if hasattr(dialog, "pushButton_LAI"):
         dialog.connect_processor_button(
             dialog.pushButton_LAI,
             "LAI",
-            dialog.morphology_processor.process_lai,
+            lambda: None,
             background=True,
         )
     dialog.pushButton_morphLayerDisplay.clicked.connect(
@@ -244,11 +242,11 @@ def bind(dialog):
             dialog.handle_meteo_input_changed(meteo_kind)
         )
 
-    # Configuration/execution processing - delegate to processor
+    # Configuration/execution processing
     dialog.connect_processor_button(
         dialog.pushButton_createLatLon,
         "Create LatLon",
-        dialog.morphology_processor.process_lat_lon,
+        dialog.process_lat_lon,
         background=True,
     )
     dialog.update_latlon_button_state()

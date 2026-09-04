@@ -27,8 +27,8 @@ from qgis.core import (
 from qgis.gui import QgsMapCanvas, QgsMapToolEmitPoint, QgsVertexMarker
 
 from .input_selection import scan_project_inputs
-from ...qt.dialogs.discharge_assignment import OutletAssignment
 from ...core.morphology.hydrology.outlets import (
+    OutletAssignment,
     StationIdError,
     find_outlet_id_field,
     station_id_text,
@@ -41,11 +41,12 @@ from ...core.handlers.state.domain_state import (
     resolve_output_path,
     save_state,
 )
-from ...qgis_bridge.morphology.watershed.domain_workflow import DomainWorkflow
+from ...qgis_bridge.layers.domain import DomainWorkflow
 from ...core.handlers.raster.tasks import (
     delineate_domains_file,
     delineate_outlet_file,
 )
+from ...core.handlers.store import registry
 from ...core.handlers.store.paths import domain_data_folder
 from ...core.handlers.store.layout import domain_dem_path
 from ...qt.controllers import domain_delineator as domain_delineator_controller
@@ -72,7 +73,6 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
     def __init__(
         self,
         main_dialog,
-        processor,
         pour_points_layer,
         outlet_id_field,
         outlet_ids,
@@ -81,17 +81,16 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         super().__init__(main_dialog)
         self.setupUi(self)
         self.main_dialog = main_dialog
-        self.processor = processor
         self.project_folder = str(main_dialog.project_folder)
         self.pour_points_layer = pour_points_layer
         self.outlet_id_field = str(outlet_id_field)
         self.outlet_ids = [str(value) for value in outlet_ids]
         self.workflow = DomainWorkflow(
-            main_dialog,
-            processor,
+            self.project_folder,
             pour_points_layer,
             outlet_id_field,
             self.outlet_ids,
+            log=main_dialog.log_message,
         )
         self.current_outlet_id = ""
         self._preview_result = None
@@ -222,11 +221,11 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         if prepared_context is None:
             raise RuntimeError("Domain Delineator prerequisites were not prepared.")
         self._filled_dem_layer = QgsRasterLayer(
-            self.processor.filled_dem_path, "Filled DEM")
+            self.workflow.filled_dem_path, "Filled DEM")
         self._flow_accumulation_layer = QgsRasterLayer(
-            self.processor.flow_accumulation_path, "Flow accumulation")
+            self.workflow.flow_accumulation_path, "Flow accumulation")
         self._channel_layer = QgsVectorLayer(
-            self.processor.channel_network_vector_path,
+            self.workflow.channel_network_path,
             "Channel network",
             "ogr",
         )
@@ -241,7 +240,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         self._viewport_range = ViewportRasterRangeController(
             self.canvas,
             self._flow_accumulation_layer,
-            self.processor.flow_accumulation_path,
+            self.workflow.flow_accumulation_path,
             self.main_dialog.task_coordinator,
             self,
         )
@@ -302,7 +301,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         output_path = os.path.join(
             output_folder, "2_channel_network_preview.shp")
         self._channel_layer = QgsVectorLayer(
-            self.processor.channel_network_vector_path,
+            self.workflow.channel_network_path,
             "Channel network",
             "ogr",
         )
@@ -406,7 +405,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         self._refresh_canvas()
 
         options = {
-            "filled_dem": self.processor.filled_dem_path,
+            "filled_dem": self.workflow.filled_dem_path,
             "x": float(x),
             "y": float(y),
             "raster_path": self._outlet_mask_path(outlet_id, preview=True),
@@ -601,7 +600,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             self._watershed_layer = None
             self._refresh_canvas()
             options = {
-                "filled_dem": self.processor.filled_dem_path,
+                "filled_dem": self.workflow.filled_dem_path,
                 "delineations": tuple(delineations),
                 "dem_domain": dem_domain,
                 "merged_path": merged_path,
@@ -669,10 +668,11 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
                 self.project_folder, "dem_extent"
             )
             proposed_state["dem_domain_path"] = result["dem_domain_path"]
-        self.processor.merged_watershed_path = result["merged_path"]
-        self.processor.watershed_vector_path = result["merged_path"]
-        self.processor.mark_output_prepared(
-            result["merged_path"], name="4_watershed_merged", loaded=False
+        registry.register(
+            self.project_folder,
+            result["merged_path"],
+            name="4_watershed_merged",
+            loaded=False,
         )
         self.workflow.update_gauge_domain_ids(
             proposed_state, self.pour_points_layer
@@ -729,9 +729,6 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             source, target, QgsProject.instance())
         point = transform.transform(QgsPointXY(x, y))
         return point.x(), point.y()
-
-    def _prepare_dem_domain(self):
-        return self.workflow.prepare_dem_domain(self.state)
 
     def _merge_active_domains(self):
         return self.workflow.merge_active_domains(self.state)

@@ -2,17 +2,14 @@
 """Project-local registry updates for meteorology outputs."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Union
 
-from ..file import json as jsonio
 from ..store.registry import key_for, register
-from ....core.handlers.store.paths import workspace_folder
-from ...utils.time import utc_timestamp
+from . import processing
 
 
-STATE_FILENAME = "mhm_qgis_processing_state.json"
+STATE_FILENAME = processing.STATE_FILENAME
 PathInput = Union[str, Path]
 
 
@@ -27,7 +24,7 @@ class MeteorologyOutputState:
     def state_path(self) -> Path | None:
         if not self.project_folder:
             return None
-        return Path(workspace_folder(self.project_folder)) / STATE_FILENAME
+        return processing.state_path(self.project_folder)
 
     #: The only sections this writer owns in the shared processing state.
     OWNED_SECTIONS = ("version", "outputs")
@@ -36,7 +33,10 @@ class MeteorologyOutputState:
         path = self.state_path()
         if not path:
             return {"version": 1, "outputs": {}}
-        return jsonio.read_mapping(path, version=1, outputs={})
+        state = processing.load(self.project_folder)
+        state.setdefault("version", 1)
+        state.setdefault("outputs", {})
+        return state
 
     def save(self, state: dict[str, object]) -> None:
         """Write back only this writer's sections of the shared state file.
@@ -46,12 +46,11 @@ class MeteorologyOutputState:
         they had added since it was loaded, which silently disabled stage
         reuse -- so only the owned sections are overlaid, atomically.
         """
-        path = self.state_path()
-        if not path:
+        if not self.state_path():
             return
         owned = {k: state[k] for k in self.OWNED_SECTIONS if k in state}
         try:
-            jsonio.merge_sections(path, owned)
+            processing.overlay(self.project_folder, owned)
         except OSError as error:
             self._log(
                 f"WARNING: Could not save processing state: {error}")
@@ -63,7 +62,6 @@ class MeteorologyOutputState:
     def output_key(self, path: Path) -> str:
         """Return the registry key recorded for one output."""
         return key_for(self.project_folder, path)
-
 
     def mark_prepared(self, path: PathInput, name: str | None = None) -> None:
         """Record one prepared forcing file.

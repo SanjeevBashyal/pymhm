@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -11,7 +12,7 @@ standalone.install(force=True)
 from qgis.PyQt.QtWidgets import QApplication, QPushButton  # noqa: E402
 
 from mhm_qgis.qt.dialogs.mhm_qgis_main import MhmQgisDialog  # noqa: E402
-from mhm_qgis.morphology_task_bridge import _saved_categorical_outputs  # noqa: E402
+from mhm_qgis.core.executions.morphology import commands  # noqa: E402
 from mhm_qgis.core.handlers.state.nml_settings import update_section  # noqa: E402
 from mhm_qgis.core.handlers.store.layout import ensure_project_structure  # noqa: E402
 
@@ -80,8 +81,8 @@ def test_saved_land_cover_and_soil_outputs_are_reusable(tmp_path):
         },
     )
 
-    assert _saved_categorical_outputs(tmp_path, "lc") == (land_cover,)
-    assert _saved_categorical_outputs(tmp_path, "soil") == (soil, definition)
+    assert commands.categorical_outputs(tmp_path, "lc") == (land_cover,)
+    assert commands.categorical_outputs(tmp_path, "soil") == (soil, definition)
 
 
 def test_execute_all_stage_order_includes_lai_before_hydrology():
@@ -91,12 +92,12 @@ def test_execute_all_stage_order_includes_lai_before_hydrology():
     because the order was only expressed as a list of closures. The order is
     data now, so assert on the data.
     """
-    from mhm_qgis.core.executions.morpho import EXECUTE_ALL_STAGES
+    from mhm_qgis.core.executions.morphology import EXECUTE_ALL_STAGES
 
     order = [stage.starter for stage in EXECUTE_ALL_STAGES]
     assert order == [
         "dem_derivatives", "categorical", "categorical", "categorical",
-        "lai", "hydrology",
+        "lai", "hydrology", "snap_points", "gauge_position",
     ]
     assert order.index("lai") < order.index("hydrology")
     # The three categorical stages are lc, soil, geology -- in that order.
@@ -111,9 +112,7 @@ def test_lai_stage_is_skipped_without_a_netcdf_selection():
     bridge = dialog.morphology_tasks
     submitted = []
     bridge.coordinator.submit = lambda *a, **k: submitted.append(a) or True
-    dialog.morphology_processor._is_lai_long_term_monthly_netcdf_selected = (
-        lambda: False
-    )
+    dialog.categorical_input_mode = lambda _kind: ""
     done = []
 
     assert bridge.start_lai(done=done.append) is True
@@ -122,7 +121,9 @@ def test_lai_stage_is_skipped_without_a_netcdf_selection():
     dialog.close()
 
 
-def test_lai_stage_submits_a_background_task_when_selected(tmp_path):
+def test_lai_stage_submits_a_background_task_when_selected(tmp_path, monkeypatch):
+    from mhm_qgis.qt.objects import morphology_tasks
+
     _app()
     dialog = MhmQgisDialog()
     dialog.project_folder = str(tmp_path)
@@ -131,16 +132,19 @@ def test_lai_stage_submits_a_background_task_when_selected(tmp_path):
     bridge.coordinator.submit = (
         lambda key, label, fn, **k: submitted.append((key, label, k)) or True
     )
-    processor = dialog.morphology_processor
-    processor._is_lai_long_term_monthly_netcdf_selected = lambda: True
-    processor.lai_task_options = lambda output_path: {
+    dialog.categorical_input_mode = lambda _kind: "NetCDF"
+    dialog.lai_netcdf_config = lambda: {
+        "input_path": "/tmp/lai.nc",
+        "target_timestep": "Monthly Gridded Data",
+    }
+    monkeypatch.setattr(morphology_tasks.lai, "task_options", lambda *_a, **_k: {
         "source_path": "/tmp/lai.nc",
         "source_variable": None,
         "output_path": str(tmp_path / "staged" / "lai_dem.nc"),
         "filled_dem": "/tmp/dem.tif",
         "dem_crs": "EPSG:4326",
         "target_timestep": "Monthly Gridded Data",
-    }
+    })
 
     assert bridge.start_lai() is True
     key, label, options = submitted[0]
@@ -152,7 +156,7 @@ def test_lai_stage_submits_a_background_task_when_selected(tmp_path):
     dialog.close()
 
 
-def test_unchanged_lai_inputs_reuse_the_staged_file(tmp_path):
+def test_unchanged_lai_inputs_reuse_the_staged_file(tmp_path, monkeypatch):
     """The 153 GiB staged LAI must not be regenerated when nothing changed."""
     from mhm_qgis.core.handlers.state.cache import fingerprint, store_payload
 
@@ -179,9 +183,13 @@ def test_unchanged_lai_inputs_reuse_the_staged_file(tmp_path):
         "dem_crs": "EPSG:4326",
         "target_timestep": "Monthly Gridded Data",
     }
-    processor = dialog.morphology_processor
-    processor._is_lai_long_term_monthly_netcdf_selected = lambda: True
-    processor.lai_task_options = lambda _output: dict(options)
+    from mhm_qgis.qt.objects import morphology_tasks
+
+    dialog.categorical_input_mode = lambda _kind: "NetCDF"
+    dialog.lai_netcdf_config = lambda: {"input_path": str(source)}
+    monkeypatch.setattr(
+        morphology_tasks.lai, "task_options", lambda *_a, **_k: dict(options)
+    )
 
     # Record the fingerprint the stage will compute for these inputs.
     digest = fingerprint(
@@ -208,7 +216,7 @@ def test_unchanged_lai_inputs_reuse_the_staged_file(tmp_path):
     dialog.close()
 
 
-def test_a_missing_staged_file_forces_the_lai_resample(tmp_path):
+def test_a_missing_staged_file_forces_the_lai_resample(tmp_path, monkeypatch):
     from mhm_qgis.core.handlers.state.cache import fingerprint, store_payload
 
     _app()
@@ -230,9 +238,13 @@ def test_a_missing_staged_file_forces_the_lai_resample(tmp_path):
         "dem_crs": "EPSG:4326",
         "target_timestep": "Long Term Mean Monthly Gridded Data",
     }
-    processor = dialog.morphology_processor
-    processor._is_lai_long_term_monthly_netcdf_selected = lambda: True
-    processor.lai_task_options = lambda _output: dict(options)
+    from mhm_qgis.qt.objects import morphology_tasks
+
+    dialog.categorical_input_mode = lambda _kind: "NetCDF"
+    dialog.lai_netcdf_config = lambda: {"input_path": str(source)}
+    monkeypatch.setattr(
+        morphology_tasks.lai, "task_options", lambda *_a, **_k: dict(options)
+    )
     digest = fingerprint(
         (options["source_path"], options["filled_dem"]),
         {
@@ -261,10 +273,13 @@ def test_geology_outputs_already_on_disk_are_adopted_not_rebuilt(tmp_path):
     dialog.log_message = messages.append
 
     inputs = {}
-    for name in ("geology_input.shp", "1_dem_filled.tif", "lookup.csv"):
+    for name in ("geology_input.shp", "lookup.csv"):
         path = tmp_path / name
         path.write_text("x", encoding="utf-8")
         inputs[name] = path
+    inputs["1_dem_filled.tif"] = bridge.filled_dem_path
+    Path(bridge.filled_dem_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(bridge.filled_dem_path).write_text("x", encoding="utf-8")
     outputs = {}
     for name in ("3_geology_processed.tif", "geology_classdefinition.txt",
                  "geology_class_metadata.json"):
@@ -290,10 +305,7 @@ def test_geology_outputs_already_on_disk_are_adopted_not_rebuilt(tmp_path):
         "input_crs": "EPSG:4326",
         "dem_crs": "EPSG:4326",
     }
-    processor = dialog.morphology_processor
-    processor.filled_dem_path = str(inputs["1_dem_filled.tif"])
-    processor._categorical_mode = lambda _kind: "lookup_table"
-    processor._record_categorical_nml = lambda *_a, **_k: None
+    dialog.categorical_input_mode = lambda _kind: "lookup_table"
     dialog.uses_advanced_categorical_input = lambda _kind: False
     bridge._lookup_job = lambda _kind: dict(job)
 
