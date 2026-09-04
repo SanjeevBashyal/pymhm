@@ -7,6 +7,12 @@ import shutil
 from pathlib import Path
 
 from ....applications import pyflwdir_handler
+from ...grid import (
+    aligned_window,
+    geotransform_from_header,
+    header_from_geotransform,
+    raster_grids_match,
+)
 
 
 def _dependencies():
@@ -83,84 +89,36 @@ def _same_grid(first, second):
         b = _read_raster(second)
     except RuntimeError:
         return False
-    if (a["rows"], a["cols"]) != (b["rows"], b["cols"]):
-        return False
-    return all(
-        math.isclose(float(x), float(y), rel_tol=1e-9, abs_tol=1e-9)
-        for x, y in zip(a["geotransform"], b["geotransform"])
-    ) and a.get("projection", "") == b.get("projection", "")
+    return raster_grids_match(a, b)
 
 
 def _aligned_l0_window(source, source_path, target_header, reference_path=None):
     """Validate an L0 raster against the target header and return its copy window."""
     _np, _pfd, _affine, gdal, _ogr, osr = _dependencies()
-    transform = source.GetGeoTransform()
-    cellsize = float(target_header["cellsize"])
-    tolerance = max(abs(cellsize), 1.0) * 1e-8
-    if (
-            not math.isclose(float(transform[1]), cellsize, rel_tol=0.0, abs_tol=tolerance)
-            or not math.isclose(float(transform[5]), -cellsize, rel_tol=0.0, abs_tol=tolerance)
-            or abs(float(transform[2])) > tolerance
-            or abs(float(transform[4])) > tolerance):
+    try:
+        source_header = header_from_geotransform(
+            source.GetGeoTransform(), source.RasterXSize, source.RasterYSize
+        )
+    except ValueError as error:
         raise ValueError(
             f"L0 raster is not on the filled-DEM resolution: {source_path}"
-        )
-
-    source_xmin = float(transform[0])
-    source_ymax = float(transform[3])
-    source_ymin = source_ymax - source.RasterYSize * cellsize
-    target_xmin = float(target_header["xllcorner"])
-    target_ymin = float(target_header["yllcorner"])
-    target_cols = int(target_header["ncols"])
-    target_rows = int(target_header["nrows"])
-    target_ymax = target_ymin + target_rows * cellsize
-
-    def exact_offset(value, label):
-        nearest = round(value)
-        if not math.isclose(value, nearest, rel_tol=0.0, abs_tol=1e-7):
-            raise ValueError(
-                f"L0 raster {label} is not aligned to the filled-DEM cell grid: "
-                f"{source_path}"
-            )
-        return int(nearest)
-
-    destination_x = exact_offset(
-        (source_xmin - target_xmin) / cellsize, "x origin"
-    )
-    destination_y = exact_offset(
-        (target_ymax - source_ymax) / cellsize, "y origin"
-    )
+        ) from error
+    window = aligned_window(source_header, target_header, label=f"L0 raster {source_path}")
 
     if reference_path:
         reference = gdal.Open(str(reference_path), gdal.GA_ReadOnly)
         if reference is None:
             raise RuntimeError(f"Could not open L0 reference raster: {reference_path}")
-        reference_transform = reference.GetGeoTransform()
-        exact_offset((source_xmin - reference_transform[0]) / cellsize, "x origin")
-        exact_offset((source_ymax - reference_transform[3]) / cellsize, "y origin")
+        reference_header = header_from_geotransform(
+            reference.GetGeoTransform(), reference.RasterXSize, reference.RasterYSize
+        )
+        aligned_window(source_header, reference_header, label=f"L0 raster {source_path}")
         source_srs = osr.SpatialReference(wkt=source.GetProjection())
         reference_srs = osr.SpatialReference(wkt=reference.GetProjection())
         if source.GetProjection() and reference.GetProjection() and not source_srs.IsSame(reference_srs):
             raise ValueError(f"L0 raster CRS differs from the filled DEM: {source_path}")
         reference = None
-
-    source_x = max(0, -destination_x)
-    source_y = max(0, -destination_y)
-    target_x = max(0, destination_x)
-    target_y = max(0, destination_y)
-    return {
-        "cellsize": cellsize,
-        "target_xmin": target_xmin,
-        "target_ymax": target_ymax,
-        "target_cols": target_cols,
-        "target_rows": target_rows,
-        "source_x": source_x,
-        "source_y": source_y,
-        "target_x": target_x,
-        "target_y": target_y,
-        "copy_cols": min(source.RasterXSize - source_x, target_cols - target_x),
-        "copy_rows": min(source.RasterYSize - source_y, target_rows - target_y),
-    }
+    return window
 
 
 def _copy_aligned_l0_raster(
@@ -282,15 +240,12 @@ def crop_aligned_l0_raster(
 def _rasterize_target_mask(vector_path, target_header, projection):
     """Return a boolean mask of the target grid cells covered by a polygon layer."""
     _np, _pfd, _affine, gdal, ogr, _osr = _dependencies()
-    cellsize = float(target_header["cellsize"])
     cols = int(target_header["ncols"])
     rows = int(target_header["nrows"])
-    xmin = float(target_header["xllcorner"])
-    ymax = float(target_header["yllcorner"]) + rows * cellsize
     dataset = gdal.GetDriverByName("MEM").Create("", cols, rows, 1, gdal.GDT_Byte)
     if dataset is None:
         raise RuntimeError("Could not allocate the L0 mask grid.")
-    dataset.SetGeoTransform((xmin, cellsize, 0.0, ymax, 0.0, -cellsize))
+    dataset.SetGeoTransform(geotransform_from_header(target_header))
     if projection:
         dataset.SetProjection(projection)
     source = ogr.Open(str(vector_path))

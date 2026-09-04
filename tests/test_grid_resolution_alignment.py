@@ -10,8 +10,12 @@ from mhm_qgis import standalone  # noqa: E402
 
 standalone.install(force=True)
 
-from mhm_qgis.grid_resolution import (  # noqa: E402
+from mhm_qgis.core.grid import (  # noqa: E402
+    Extent,
+    Grid,
+    Resolution,
     aligned_l0_l2_headers,
+    alignment_gap_limit_fraction,
     axes_match_header,
     header_bounds,
     header_for_aligned_bounds,
@@ -27,6 +31,76 @@ L0_ANCHOR = {
     "cellsize": 10.0,
     "unit": "m",
 }
+
+
+def test_resolution_and_grid_keep_exact_values_and_level_extents():
+    resolutions = Resolution(l0=10, l1=20, l2=30)
+    assert resolutions.l11 == 20
+    assert resolutions.l2_resolution == 30
+
+    grid = Grid.for_meteorology(
+        {**L0_ANCHOR, "ncols": 100, "nrows": 100},
+        ((115, 985, 218, 812),),
+        3,
+        crs="EPSG:32632",
+        unit="m",
+        raw_l2_resolution=(30, 30),
+        raw_l2_extent=Extent(100, 1000, 200, 830),
+        raw_l2_crs="EPSG:32632",
+    )
+
+    assert grid.l0 == 10
+    assert grid.l2 == 30
+    assert grid.l0_extent == Extent(100, 1100, 200, 1200)
+    assert grid.l2_extent == grid.common_extent
+    assert not grid.requires_l2_resampling
+
+
+def test_user_multiplier_remains_authoritative_over_exact_raw_factor():
+    grid = Grid.for_meteorology(
+        {**L0_ANCHOR, "ncols": 100, "nrows": 100},
+        ((115, 985, 218, 812),),
+        4,
+        crs="EPSG:32632",
+        unit="m",
+        raw_l2_resolution=(30, 30),
+        raw_l2_extent=Extent(100, 1000, 200, 830),
+        raw_l2_crs="EPSG:32632",
+    )
+
+    assert grid.raw_l2_factor == 3
+    assert grid.multiplier == 4
+    assert grid.l2 == 40
+    assert grid.requires_l2_resampling
+
+
+def test_alignment_gap_limit_comes_from_settings_and_material_gap_resamples(tmp_path):
+    assert alignment_gap_limit_fraction() == pytest.approx(1.0e-7)
+    settings = tmp_path / "settings.yaml"
+    settings.write_text("grid_alignment_gap_limit: 0.02\n", encoding="utf-8")
+    assert alignment_gap_limit_fraction(settings) == 0.02
+
+    base = dict(
+        l0_header={**L0_ANCHOR, "ncols": 100, "nrows": 100},
+        domain_extents=((115, 985, 218, 812),),
+        multiplier=3,
+        crs="EPSG:32632",
+        unit="m",
+        raw_l2_resolution=(30, 30),
+        raw_l2_crs="EPSG:32632",
+        gap_limit_fraction=0.02,
+    )
+    within = Grid.for_meteorology(
+        **base, raw_l2_extent=Extent(100.1, 1000.1, 200, 830)
+    )
+    beyond = Grid.for_meteorology(
+        **base, raw_l2_extent=Extent(100.3, 1000.3, 200, 830)
+    )
+
+    assert within.alignment_gap == pytest.approx((-0.1, 0))
+    assert not within.requires_l2_resampling
+    assert beyond.alignment_gap == pytest.approx((-0.3, 0))
+    assert beyond.requires_l2_resampling
 
 
 def test_aligned_extent_is_minimal_and_has_integer_l0_l2_dimensions():
@@ -154,7 +228,7 @@ DEGREE_ANCHOR = {
 
 
 def test_repeating_degree_l2_cell_size_is_never_rounded_away():
-    from mhm_qgis.grid_resolution import (
+    from mhm_qgis.core.grid import (
         floor_cellsize,
         header_for_existing_bounds,
         possible_resolutions,
@@ -178,7 +252,7 @@ def test_repeating_degree_l2_cell_size_is_never_rounded_away():
 
 def test_all_four_levels_validate_on_a_repeating_degree_grid(tmp_path):
     from mhm_qgis.core.handlers.file.ascii.morphology import validate_grid_headers
-    from mhm_qgis.grid_resolution import (
+    from mhm_qgis.core.grid import (
         header_for_existing_bounds,
         possible_resolutions,
         read_header_file,

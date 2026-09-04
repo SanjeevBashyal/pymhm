@@ -13,6 +13,13 @@ stays importable in tests and under the standalone shim.
 from .compat import create_vector_file_writer, map_layer_filters, qgs_field
 from .crs import crs_of, transform_between, transform_to_raster
 from .gauges import gauge_coordinates
+from .grid import (
+    crs_string,
+    crs_unit,
+    extent_bounds,
+    merged_domain_bounds,
+    raster_resolution_info,
+)
 from .loader import load, open_layer, raster_source, source_uri
 from .materialize import (
     local_layer_source,
@@ -32,9 +39,12 @@ __all__ = [
     "add",
     "create_vector_file_writer",
     "crs_of",
+    "crs_string",
+    "crs_unit",
     "transform_between",
     "find_by_name",
     "find_by_source",
+    "extent_bounds",
     "gauge_coordinates",
     "load",
     "local_layer_source",
@@ -42,8 +52,10 @@ __all__ = [
     "normalized_source",
     "materialize_vector_layer",
     "materialize_raster_layer",
+    "merged_domain_bounds",
     "open_layer",
     "qgs_field",
+    "raster_resolution_info",
     "raster_source",
     "remove_under",
     "remove_vector_dataset",

@@ -58,20 +58,13 @@ class DialogUtils:
 
     def get_dem_extent_and_resolution(self):
         """Get DEM extent and pixel resolution for clipping and rasterization"""
+        from .qgis_bridge.layers import grid
+
         dem_layer = self.input_combo("dem").currentLayer()
-        
         if not dem_layer:
             return None, None, None
-        
-        # Get extent
-        extent = dem_layer.extent()
-        extent_str = f"{extent.xMinimum()},{extent.xMaximum()},{extent.yMinimum()},{extent.yMaximum()}"
-        
-        # Get pixel size
-        raster_extent = dem_layer.extent()
-        width = dem_layer.width()
-        height = dem_layer.height()
-        pixel_size_x = (raster_extent.xMaximum() - raster_extent.xMinimum()) / width
-        pixel_size_y = (raster_extent.yMaximum() - raster_extent.yMinimum()) / height
-        
-        return extent_str, pixel_size_x, pixel_size_y
+        info = grid.raster_resolution_info(dem_layer)
+        if info is None:
+            return None, None, None
+        extent_str = ",".join(map(str, grid.extent_bounds(dem_layer.extent())))
+        return extent_str, info["exact_x_resolution"], info["exact_y_resolution"]

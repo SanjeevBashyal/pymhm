@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from .l2_grid import assert_header_file_matches, assert_netcdf_matches_header
+from ..grid import assert_header_file_matches, assert_netcdf_matches_header
 from ..handlers.store.layout import expected_meteo_outputs
 from ..handlers.store.registry import key_for
 

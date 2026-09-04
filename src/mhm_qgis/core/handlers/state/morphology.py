@@ -167,7 +167,7 @@ def saved_domain_plan(session) -> list:
 
 def save_grid_contract(session, l0_header, l2_header, multiplier) -> dict:
     """Record the validated L0/L2 headers and multiplier for later resumes."""
-    from ....grid_resolution import validate_l0_l2_alignment
+    from ...grid import validate_l0_l2_alignment
 
     ratio = int(multiplier)
     validate_l0_l2_alignment(l0_header, l2_header, ratio)
@@ -184,7 +184,7 @@ def save_grid_contract(session, l0_header, l2_header, multiplier) -> dict:
 
 def saved_grid_contract(session):
     """Return the saved L0/L2 grid contract, or None when it is unusable."""
-    from ....grid_resolution import validate_l0_l2_alignment
+    from ...grid import validate_l0_l2_alignment
 
     grid = session.processing_state.get("grid") or {}
     if not grid and session.project_folder:

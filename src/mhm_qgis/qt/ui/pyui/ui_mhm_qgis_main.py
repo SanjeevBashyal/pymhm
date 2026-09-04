@@ -1077,7 +1077,7 @@ class Ui_MhmQgisDialog(object):
 
         self.retranslateUi(MhmQgisDialog)
         self.comboBox_mHMversion.setCurrentIndex(-1)
-        self.tabWidget_steps.setCurrentIndex(4)
+        self.tabWidget_steps.setCurrentIndex(0)
         self.comboBox_landUseInputType.setCurrentIndex(-1)
         self.comboBox_soil_inputType.setCurrentIndex(-1)
         self.comboBox_geology_inputType.setCurrentIndex(-1)

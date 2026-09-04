@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from ...grid_resolution import header_center_coordinates
+from ..grid import header_center_coordinates
 
 
 NODATA = -9999

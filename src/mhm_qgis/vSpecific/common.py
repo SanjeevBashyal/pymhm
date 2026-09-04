@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from ..grid_resolution import ceil_cellsize, is_geographic_unit
+from ..core.grid import ceil_cellsize, is_geographic_unit
 from ..core.handlers.store.paths import geometry_folder, morph_staging_folder
 from ..core.handlers.store.layout import morph_folder
 from ..core.handlers.state.nml_settings import load_settings

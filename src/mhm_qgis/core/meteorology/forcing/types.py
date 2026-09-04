@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Sequence
 
 
 MHM_READY = "mHM ready"
@@ -56,40 +55,6 @@ class MeteoFolderSpec:
 
 
 @dataclass(frozen=True)
-class TargetGrid:
-    """WGS84 cell-centre axes and the matching projected mHM header."""
-
-    lon: Sequence[float]
-    lat: Sequence[float]
-    header: Mapping[str, float]
-    crs: str | None = None
-    sample_lon: object | None = None
-    sample_lat: object | None = None
-
-    def validate(self) -> None:
-        if len(self.lon) == 0 or len(self.lat) == 0:
-            raise ValueError("The target meteorology grid is empty.")
-        if int(self.header["ncols"]) != len(self.lon):
-            raise ValueError("Target longitude count does not match header ncols.")
-        if int(self.header["nrows"]) != len(self.lat):
-            raise ValueError("Target latitude count does not match header nrows.")
-        if (self.sample_lon is None) != (self.sample_lat is None):
-            raise ValueError(
-                "Both target sample longitude and latitude grids are required."
-            )
-        if self.sample_lon is not None:
-            import numpy as np
-
-            shape = (int(self.header["nrows"]), int(self.header["ncols"]))
-            if (
-                    np.shape(self.sample_lon) != shape
-                    or np.shape(self.sample_lat) != shape):
-                raise ValueError(
-                    "Target sample coordinates do not match the header shape."
-                )
-
-
-@dataclass(frozen=True)
 class SpatialMetadata:
     """Spatial metadata shared by all NetCDF files in an input folder."""
 
@@ -107,24 +72,11 @@ class SpatialMetadata:
     unit: str
 
 
-@dataclass(frozen=True)
-class SpatialResolution:
-    """A grid resolution expressed in one CRS."""
-
-    resolution: float
-    x_resolution: float
-    y_resolution: float
-    unit: str
-    crs: str | None
-
-
 __all__ = [
     "ERA5LAND",
     "MHM_READY",
     "MeteoFolderSpec",
     "SpatialMetadata",
-    "SpatialResolution",
-    "TargetGrid",
     "normalize_kind",
     "normalize_source",
 ]

@@ -8,7 +8,7 @@ from typing import Callable, Iterable
 from .aggregation import aggregate_daily, drop_duplicate_times
 from .dataset import find_source_variable, open_dataset, standardize_dataset
 from .dependencies import import_dependencies
-from .grid import (
+from ....grid import (
     ensure_latitude_descending,
     force_target_grid,
     normalize_spatial_axes,

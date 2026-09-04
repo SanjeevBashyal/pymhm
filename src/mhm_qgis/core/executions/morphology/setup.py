@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Callable, Mapping
 
 from ....applications.mhm_tools_handler import create_latlon_file
-from ....grid_resolution import CATEGORICAL_PAD_VALUE
 from ...handlers.file.ascii.morphology import (
     MorphologyAsciiLayer,
     prepare_morphology_ascii_files,
@@ -17,7 +16,7 @@ from ...handlers.state import processing
 from ...handlers.store import registry
 from ...handlers.store.layout import MERGED_MASK_NAME, is_v6, morph_folder
 from ...handlers.store.paths import geometry_folder, master_data_folder
-from ...morphology.layers import lai
+from ...morphology.layers import CATEGORICAL_PAD_VALUE, lai
 from ...morphology.layers.advanced_l0 import missing_model_inputs, publish_model_inputs
 from ...morphology.layers.domain_dem import domain_dem_plan, write_domain_dems
 from ...morphology.layers.morph_input_nc import available_layers, write_morph_input_nc

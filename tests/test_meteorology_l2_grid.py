@@ -12,10 +12,10 @@ from mhm_qgis import standalone  # noqa: E402
 
 standalone.install(force=True)
 
-from mhm_qgis.core.meteorology.forcing import TargetGrid  # noqa: E402
+from mhm_qgis.core.grid import TargetGrid  # noqa: E402
 from mhm_qgis.core.meteorology.forcing.api import _resample_ready  # noqa: E402
 from mhm_qgis.core.meteorology.ERA5Land.mhm.io import write_header  # noqa: E402
-from mhm_qgis.core.meteorology.l2_grid import (  # noqa: E402
+from mhm_qgis.core.grid import (  # noqa: E402
     assert_header_file_matches,
     assert_matches_header,
 )

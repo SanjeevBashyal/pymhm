@@ -14,12 +14,13 @@ from threading import RLock
 from typing import Any
 
 from ..file import json as jsonio
-from ..store.paths import workspace_folder
+from ..store.paths import meteo_folder, workspace_folder
 from ...utils.time import utc_timestamp
 
 
 STATE_FILENAME = "mhm_qgis_processing_state.json"
 STATE_VERSION = 1
+LEGACY_GRID_METADATA = "meteo_grid_metadata.json"
 
 # ponytail: one process-wide lock is enough while projects are updated by one
 # plugin process; use per-path/inter-process locks only if that runtime changes.
@@ -119,25 +120,52 @@ def workflow(project_folder, name) -> dict:
 
 def save_grid(project_folder, l0_header, l2_header, multiplier) -> dict:
     """Validate and persist the common L0/L2 grid contract."""
-    from ....grid_resolution import validate_l0_l2_alignment
+    from ...grid import validate_l0_l2_alignment
 
     ratio = int(multiplier)
     validate_l0_l2_alignment(l0_header, l2_header, ratio)
-    grid = {
+    grid = dict(section(project_folder, "grid", {}) or {})
+    grid.update({
         "l0_header": dict(l0_header),
         "l2_header": dict(l2_header),
         "l2_ratio_to_l0": ratio,
         "updated_at": utc_timestamp(),
-    }
+    })
     overlay(project_folder, {"grid": grid})
     return grid
 
 
+def save_grid_metadata(project_folder, metadata) -> dict:
+    """Persist the complete serializable grid result in processing state."""
+    data = dict(metadata or {})
+    l0_header, l2_header = data.get("l0_header"), data.get("l2_header")
+    ratio = data.get("l2_ratio_to_l0")
+    if l0_header and l2_header and ratio is not None:
+        from ...grid import validate_l0_l2_alignment
+
+        validate_l0_l2_alignment(l0_header, l2_header, int(ratio))
+    current = dict(section(project_folder, "grid", {}) or {})
+    current.update(data)
+    current["updated_at"] = utc_timestamp()
+    overlay(project_folder, {"grid": current})
+    return current
+
+
+def grid_metadata(project_folder) -> dict | None:
+    """Return saved grid metadata, adopting the former standalone file once."""
+    current = section(project_folder, "grid", {}) or {}
+    if isinstance(current, dict) and current.get("l2_header"):
+        return dict(current)
+    legacy = Path(meteo_folder(project_folder)) / LEGACY_GRID_METADATA
+    data = jsonio.read_mapping(legacy)
+    return save_grid_metadata(project_folder, data) if data.get("l2_header") else None
+
+
 def saved_grid(project_folder, *, log=None):
     """Return a valid persisted grid contract, or ``None``."""
-    from ....grid_resolution import validate_l0_l2_alignment
+    from ...grid import validate_l0_l2_alignment
 
-    grid = section(project_folder, "grid", {}) or {}
+    grid = grid_metadata(project_folder) or {}
     l0_header, l2_header = grid.get("l0_header"), grid.get("l2_header")
     if not isinstance(l0_header, dict) or not isinstance(l2_header, dict):
         return None
@@ -176,11 +204,13 @@ __all__ = [
     "STATE_FILENAME",
     "STATE_VERSION",
     "load",
+    "grid_metadata",
     "overlay",
     "mark_workflow",
     "remove_entry",
     "save_domains",
     "save_grid",
+    "save_grid_metadata",
     "saved_grid",
     "section",
     "set_entry",

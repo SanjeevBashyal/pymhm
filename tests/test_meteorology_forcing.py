@@ -9,12 +9,11 @@ from mhm_qgis.core.meteorology.forcing import (
     ERA5LAND,
     MHM_READY,
     MeteoFolderSpec,
-    TargetGrid,
     inspect_meteo_folder,
     inspect_meteo_inputs,
     process_meteo_inputs,
-    resolution_in_crs,
 )
+from mhm_qgis.core.grid import TargetGrid, resolution_in_crs
 
 
 LAT = np.array([51.0, 50.0])

@@ -16,6 +16,7 @@ recursive-include src/mhm_qgis *.sh
 recursive-include src/mhm_qgis *.ts
 recursive-include src/mhm_qgis *.txt
 recursive-include src/mhm_qgis *.ui
+recursive-include src/mhm_qgis *.yaml
 recursive-include src/mhm_qgis *.yml
 recursive-include src/mhm_qgis i18n/*
 graft src/mhm_qgis/nml-schemas

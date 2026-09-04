@@ -20,7 +20,8 @@ from qgis.core import (QgsCoordinateReferenceSystem,  # noqa: E402
 from qgis.PyQt.QtWidgets import QApplication  # noqa: E402
 
 from mhm_qgis.qt.dialogs.input_selection import InputComboAdapter  # noqa: E402
-from mhm_qgis.core.handlers.store.paths import data_folder
+from mhm_qgis.core.handlers.state import processing  # noqa: E402
+from mhm_qgis.core.handlers.store.paths import master_data_folder
 from mhm_qgis.core.handlers.store.layout import workspace_folder  # noqa: E402
 from mhm_qgis.qt.dialogs.mhm_qgis_main import MhmQgisDialog  # noqa: E402
 # isort: on
@@ -258,13 +259,13 @@ def test_meteo_required_folders_and_optional_blank_pet(tmp_path):
 
 def test_combined_workflow_green_state_restores_from_workspace(tmp_path):
     _app()
-    latlon = Path(data_folder(tmp_path)) / "latlon.nc"
+    latlon = Path(master_data_folder(tmp_path)) / "latlon.nc"
     latlon.parent.mkdir(parents=True)
     latlon.touch()
     dialog = MhmQgisDialog()
     dialog.project_folder = str(tmp_path)
-    dialog.morphology_processor.load_processing_state()
-    dialog.morphology_processor.mark_workflow_status(
+    processing.mark_workflow(
+        tmp_path,
         "meteo_morph_setup",
         "completed",
     )
@@ -272,7 +273,6 @@ def test_combined_workflow_green_state_restores_from_workspace(tmp_path):
 
     restored = MhmQgisDialog()
     restored.project_folder = str(tmp_path)
-    restored.morphology_processor.load_processing_state()
     restored.refresh_morphology_workflow_button_states()
 
     assert "#2e7d32" in restored.pushButton_executeMeteoMorphSetup.styleSheet()
@@ -283,8 +283,8 @@ def test_combined_workflow_green_state_requires_latlon(tmp_path):
     _app()
     dialog = MhmQgisDialog()
     dialog.project_folder = str(tmp_path)
-    dialog.morphology_processor.load_processing_state()
-    dialog.morphology_processor.mark_workflow_status(
+    processing.mark_workflow(
+        tmp_path,
         "meteo_morph_setup",
         "completed",
     )
@@ -292,16 +292,12 @@ def test_combined_workflow_green_state_requires_latlon(tmp_path):
 
     restored = MhmQgisDialog()
     restored.project_folder = str(tmp_path)
-    restored.morphology_processor.load_processing_state()
     restored.refresh_morphology_workflow_button_states()
 
     assert "#2e7d32" not in (
         restored.pushButton_executeMeteoMorphSetup.styleSheet()
     )
-    restored.morphology_processor.load_processing_state()
-    assert not restored.morphology_processor.workflow_status(
-        "meteo_morph_setup"
-    )
+    assert not processing.workflow(tmp_path, "meteo_morph_setup")
     restored.close()
 
 
@@ -342,4 +338,9 @@ def test_precipitation_selection_displays_resolution_and_l0_multiplier(tmp_path)
     assert dialog.label_precipitationResolutionValue.text() == "1"
     assert dialog.label_precipitationResolutionUnit.text() == "deg"
     assert dialog.label_precipitationResolutionMultiplier.text() == "2.0"
+    assert dialog.spinBox_L2ResolutionMultiplier.value() == 2
+
+    dialog.spinBox_L2ResolutionMultiplier.setValue(3)
+    dialog.inspect_meteo_selection("precipitation")
+    assert dialog.spinBox_L2ResolutionMultiplier.value() == 3
     dialog.close()

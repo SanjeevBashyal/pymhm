@@ -22,9 +22,9 @@ standalone.install(force=True)
 
 from mhm_qgis.core.handlers.file.ascii.morphology import (  # noqa: E402
     _read_raster,
-    _target_coordinates,
     align_dataset_to_header,
 )
+from mhm_qgis.core.grid import header_center_coordinates  # noqa: E402
 
 xr = pytest.importorskip("xarray")
 
@@ -125,7 +125,7 @@ def test_the_exact_header_coordinates_are_restored(tmp_path):
     aligned = _aligned(
         _raster(tmp_path / "dem.tif", np.ones((4, 4), dtype="float32"))
     )
-    target_x, target_y = _target_coordinates(HEADER)
+    target_x, target_y = header_center_coordinates(HEADER)
 
     np.testing.assert_array_equal(aligned["y"].values, target_y)
     np.testing.assert_array_equal(aligned["x"].values, target_x)

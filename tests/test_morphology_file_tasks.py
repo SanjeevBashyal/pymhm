@@ -13,7 +13,7 @@ from mhm_qgis import standalone
 
 standalone.install(force=True)
 
-from mhm_qgis.grid_resolution import CATEGORICAL_PAD_VALUE  # noqa: E402
+from mhm_qgis.core.morphology.layers import CATEGORICAL_PAD_VALUE  # noqa: E402
 from mhm_qgis.core.handlers.raster.tasks import (  # noqa: E402
     DEM_DERIVATIVE_OUTPUTS,
     crop_aligned_l0_raster,
@@ -304,7 +304,7 @@ def _degree_dem(path, cellsize, cols=24, rows=12):
 
 def test_repeating_degree_cell_size_stays_aligned_but_a_floored_one_does_not(tmp_path):
     """Regression: flooring 1/1200 deg to 8 places drifts off the source grid."""
-    from mhm_qgis.grid_resolution import aligned_l0_l2_headers
+    from mhm_qgis.core.grid import aligned_l0_l2_headers
 
     exact = 1.0 / 1200.0
     source = tmp_path / "dem.tif"

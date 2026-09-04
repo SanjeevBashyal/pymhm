@@ -6,13 +6,11 @@ text, so padding is a line-by-line rewrite with constant memory instead.
 """
 from __future__ import annotations
 
-import math
 import os
 from pathlib import Path
 from typing import Any, Mapping
 
-
-HEADER_KEYS = ("ncols", "nrows", "xllcorner", "yllcorner", "cellsize")
+from ....grid import aligned_window, headers_match, standardize_header
 
 
 def read_ascii_header(path) -> dict:
@@ -38,14 +36,10 @@ def read_ascii_header(path) -> dict:
             else:
                 stream.seek(position)
                 break
-    cellsize = header.get("cellsize")
-    if "xllcenter" in header and cellsize:
-        header["xllcorner"] = header["xllcenter"] - 0.5 * cellsize
-    if "yllcenter" in header and cellsize:
-        header["yllcorner"] = header["yllcenter"] - 0.5 * cellsize
-    if not all(key in header for key in HEADER_KEYS):
+    try:
+        return standardize_header(header)
+    except ValueError:
         raise ValueError(f"Not a readable Arc/Info ASCII header: {path}")
-    return header
 
 
 def ascii_window_offsets(source: Mapping[str, Any],
@@ -55,22 +49,16 @@ def ascii_window_offsets(source: Mapping[str, Any],
     ``target index = source index + offset``. Raises when the grids do not share
     a cell size and cell boundaries, because padding would then shift the data.
     """
-    cellsize = float(target["cellsize"])
-    tolerance = abs(cellsize) * 1e-6
-    if abs(float(source["cellsize"]) - cellsize) > tolerance:
-        raise ValueError(
-            f"Source cell size {source['cellsize']} does not match the target "
-            f"cell size {cellsize}; it cannot be padded without resampling."
-        )
-    column = (float(source["xllcorner"]) - float(target["xllcorner"])) / cellsize
-    source_top = float(source["yllcorner"]) + int(source["nrows"]) * cellsize
-    target_top = float(target["yllcorner"]) + int(target["nrows"]) * cellsize
-    row = (target_top - source_top) / cellsize
-    for name, value in (("row", row), ("column", column)):
-        if abs(value - round(value)) > 1e-6:
+    try:
+        window = aligned_window(source, target, label="The source grid")
+    except ValueError as error:
+        if "target grid resolution" in str(error):
             raise ValueError(
-                f"The source grid is not aligned to the target {name} grid.")
-    return int(round(row)), int(round(column))
+                f"Source cell size {source['cellsize']} does not match the target "
+                f"cell size {target['cellsize']}; it cannot be padded without resampling."
+            ) from error
+        raise
+    return window["target_y"], window["target_x"]
 
 
 def _format_header(target: Mapping[str, Any], nodata) -> str:
@@ -94,13 +82,7 @@ def pad_ascii_grid(path, target: Mapping[str, Any], nodata=-9999, pad=None) -> P
     """
     path = Path(path)
     source = read_ascii_header(path)
-    tolerance = abs(float(target["cellsize"])) * 1e-6
-    if (
-            int(source["ncols"]) == int(target["ncols"])
-            and int(source["nrows"]) == int(target["nrows"])
-            and abs(float(source["xllcorner"]) - float(target["xllcorner"])) <= tolerance
-            and abs(float(source["yllcorner"]) - float(target["yllcorner"])) <= tolerance
-            and abs(float(source["cellsize"]) - float(target["cellsize"])) <= tolerance):
+    if headers_match(source, target):
         return path
 
     row_offset, column_offset = ascii_window_offsets(source, target)

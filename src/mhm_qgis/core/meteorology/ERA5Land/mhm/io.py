@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ....grid import header_from_coordinate_axes, write_header_file
+
 
 def write_netcdf(ds, variable: str, output_file: Path) -> None:
     """Write one mHM forcing NetCDF with conservative CF/xarray encoding."""
@@ -55,40 +57,9 @@ def write_netcdf(ds, variable: str, output_file: Path) -> None:
 
 def write_header(ds, variable: str, header_file: Path, header: dict | None = None) -> None:
     """Write the mHM ASCII grid header that accompanies a forcing NetCDF."""
-    header_file.parent.mkdir(parents=True, exist_ok=True)
-    if header is not None:
-        header_text = (
-            f"ncols         {int(header['ncols'])}\n"
-            f"nrows         {int(header['nrows'])}\n"
-            f"xllcorner     {header['xllcorner']}\n"
-            f"yllcorner     {header['yllcorner']}\n"
-            f"cellsize      {header['cellsize']}\n"
-            f"NODATA_value  {header.get('nodata_value', -9999.0)}\n"
-        )
-        header_file.write_text(header_text, encoding="utf-8")
-        return
-
-    lon = ds["lon"].values
-    lat = ds["lat"].values
-
-    if len(lon) < 2 or len(lat) < 2:
-        raise ValueError("Cannot write mHM header for a one-cell meteo grid.")
-
-    dx = abs(float(lon[1] - lon[0]))
-    dy = abs(float(lat[1] - lat[0]))
-    cellsize = round((dx + dy) / 2.0, 12)
-    xllcorner = round(float(min(lon)) - cellsize / 2.0, 12)
-    yllcorner = round(float(min(lat)) - cellsize / 2.0, 12)
-
-    header = (
-        f"ncols         {len(lon)}\n"
-        f"nrows         {len(lat)}\n"
-        f"xllcorner     {xllcorner}\n"
-        f"yllcorner     {yllcorner}\n"
-        f"cellsize      {cellsize}\n"
-        "NODATA_value  -9999.0\n"
-    )
-    header_file.write_text(header, encoding="utf-8")
+    if header is None:
+        header = header_from_coordinate_axes(ds["lon"].values, ds["lat"].values)
+    write_header_file(header_file, header)
 
 
 def _strip_compression_encoding(encoding: dict) -> dict:

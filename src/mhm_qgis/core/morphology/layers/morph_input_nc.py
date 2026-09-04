@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
+from ...grid import header_center_arrays
 from ...handlers.raster.tasks import _aligned_l0_window, _dependencies
 
 
@@ -88,10 +89,7 @@ def write_morph_input_nc(
     rows = int(target_header["nrows"])
     columns = int(target_header["ncols"])
     cellsize = float(target_header["cellsize"])
-    xmin = float(target_header["xllcorner"])
-    ymax = float(target_header["yllcorner"]) + rows * cellsize
-    x_values = xmin + (np.arange(columns) + 0.5) * cellsize
-    y_values = ymax - (np.arange(rows) + 0.5) * cellsize
+    x_values, y_values = header_center_arrays(target_header)
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -287,7 +287,7 @@ def test_geology_outputs_already_on_disk_are_adopted_not_rebuilt(tmp_path):
         path.write_text("y", encoding="utf-8")
         outputs[name] = path
     # Outputs postdate every input.
-    newest = max(path.stat().st_mtime for path in inputs.values())
+    newest = max(Path(path).stat().st_mtime for path in inputs.values())
     for path in outputs.values():
         os.utime(path, (newest + 10, newest + 10))
 
@@ -320,5 +320,5 @@ def test_geology_outputs_already_on_disk_are_adopted_not_rebuilt(tmp_path):
     messages.clear()
     assert bridge.start_categorical("geology", reuse_existing=True) is True
     assert submitted == []
-    assert any("inputs are unchanged" in m for m in messages)
+    assert any("Reusing prepared Geology output" in m for m in messages)
     dialog.close()

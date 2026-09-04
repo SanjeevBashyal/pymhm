@@ -15,9 +15,9 @@ from typing import Mapping
 from ...meteorology.forcing import (
     MeteoFolderSpec,
     SpatialMetadata,
-    TargetGrid,
     process_meteo_inputs,
 )
+from ...grid import TargetGrid
 from ...meteorology.mask import write_meteo_mask
 from ...handlers.store.layout import (
     expected_meteo_outputs,
@@ -26,7 +26,7 @@ from ...handlers.store.layout import (
     meteo_output_root,
 )
 from ...meteorology.reuse import required_meteo_variables, stale_meteo_variables
-from ....grid_resolution import save_meteo_grid_metadata
+from ...handlers.state import processing
 from ...utils.report import CRITICAL, INFORMATION
 
 
@@ -90,7 +90,7 @@ def reuse_prepared(run: MeteorologyRun, state, *, log=None) -> bool:
     _say(log,
          "Change the L2 grid or delete the files under "
          f"{meteo_output_root(run.project_folder)} to force a rebuild.")
-    save_meteo_grid_metadata(run.project_folder, run.grid_metadata)
+    processing.save_grid_metadata(run.project_folder, run.grid_metadata)
     return True
 
 
@@ -132,7 +132,7 @@ def prepare_forcing(run: MeteorologyRun, state, *, log=None, report=None) -> boo
             state.mark_prepared(header_path, Path(header_path).name)
     _say(log, "Meteorology forcing preparation completed.")
     _say(log, f"Prepared variables: {', '.join(sorted(result.outputs))}")
-    save_meteo_grid_metadata(run.project_folder, run.grid_metadata)
+    processing.save_grid_metadata(run.project_folder, run.grid_metadata)
     if report is not None:
         report(INFORMATION, "Success",
                "Meteorology forcing files prepared successfully.")

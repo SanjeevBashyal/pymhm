@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ....applications import pyflwdir_handler
+from ...grid import geotransform_bounds, raster_grids_match
 from ...handlers import lookup
 from .bands import (
     _dependencies,
@@ -91,32 +92,6 @@ def read_land_cover_class_names(
         return {}
 
 
-def _same_grid(first: dict[str, Any], second: dict[str, Any]) -> bool:
-    if (first["rows"], first["cols"]) != (second["rows"], second["cols"]):
-        return False
-    if any(
-        abs(float(current) - float(target)) > 1e-7
-        for current, target in zip(first["geotransform"], second["geotransform"])
-    ):
-        return False
-    first_projection = first.get("projection") or ""
-    second_projection = second.get("projection") or ""
-    return not (first_projection and second_projection) or first_projection == second_projection
-
-
-def _bounds(reference: dict[str, Any]) -> tuple[float, float, float, float]:
-    transform = reference["geotransform"]
-    corners = (
-        (0, 0),
-        (int(reference["cols"]), 0),
-        (0, int(reference["rows"])),
-        (int(reference["cols"]), int(reference["rows"])),
-    )
-    xs = [transform[0] + col * transform[1] + row * transform[2] for col, row in corners]
-    ys = [transform[3] + col * transform[4] + row * transform[5] for col, row in corners]
-    return min(xs), min(ys), max(xs), max(ys)
-
-
 def _align_land_cover(
     input_path: str | Path,
     output_path: str | Path,
@@ -129,7 +104,9 @@ def _align_land_cover(
     temporary.unlink(missing_ok=True)
     kwargs = {
         "format": "GTiff",
-        "outputBounds": _bounds(reference),
+        "outputBounds": geotransform_bounds(
+            reference["geotransform"], reference["cols"], reference["rows"]
+        ),
         "width": int(reference["cols"]),
         "height": int(reference["rows"]),
         "resampleAlg": gdal.GRA_NearestNeighbour,
@@ -211,7 +188,9 @@ def create_band_land_cover_details(
     reference = _read_raster(band_paths[0])
     land_cover = _read_raster(land_cover_path, as_float=True)
     aligned_path = None
-    if not _same_grid(land_cover, reference):
+    if not raster_grids_match(
+        land_cover, reference, tolerance=1e-7, allow_missing_projection=True
+    ):
         aligned_path = _align_land_cover(
             land_cover_path,
             folder / "land_cover_classes_aligned_to_elevation_bands.tif",

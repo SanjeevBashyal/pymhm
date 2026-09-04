@@ -23,7 +23,7 @@ from mhm_qgis.core.morphology.layers.advanced_l0 import (  # noqa: E402
     publish_model_inputs,
     staged_files,
 )
-from mhm_qgis.grid_resolution import (  # noqa: E402
+from mhm_qgis.core.morphology.layers import (  # noqa: E402
     CATEGORICAL_PAD_VALUE,
     LAI_PAD_VALUE,
 )

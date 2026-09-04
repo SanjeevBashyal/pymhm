@@ -25,13 +25,21 @@ except ImportError:
 
 from ..threads.meteo_workflow import MeteorologyWorkflowWorker
 from ...configuration_processor import ConfigurationProcessor
-from ...grid_resolution import (build_meteo_l2_grid, ceil_cellsize,
-                              display_precision_for_unit, format_resolution,
-                              header_bounds, header_for_existing_bounds,
-                              is_geographic_unit, l0_header_from_l2,
-                              load_meteo_grid_metadata,
-                              possible_resolutions, raster_resolution_info,
-                              read_header_file)
+from ...core.grid import (
+    Extent,
+    Grid,
+    ceil_cellsize,
+    display_precision_for_unit,
+    format_resolution,
+    header_bounds,
+    header_for_existing_bounds,
+    is_geographic_unit,
+    l0_header_from_l2,
+    possible_resolutions,
+    read_header_file,
+    resolution_in_crs,
+    target_grid_from_header,
+)
 from .input_selection import (
     INPUT_EXTENSIONS,
     InputComboAdapter,
@@ -47,8 +55,7 @@ from ...core.executions.morphology import reset as morphology_reset
 from ...core.executions.morphology import setup as morphology_setup
 from ...core.handlers.state import processing as processing_state
 from ...core.handlers.state.meteo_outputs import MeteorologyOutputState
-from ...core.meteorology.forcing import (MeteoFolderSpec, TargetGrid,
-                                  resolution_in_crs)
+from ...core.meteorology.forcing import MeteoFolderSpec
 from ...core.meteorology.forcing import (
     inspect_meteo_folder_cached,
     inspect_meteo_inputs_cached,
@@ -123,6 +130,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         self._grid_l0_info = None
         self._grid_l2_metadata = None
         self._grid_l2_header = None
+        self._l2_multiplier_user_selected = False
         self._preferred_l1_resolution = None
         self._preferred_l11_resolution = None
         self._meteo_inspections = {}
@@ -299,7 +307,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         if not filled_layer.isValid():
             self.log_message("WARNING: Filled DEM exists but could not be read for L0 resolution.")
             return None
-        return raster_resolution_info(filled_layer)
+        return qgis_layers.raster_resolution_info(filled_layer)
 
     def update_l2_resolution_from_metadata(self, *args, **kwargs):
         return main_controller.update_l2_resolution_from_metadata(self, *args, **kwargs)
@@ -310,32 +318,84 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
     def prepare_meteo_l2_grid(self, precipitation_metadata=None):
         """Build the requested L2 grid used by meteorology processing."""
         self.update_l0_resolution_from_dem()
-        raw = None
+        if not self._grid_l0_info:
+            raise ValueError("Filled DEM is required before preparing meteorology data.")
+        x_resolution = float(self._grid_l0_info["exact_x_resolution"])
+        y_resolution = float(self._grid_l0_info["exact_y_resolution"])
+        if abs(x_resolution - y_resolution) > max(x_resolution, y_resolution, 1.0) * 1e-6:
+            raise ValueError(
+                "The filled DEM must have square L0 cells before preparing "
+                f"meteorology data (x={x_resolution}, y={y_resolution})."
+            )
+        target_crs = self.get_crs()
+        if target_crs is None or not target_crs.isValid():
+            raise ValueError("Please set a valid processing CRS before preparing meteorology data.")
+        domain_bounds, extent_source = qgis_layers.merged_domain_bounds(
+            self.project_folder, target_crs
+        )
+        if domain_bounds is None:
+            raise ValueError("The merged watershed is required before preparing meteorology data.")
+
+        crs_text = qgis_layers.crs_string(target_crs)
+        unit = qgis_layers.crs_unit(target_crs)
+        raw_resolution = None
+        raw_extent = None
+        raw_crs = None
+        source_file = ""
         if precipitation_metadata is not None:
             converted = resolution_in_crs(
                 precipitation_metadata,
-                self.selected_meteo_crs() or None,
+                crs_text or None,
             )
-            raw = {
-                "resolution": converted.resolution,
-                "x_resolution": converted.x_resolution,
-                "y_resolution": converted.y_resolution,
-                "unit": converted.unit,
-                "source_file": str(precipitation_metadata.files[0]),
-            }
-        grid = build_meteo_l2_grid(
-            self,
+            raw_resolution = (converted.x_resolution, converted.y_resolution)
+            raw_extent = Extent.from_centres(
+                precipitation_metadata.bounds,
+                precipitation_metadata.x_resolution,
+                precipitation_metadata.y_resolution,
+            )
+            raw_crs = precipitation_metadata.crs
+            source_file = str(precipitation_metadata.files[0])
+        grid = Grid.for_meteorology(
+            self._grid_l0_info["header"],
+            (domain_bounds,),
             self.spinBox_L2ResolutionMultiplier.value(),
-            raw_metadata=raw,
+            crs=crs_text,
+            unit=unit,
+            raw_l2_resolution=raw_resolution,
+            raw_l2_extent=raw_extent,
+            raw_l2_crs=raw_crs,
         )
-        metadata = grid.get("metadata", {})
+        target = target_grid_from_header(grid.l2_header, crs_text or None)
+        metadata = grid.metadata(
+            extent_source=os.path.basename(str(extent_source).split("|", 1)[0]),
+            source_file=source_file,
+        )
+        if target.sample_lon is not None:
+            metadata["wgs84_bounds"] = (
+                float(target.sample_lon.min()),
+                float(target.sample_lon.max()),
+                float(target.sample_lat.min()),
+                float(target.sample_lat.max()),
+            )
+        if raw_resolution:
+            metadata.update({
+                "raw_meteo_resolution": sum(raw_resolution) / 2,
+                "raw_meteo_x_resolution": raw_resolution[0],
+                "raw_meteo_y_resolution": raw_resolution[1],
+            })
         self.log_message(
             "Meteo L2 grid: "
             f"{format_resolution(metadata.get('l2_resolution'), metadata.get('l2_unit', ''))} "
             f"{metadata.get('l2_unit', '')} "
             f"({metadata.get('l2_ratio_to_l0')} x L0)."
         )
-        return grid
+        if grid.requires_l2_resampling and grid.alignment_gap:
+            self.log_message(
+                "Meteo L2 grid requires resampling: alignment gap "
+                f"x={grid.alignment_gap[0]:g}, y={grid.alignment_gap[1]:g} "
+                f"exceeds {grid.alignment_gap_limit:g}."
+            )
+        return grid, target, metadata
 
     def refresh_l1_l11_resolution_options(self, *args, **kwargs):
         return main_controller.refresh_l1_l11_resolution_options(self, *args, **kwargs)
@@ -875,18 +935,10 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
                 log=self.log_message,
             )
             self._meteo_inspections = inspections
-            grid = self.prepare_meteo_l2_grid(
+            grid, target_grid, metadata = self.prepare_meteo_l2_grid(
                 inspections["precipitation"]
             )
-            self.set_meteo_l2_grid_metadata(grid["metadata"])
-            target_grid = TargetGrid(
-                lon=tuple(grid["lon"]),
-                lat=tuple(grid["lat"]),
-                header=dict(grid["header"]),
-                crs=self.selected_meteo_crs() or None,
-                sample_lon=grid["sample_lon"],
-                sample_lat=grid["sample_lat"],
-            )
+            self.set_meteo_l2_grid_metadata(metadata)
             target_grid.validate()
             self._pending_meteo_run = MeteorologyRun(
                 project_folder=Path(self.project_folder),
@@ -894,7 +946,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
                 temperature=temperature,
                 pet=pet,
                 target_grid=target_grid,
-                grid_metadata=dict(grid["metadata"]),
+                grid_metadata=dict(metadata),
                 inspections=inspections,
             )
         except Exception as error:
@@ -1561,6 +1613,9 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         """Return project-portable meteorology folder and source selections."""
         state = {
             "l2_multiplier": int(self.spinBox_L2ResolutionMultiplier.value()),
+            "l2_multiplier_user_selected": bool(
+                self._l2_multiplier_user_selected
+            ),
         }
         for kind, combo, source_combo in self.meteo_input_widgets():
             path = self.selected_folder_path(combo)
@@ -1661,6 +1716,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
         self.spinBox_L2ResolutionMultiplier.blockSignals(True)
         self.spinBox_L2ResolutionMultiplier.setValue(1)
         self.spinBox_L2ResolutionMultiplier.blockSignals(False)
+        self._l2_multiplier_user_selected = False
         self._meteo_inspections = {}
         self.clear_precipitation_resolution_labels()
         self.checkBox_enableFolderSearch.blockSignals(True)
@@ -1701,7 +1757,15 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             multiplier = max(1, int(state.get("l2_multiplier", 1)))
         except (TypeError, ValueError):
             multiplier = 1
+        self.spinBox_L2ResolutionMultiplier.blockSignals(True)
         self.spinBox_L2ResolutionMultiplier.setValue(multiplier)
+        self.spinBox_L2ResolutionMultiplier.blockSignals(False)
+        self._l2_multiplier_user_selected = bool(
+            state.get(
+                "l2_multiplier_user_selected",
+                "l2_multiplier" in state,
+            )
+        )
 
         for kind, folder_combo, source_combo in self.meteo_input_widgets():
             saved = state.get(kind, {})

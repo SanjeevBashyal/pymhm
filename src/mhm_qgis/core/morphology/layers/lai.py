@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from ....applications.mhm_tools_handler import copy_lai_file_to_grid, lai_time_step
-from ....grid_resolution import write_header_file
+from ...grid import write_header_file
 from ...handlers.state.nml_settings import relative_workspace_path, update_section
 from ...handlers.store.layout import lai_folder
 from ...handlers.store.paths import lai_dem_staging_path

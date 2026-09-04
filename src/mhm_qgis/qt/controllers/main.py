@@ -20,14 +20,21 @@ except ImportError:
     from qgis.PyQt.QtWidgets import (QComboBox, QDialog, QFileDialog,
                                      QMessageBox)
 
-from ...grid_resolution import (display_precision_for_unit, format_resolution,
-                                header_bounds, load_meteo_grid_metadata,
-                                possible_resolutions, read_header_file)
+from ...core.grid import (
+    crs_equal,
+    display_precision_for_unit,
+    format_resolution,
+    header_bounds,
+    integer_resolution_factor,
+    possible_resolutions,
+    read_header_file,
+    resolution_in_crs,
+)
 from ..dialogs.input_selection import (INPUT_EXTENSIONS, InputComboAdapter,
                                 LaiNetcdfInputDialog, MhmReadyInputDialog,
                                 SingleLayerInputDialog, loaded_qgis_items,
                                 scan_project_folders, scan_project_inputs)
-from ...core.meteorology.forcing import MeteoFolderSpec, resolution_in_crs
+from ...core.meteorology.forcing import MeteoFolderSpec
 from ...core.meteorology.forcing import inspect_meteo_folder_cached
 from ...morphology_display import DISPLAY_KEYS
 from ...core.morphology.hydrology.outlets import StationIdError, outlet_ids_from_layer
@@ -406,6 +413,7 @@ def inspect_meteo_selection(dialog, kind, show_errors=False):
                 if l0_resolution else ""
             )
             dialog.label_precipitationResolutionMultiplier.setText(multiplier)
+            _set_default_l2_multiplier(dialog, metadata, converted, l0_resolution)
         dialog.log_message(
             f"{kind.title()} metadata: {len(metadata.files)} NetCDF file(s), "
             f"{metadata.shape[1]} x {metadata.shape[0]} cells."
@@ -511,8 +519,27 @@ def handle_l2_multiplier_changed(dialog, value=None):
     """Invalidate prepared setup state when the requested L2 grid changes."""
     if dialog._loading_input_state:
         return
+    dialog._l2_multiplier_user_selected = True
     dialog.save_input_state()
     dialog.invalidate_meteo_morph_setup()
+
+
+def _set_default_l2_multiplier(dialog, metadata, converted, l0_resolution):
+    """Propose an exact raw factor until the user has chosen a multiplier."""
+    if dialog._l2_multiplier_user_selected or not l0_resolution:
+        return
+    target_crs = dialog.selected_meteo_crs() or None
+    if not crs_equal(metadata.crs, target_crs):
+        return
+    x_factor = integer_resolution_factor(converted.x_resolution, l0_resolution)
+    y_factor = integer_resolution_factor(converted.y_resolution, l0_resolution)
+    if x_factor is None or x_factor != y_factor:
+        return
+    control = dialog.spinBox_L2ResolutionMultiplier
+    control.blockSignals(True)
+    control.setValue(x_factor)
+    control.blockSignals(False)
+    dialog.save_input_state()
 
 
 def handle_model_input_changed(dialog, value=None):
@@ -555,7 +582,7 @@ def update_l0_resolution_from_dem(dialog, layer=None):
 def update_l2_resolution_from_metadata(dialog, metadata=None):
     """Show L2 resolution from saved meteo grid metadata or existing headers."""
     if metadata is None and dialog.project_folder:
-        metadata = load_meteo_grid_metadata(dialog.project_folder)
+        metadata = processing.grid_metadata(dialog.project_folder)
 
     header = None
     unit = ""

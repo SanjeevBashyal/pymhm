@@ -89,7 +89,7 @@ def test_v5_13_meteo_keeps_its_folders_and_headers(tmp_path):
 
 
 def test_the_meteo_mask_matches_the_example_format(tmp_path):
-    from mhm_qgis.core.meteorology.forcing import TargetGrid
+    from mhm_qgis.core.grid import TargetGrid
     from mhm_qgis.core.meteorology.mask import write_meteo_mask
 
     header = {
@@ -113,7 +113,7 @@ def test_the_meteo_mask_matches_the_example_format(tmp_path):
 
 
 def test_the_meteo_mask_honours_an_explicit_valid_array(tmp_path):
-    from mhm_qgis.core.meteorology.forcing import TargetGrid
+    from mhm_qgis.core.grid import TargetGrid
     from mhm_qgis.core.meteorology.mask import write_meteo_mask
 
     header = {

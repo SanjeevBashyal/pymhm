@@ -30,7 +30,7 @@ def test_meteorology_state_and_output_keys_use_workspace(tmp_path: Path) -> None
 
 
 def test_grid_contract_is_persisted_and_revalidated_on_resume(tmp_path: Path) -> None:
-    from mhm_qgis.grid_resolution import aligned_l0_l2_headers
+    from mhm_qgis.core.grid import aligned_l0_l2_headers
 
     l0_header, l2_header = aligned_l0_l2_headers(
         (99.0, 191.0, 199.0, 291.0),

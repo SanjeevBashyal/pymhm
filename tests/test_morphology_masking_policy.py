@@ -10,7 +10,7 @@ from mhm_qgis import standalone  # noqa: E402
 
 standalone.install(force=True)
 
-from mhm_qgis.grid_resolution import CATEGORICAL_PAD_VALUE  # noqa: E402
+from mhm_qgis.core.morphology.layers import CATEGORICAL_PAD_VALUE  # noqa: E402
 from mhm_qgis.core.executions.morphology.setup import raster_plan  # noqa: E402
 
 

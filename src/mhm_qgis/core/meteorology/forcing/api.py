@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import math
 import os
 from pathlib import Path
 import shutil
@@ -24,10 +23,17 @@ from ..ERA5Land.mhm.types import (
     ForcingSpec,
     MeteoForcingResult,
 )
-from ..l2_grid import (
+from ...grid import (
+    TargetGrid,
     assert_header_file_matches,
     assert_matches_header,
+    axis_resolution,
     axes_match_header,
+    crs_equal as _same_crs,
+    header_center_arrays,
+    mesh_resolution,
+    nearest_curvilinear,
+    nearest_rectilinear,
     slice_and_pad,
 )
 from .types import (
@@ -35,8 +41,6 @@ from .types import (
     MHM_READY,
     MeteoFolderSpec,
     SpatialMetadata,
-    SpatialResolution,
-    TargetGrid,
     normalize_kind,
     normalize_source,
 )
@@ -115,44 +119,6 @@ def inspect_meteo_inputs(
             spec.folder, spec.kind, spec.source, spec.crs)
         for spec in specs
     }
-
-
-def resolution_in_crs(
-        metadata: SpatialMetadata,
-        target_crs: str | None) -> SpatialResolution:
-    """Express an inspected grid resolution in ``target_crs`` units."""
-    source_crs = metadata.crs
-    if not target_crs or not source_crs or _same_crs(source_crs, target_crs):
-        return SpatialResolution(
-            metadata.resolution,
-            metadata.x_resolution,
-            metadata.y_resolution,
-            metadata.unit,
-            target_crs or source_crs,
-        )
-
-    try:
-        from pyproj import CRS, Transformer
-    except Exception as exc:
-        raise RuntimeError(
-            "pyproj is required to transform meteorology resolution.") from exc
-
-    west, east, south, north = metadata.bounds
-    x0 = (west + east) / 2.0
-    y0 = (south + north) / 2.0
-    transform = Transformer.from_crs(source_crs, target_crs, always_xy=True)
-    p0 = transform.transform(x0, y0)
-    px = transform.transform(x0 + metadata.x_resolution, y0)
-    py = transform.transform(x0, y0 + metadata.y_resolution)
-    dx = math.hypot(px[0] - p0[0], px[1] - p0[1])
-    dy = math.hypot(py[0] - p0[0], py[1] - p0[1])
-    return SpatialResolution(
-        resolution=(dx + dy) / 2.0,
-        x_resolution=dx,
-        y_resolution=dy,
-        unit=_crs_unit(CRS.from_user_input(target_crs)),
-        crs=target_crs,
-    )
 
 
 def process_meteo_inputs(
@@ -435,16 +401,20 @@ def _inspect_file(
         x_values = np.asarray(x_values, dtype="float64")
         y_values = np.asarray(y_values, dtype="float64")
         if x_values.ndim == 1 and y_values.ndim == 1:
-            dx = _axis_resolution(x_values, path, x_name)
-            dy = _axis_resolution(y_values, path, y_name)
+            dx = axis_resolution(x_values, f"{path.name}: coordinate {x_name}")
+            dy = axis_resolution(y_values, f"{path.name}: coordinate {y_name}")
             bounds = (
                 float(np.nanmin(x_values)), float(np.nanmax(x_values)),
                 float(np.nanmin(y_values)), float(np.nanmax(y_values)))
             shape = (len(y_values), len(x_values))
         elif x_values.shape == y_values.shape == (
                 da.sizes[y_dim], da.sizes[x_dim]):
-            dx = _mesh_resolution(x_values, axis=1, path=path, name=x_name)
-            dy = _mesh_resolution(y_values, axis=0, path=path, name=y_name)
+            dx = mesh_resolution(
+                x_values, axis=1, label=f"{path.name}: coordinate {x_name}"
+            )
+            dy = mesh_resolution(
+                y_values, axis=0, label=f"{path.name}: coordinate {y_name}"
+            )
             bounds = (
                 float(np.nanmin(x_values)), float(np.nanmax(x_values)),
                 float(np.nanmin(y_values)), float(np.nanmax(y_values)))
@@ -527,33 +497,6 @@ def _geographic_coordinate(ds, axis: str, dims: tuple[str, str]):
     return axis, None
 
 
-def _axis_resolution(values, path: Path, name: str) -> float:
-    import numpy as np
-
-    unique = np.unique(values[np.isfinite(values)])
-    if len(unique) < 2:
-        raise ValueError(
-            f"{path.name}: coordinate {name} needs at least two values.")
-    if len(unique) != len(values):
-        raise ValueError(f"{path.name}: coordinate {name} contains duplicates.")
-    diffs = np.abs(np.diff(np.sort(unique)))
-    resolution = float(np.nanmedian(diffs))
-    if not np.allclose(diffs, resolution, rtol=1e-6, atol=1e-9):
-        raise ValueError(f"{path.name}: coordinate {name} is not regularly spaced.")
-    return resolution
-
-
-def _mesh_resolution(values, axis: int, path: Path, name: str) -> float:
-    import numpy as np
-
-    diffs = np.abs(np.diff(values, axis=axis))
-    diffs = diffs[np.isfinite(diffs) & (diffs > 0)]
-    if not diffs.size:
-        raise ValueError(
-            f"{path.name}: coordinate {name} needs at least two values.")
-    return float(np.nanmedian(diffs))
-
-
 def _dataset_crs(ds, da, x_name: str, y_name: str) -> str | None:
     if x_name.lower() in {"lon", "longitude"} and y_name.lower() in {
             "lat", "latitude"}:
@@ -597,15 +540,6 @@ def _crs_unit(crs) -> str:
     if "foot" in name or "feet" in name:
         return "ft"
     return name
-
-
-def _same_crs(left: str, right: str) -> bool:
-    try:
-        from pyproj import CRS
-
-        return CRS.from_user_input(left) == CRS.from_user_input(right)
-    except Exception:
-        return str(left).strip().lower() == str(right).strip().lower()
 
 
 def _validate_spatial_signatures(signatures: list[_SpatialSignature]) -> None:
@@ -697,7 +631,7 @@ def _validate_target_coverage(
             target.crs
             and metadata.crs
             and _same_crs(metadata.crs, target.crs)):
-        target_x, target_y = _header_center_axes(target.header, np)
+        target_x, target_y = header_center_arrays(target.header)
     elif metadata.crs and not _same_crs(metadata.crs, "EPSG:4326"):
         try:
             from pyproj import Transformer
@@ -806,15 +740,15 @@ def _resample_ready(da, ds, source_crs, target, np, xr):
         lon_name, lon = _geographic_coordinate(ds, "lon", (y_dim, x_dim))
         lat_name, lat = _geographic_coordinate(ds, "lat", (y_dim, x_dim))
         if source_crs is None and lon is not None and lat is not None:
-            return _nearest_curvilinear(
+            return nearest_curvilinear(
                 da, np.asarray(lon), np.asarray(lat),
-                target_lon, target_lat, xr, sample_lon, sample_lat)
+                target_lon, target_lat, sample_lon, sample_lat)
         x_target, y_target = target_lon, target_lat
         target_crs_matches = bool(
             source_crs and target.crs and _same_crs(source_crs, target.crs)
         )
         if target_crs_matches:
-            x_target, y_target = _header_center_axes(target.header, np)
+            x_target, y_target = header_center_arrays(target.header)
         elif sample_lon is not None:
             x_target, y_target = sample_lon, sample_lat
             if source_crs and not _same_crs(source_crs, "EPSG:4326"):
@@ -834,7 +768,7 @@ def _resample_ready(da, ds, source_crs, target, np, xr):
                     x_target,
                     y_target,
                 )
-            return _nearest_rectilinear(
+            return nearest_rectilinear(
                 da,
                 np.asarray(x_values),
                 np.asarray(y_values),
@@ -842,7 +776,6 @@ def _resample_ready(da, ds, source_crs, target, np, xr):
                 y_target,
                 target_lon,
                 target_lat,
-                xr,
             )
         elif source_crs and not _same_crs(source_crs, "EPSG:4326"):
             try:
@@ -878,95 +811,14 @@ def _resample_ready(da, ds, source_crs, target, np, xr):
     lat_name, lat = _geographic_coordinate(ds, "lat", (y_dim, x_dim))
     if lon is None or lat is None:
         raise ValueError("mHM-ready data has no usable spatial coordinates.")
-    return _nearest_curvilinear(
+    return nearest_curvilinear(
         da,
         np.asarray(lon),
         np.asarray(lat),
         target_lon,
         target_lat,
-        xr,
         sample_lon,
         sample_lat,
-    )
-
-
-def _header_center_axes(header, np):
-    cellsize = float(header["cellsize"])
-    xll = float(header["xllcorner"])
-    yll = float(header["yllcorner"])
-    x_values = xll + (np.arange(int(header["ncols"])) + 0.5) * cellsize
-    y_values = yll + (np.arange(int(header["nrows"])) + 0.5) * cellsize
-    return x_values, y_values[::-1]
-
-
-def _nearest_rectilinear(
-        da,
-        source_x,
-        source_y,
-        target_x,
-        target_y,
-        output_lon,
-        output_lat,
-        xr):
-    """Sample a rectilinear source at exact 2-D target points."""
-    import numpy as np
-
-    source_x_mesh, source_y_mesh = np.meshgrid(source_x, source_y)
-    return _nearest_curvilinear(
-        da,
-        source_x_mesh,
-        source_y_mesh,
-        output_lon,
-        output_lat,
-        xr,
-        target_x,
-        target_y,
-    )
-
-
-def _nearest_curvilinear(
-        da,
-        source_lon,
-        source_lat,
-        target_lon,
-        target_lat,
-        xr,
-        sample_lon=None,
-        sample_lat=None):
-    import numpy as np
-
-    try:
-        from scipy.spatial import cKDTree
-    except Exception as exc:
-        raise RuntimeError(
-            "scipy is required to resample curvilinear mHM-ready data.") from exc
-
-    y_dim, x_dim = _spatial_dims(da)
-    check_lon = sample_lon if sample_lon is not None else target_lon
-    check_lat = sample_lat if sample_lat is not None else target_lat
-    if (
-            np.min(check_lon) < np.nanmin(source_lon)
-            or np.max(check_lon) > np.nanmax(source_lon)
-            or np.min(check_lat) < np.nanmin(source_lat)
-            or np.max(check_lat) > np.nanmax(source_lat)):
-        raise ValueError("The target grid is outside the source extent.")
-    source_points = np.column_stack(
-        [source_lon.reshape(-1), source_lat.reshape(-1)])
-    if sample_lon is None or sample_lat is None:
-        lon_mesh, lat_mesh = np.meshgrid(target_lon, target_lat)
-    else:
-        lon_mesh = np.asarray(sample_lon, dtype="float64")
-        lat_mesh = np.asarray(sample_lat, dtype="float64")
-    target_points = np.column_stack(
-        [lon_mesh.reshape(-1), lat_mesh.reshape(-1)])
-    _, indices = cKDTree(source_points).query(target_points)
-    values = np.asarray(da.transpose("time", y_dim, x_dim).values)
-    sampled = values.reshape(values.shape[0], -1)[:, indices]
-    sampled = sampled.reshape(values.shape[0], len(target_lat), len(target_lon))
-    return xr.DataArray(
-        sampled,
-        dims=("time", "lat", "lon"),
-        coords={"time": da["time"], "lat": target_lat, "lon": target_lon},
     )
 
 
@@ -1027,12 +879,9 @@ __all__ = [
     "MeteoFolderSpec",
     "MeteoForcingResult",
     "SpatialMetadata",
-    "SpatialResolution",
-    "TargetGrid",
     "inspect_meteo_folder",
     "inspect_meteo_inputs",
     "normalize_kind",
     "normalize_source",
     "process_meteo_inputs",
-    "resolution_in_crs",
 ]

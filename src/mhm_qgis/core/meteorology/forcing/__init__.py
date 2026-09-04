@@ -6,7 +6,6 @@ from .api import (
     inspect_meteo_folder,
     inspect_meteo_inputs,
     process_meteo_inputs,
-    resolution_in_crs,
 )
 from .cache import (
     inspect_meteo_folder_cached,
@@ -18,8 +17,6 @@ from .types import (
     MHM_READY,
     MeteoFolderSpec,
     SpatialMetadata,
-    SpatialResolution,
-    TargetGrid,
     normalize_kind,
     normalize_source,
 )
@@ -30,8 +27,6 @@ __all__ = [
     "MeteoFolderSpec",
     "MeteoForcingResult",
     "SpatialMetadata",
-    "SpatialResolution",
-    "TargetGrid",
     "inspect_meteo_folder",
     "inspect_meteo_folder_cached",
     "inspect_meteo_inputs",
@@ -40,5 +35,4 @@ __all__ = [
     "normalize_kind",
     "normalize_source",
     "process_meteo_inputs",
-    "resolution_in_crs",
 ]

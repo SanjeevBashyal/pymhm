@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
+from ...grid import header_center_arrays
 from ...handlers.raster.tasks import _aligned_l0_window, _dependencies, _target_mask
 
 
@@ -41,9 +42,7 @@ def write_domain_dem_netcdf(
 
     rows = int(target_header["nrows"])
     columns = int(target_header["ncols"])
-    cellsize = float(target_header["cellsize"])
-    xmin = float(target_header["xllcorner"])
-    ymax = float(target_header["yllcorner"]) + rows * cellsize
+    x_values, y_values = header_center_arrays(target_header)
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -61,7 +60,7 @@ def write_domain_dem_netcdf(
                 "long_name": "x coordinate of projection",
                 "units": "m",
             })
-            x[:] = xmin + (np.arange(columns) + 0.5) * cellsize
+            x[:] = x_values
             y = handle.createVariable("y", "f8", ("y",))
             y.setncatts({
                 "axis": "Y",
@@ -69,7 +68,7 @@ def write_domain_dem_netcdf(
                 "long_name": "y coordinate of projection",
                 "units": "m",
             })
-            y[:] = ymax - (np.arange(rows) + 0.5) * cellsize
+            y[:] = y_values
             dem = handle.createVariable(
                 "dem", "f8", ("y", "x"),
                 zlib=True, complevel=1, chunksizes=chunks, fill_value=NODATA,
