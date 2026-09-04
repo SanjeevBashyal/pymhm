@@ -25,8 +25,8 @@ from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
 
-# Initialize Qt resources from file resources.py
-from . import resources_rc  # noqa: F401
+# Initialize the resources generated beside the Qt Designer modules.
+from .qt.ui.pyui import resources_rc  # noqa: F401
 
 
 def classFactory(iface):  # pylint: disable=invalid-name

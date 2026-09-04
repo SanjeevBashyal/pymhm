@@ -7,4 +7,4 @@ for form in forms/*.ui; do
     pyuic5 -x "$form" -o "pyui/ui_$(basename "${form%.ui}").py"
 done
 
-pyrcc5 forms/resources.qrc -o ../../resources_rc.py
+pyrcc5 forms/resources.qrc -o pyui/resources_rc.py
