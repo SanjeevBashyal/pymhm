@@ -1119,6 +1119,12 @@ def lai_netcdf_config(dialog):
     return dict(dialog._lai_input_config)
 
 
+def _exec_dialog(input_dialog):
+    """Run a modal input dialog on Qt5 (`exec_`) and Qt6 (`exec`)."""
+    execute = getattr(input_dialog, "exec", None) or input_dialog.exec_
+    return execute()
+
+
 def handle_categorical_type(dialog, kind, text):
     """Open the lookup dialog immediately when lookup mode is selected."""
     text = str(text or "").strip()
@@ -1146,14 +1152,14 @@ def handle_categorical_type(dialog, kind, text):
         return
 
     if normalized == "mhm ready":
-        dialog = MhmReadyInputDialog(
+        input_dialog = MhmReadyInputDialog(
             dialog.project_folder,
             kind,
             dialog,
             initial=dialog._categorical_ready_configs.get(kind),
         )
     elif "lookup table" in normalized:
-        dialog = SingleLayerInputDialog(
+        input_dialog = SingleLayerInputDialog(
             dialog.project_folder,
             kind,
             dialog,
@@ -1164,12 +1170,13 @@ def handle_categorical_type(dialog, kind, text):
         dialog.save_input_state()
         dialog.invalidate_meteo_morph_setup()
         return
-    execute = getattr(dialog, "exec", None) or dialog.exec_
-    if execute() != QDialog.Accepted or dialog.selected_config() is None:
+    if _exec_dialog(input_dialog) != QDialog.Accepted or (
+        input_dialog.selected_config() is None
+    ):
         dialog._restore_categorical_mode(kind, previous)
         return
 
-    config = dialog.selected_config()
+    config = input_dialog.selected_config()
     if normalized == "mhm ready":
         dialog._categorical_ready_configs[kind] = {
             "input_path": config.input_path,
@@ -1204,23 +1211,24 @@ def handle_lai_input_type(dialog, text, previous=""):
         return
     normalized = str(text or "").strip().lower()
     if "netcdf" in normalized:
-        dialog = LaiNetcdfInputDialog(
+        input_dialog = LaiNetcdfInputDialog(
             dialog.project_folder,
             dialog,
             initial=dialog._lai_input_config,
         )
     else:
-        dialog = SingleLayerInputDialog(
+        input_dialog = SingleLayerInputDialog(
             dialog.project_folder,
             "lai",
             dialog,
             initial=dialog._categorical_lookup_configs.get("lai"),
         )
-    execute = getattr(dialog, "exec", None) or dialog.exec_
-    if execute() != QDialog.Accepted or dialog.selected_config() is None:
+    if _exec_dialog(input_dialog) != QDialog.Accepted or (
+        input_dialog.selected_config() is None
+    ):
         dialog._restore_categorical_mode("lai", previous)
         return
-    config = dialog.selected_config()
+    config = input_dialog.selected_config()
     if "netcdf" in normalized:
         dialog._lai_input_config = {
             "input_path": config.input_path,
@@ -1279,17 +1287,18 @@ def handle_land_use_input_type(dialog, text, previous=""):
         return
     normalized = str(text).strip().lower()
     if normalized == "mhm ready":
-        dialog = MhmReadyInputDialog(
+        input_dialog = MhmReadyInputDialog(
             dialog.project_folder,
             "lc",
             dialog,
             initial=dialog._categorical_ready_configs.get("lc"),
         )
-        execute = getattr(dialog, "exec", None) or dialog.exec_
-        if execute() != QDialog.Accepted or dialog.selected_config() is None:
+        if _exec_dialog(input_dialog) != QDialog.Accepted or (
+            input_dialog.selected_config() is None
+        ):
             dialog._restore_categorical_mode("lc", previous)
             return
-        config = dialog.selected_config()
+        config = input_dialog.selected_config()
         dialog._categorical_ready_configs["lc"] = {
             "input_path": config.input_path,
             "classdefinition_path": "",
@@ -1298,17 +1307,18 @@ def handle_land_use_input_type(dialog, text, previous=""):
         dialog._advanced_inputs.pop("land_cover", None)
         dialog._land_cover_ready_source = config.input_path
     elif "single categorical" in normalized:
-        dialog = SingleLayerInputDialog(
+        input_dialog = SingleLayerInputDialog(
             dialog.project_folder,
             "lc",
             dialog,
             initial=dialog._categorical_lookup_configs.get("lc"),
         )
-        execute = getattr(dialog, "exec", None) or dialog.exec_
-        if execute() != QDialog.Accepted or dialog.selected_config() is None:
+        if _exec_dialog(input_dialog) != QDialog.Accepted or (
+            input_dialog.selected_config() is None
+        ):
             dialog._restore_categorical_mode("lc", previous)
             return
-        config = dialog.selected_config()
+        config = input_dialog.selected_config()
         dialog._categorical_lookup_configs["lc"] = {
             "input_path": config.input_path,
             "lookup_table": config.lookup_table,
@@ -1322,17 +1332,16 @@ def handle_land_use_input_type(dialog, text, previous=""):
         from ..dialogs.advanced_inputs import HistoricalLandUseDialog
 
         initial = dialog._advanced_inputs.get("land_cover")
-        dialog = HistoricalLandUseDialog(
+        input_dialog = HistoricalLandUseDialog(
             dialog.project_folder,
             dialog,
             initial=initial,
             all_time="single layer" in str(text).lower(),
         )
-        execute = getattr(dialog, "exec", None) or dialog.exec_
-        if execute() != QDialog.Accepted:
+        if _exec_dialog(input_dialog) != QDialog.Accepted:
             dialog._restore_categorical_mode("lc", previous)
             return
-        value = dialog.selected_input()
+        value = input_dialog.selected_input()
         dialog._advanced_inputs["land_cover"] = value
         dialog._land_cover_ready_source = ""
         dialog._save_land_cover_nml_input(value)
@@ -1354,16 +1363,15 @@ def handle_multi_horizon_soil_input(dialog, text, previous=""):
         return
     from ..dialogs.advanced_inputs import MultiHorizonSoilDialog
 
-    dialog = MultiHorizonSoilDialog(
+    input_dialog = MultiHorizonSoilDialog(
         dialog.project_folder,
         dialog,
         initial=dialog._advanced_inputs.get("soil"),
     )
-    execute = getattr(dialog, "exec", None) or dialog.exec_
-    if execute() != QDialog.Accepted:
+    if _exec_dialog(input_dialog) != QDialog.Accepted:
         dialog._restore_categorical_mode("soil", previous)
         return
-    value = dialog.selected_input()
+    value = input_dialog.selected_input()
     dialog._advanced_inputs["soil"] = value
     dialog._categorical_modes["soil"] = str(text)
     dialog._save_soil_nml_input(value)

@@ -35,7 +35,7 @@ def _load_outlet(dialog, outlet_id):
     dialog._preview_result = None
     record = dialog._draft_state["outlets"].get(dialog.current_outlet_id, {})
     dialog._channel_layer = QgsVectorLayer(
-        dialog.processor.channel_network_vector_path,
+        dialog.workflow.channel_network_path,
         "Channel network",
         "ogr",
     )
@@ -180,7 +180,7 @@ def _domain_state_saved(dialog, proposed_state):
     dialog.state = proposed_state
     dialog._draft_state = copy.deepcopy(proposed_state)
     dialog.main_dialog.save_input_state()
-    dialog.update_gauged_outlet_count()
+    dialog.main_dialog.update_gauged_outlet_count()
     dialog._show_saved_watershed(
         proposed_state["outlets"].get(dialog.current_outlet_id, {})
     )

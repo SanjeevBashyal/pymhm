@@ -245,6 +245,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             self,
         )
         self._watershed_layer = None
+        self.canvas.setExtent(self._filled_dem_layer.extent())
         self._refresh_canvas()
 
     def _refresh_canvas(self):
