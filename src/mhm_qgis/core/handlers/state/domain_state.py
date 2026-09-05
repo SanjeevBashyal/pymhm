@@ -34,6 +34,8 @@ def default_state() -> Dict[str, Any]:
         "dem_domain_id": None,
         "dem_domain_directory": "",
         "dem_domain_path": "",
+        "dem_mask_path": "",
+        "merged_mask_path": "",
         "outlets": {},
     }
 
@@ -53,6 +55,8 @@ def _normalized_state(value: object) -> Dict[str, Any]:
         "outlet_id_field",
         "dem_domain_directory",
         "dem_domain_path",
+        "dem_mask_path",
+        "merged_mask_path",
     ):
         item = value.get(key)
         if isinstance(item, str):
@@ -190,6 +194,11 @@ def _serialized_state(
 ) -> Dict[str, Any]:
     state = _normalized_state(value)
     for record in state["outlets"].values():
+        if isinstance(record.get("delineation"), dict) and record["delineation"].get("raster_path"):
+            record["delineation"] = dict(record["delineation"])
+            record["delineation"]["raster_path"] = serialize_output_path(
+                project_folder, record["delineation"]["raster_path"]
+            )
         if record.get("discharge_file"):
             record["discharge_file"] = serialize_input_path(
                 project_folder, record["discharge_file"]
@@ -201,10 +210,46 @@ def _serialized_state(
             record["gauge_path"] = serialize_output_path(
                 project_folder, record["gauge_path"]
             )
-    for key in ("dem_domain_directory", "dem_domain_path"):
+    for key in ("dem_domain_directory", "dem_domain_path", "dem_mask_path", "merged_mask_path"):
         if state.get(key):
             state[key] = serialize_output_path(project_folder, state[key])
     return state
+
+
+def delineation_fingerprint(filled_dem, x, y):
+    """Cheap DEM and effective-point identity; domain numbering is irrelevant."""
+    from .cache import fingerprint
+
+    return fingerprint([filled_dem], {"x": float(x), "y": float(y), "delineation": 1})
+
+
+def cached_delineation(project_folder, filled_dem, x, y, entry):
+    """Resolve a reusable mask without reading the raster on the UI thread."""
+    if not isinstance(entry, dict) or not Path(filled_dem).is_file():
+        return None
+    if entry.get("fingerprint") != delineation_fingerprint(filled_dem, x, y):
+        return None
+    if not all(key in entry for key in ("raster_path", "mask_value", "catchment_area_m2", "cell_center")):
+        return None
+    try:
+        path = resolve_output_path(project_folder, entry["raster_path"])
+    except ValueError:
+        return None
+    return dict(entry, raster_path=str(path)) if path.is_file() else None
+
+
+def save_preview(project_folder, source, id_field, outlet_id, result):
+    """Persist only cache metadata, never the dialog's uncommitted assignments."""
+    state = load_state(project_folder)
+    if not state["pour_points_source"]:
+        state["pour_points_source"] = source
+        state["outlet_id_field"] = id_field
+    record = state["outlets"].setdefault(str(outlet_id), {})
+    record["delineation"] = dict(result, pour_points_source=source, outlet_id_field=id_field)
+    if state["pour_points_source"] == source and state["outlet_id_field"] == id_field:
+        for key in ("confidence", "snap_count", "snap_distance_m"):
+            record[key] = result.get(key)
+    save_state(project_folder, state)
 
 
 def save_state(

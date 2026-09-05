@@ -54,6 +54,7 @@ from ...core.executions import meteo as meteo_execution
 from ...core.executions.morphology import reset as morphology_reset
 from ...core.executions.morphology import setup as morphology_setup
 from ...core.handlers.state import processing as processing_state
+from ...core.handlers.state import settings as project_settings
 from ...core.handlers.state.meteo_outputs import MeteorologyOutputState
 from ...core.meteorology.forcing import MeteoFolderSpec
 from ...core.meteorology.forcing import (
@@ -364,6 +365,7 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             raw_l2_resolution=raw_resolution,
             raw_l2_extent=raw_extent,
             raw_l2_crs=raw_crs,
+            gap_limit_fraction=project_settings.read(self.project_folder)["grid_alignment_gap_limit"],
         )
         target = target_grid_from_header(grid.l2_header, crs_text or None)
         metadata = grid.metadata(
@@ -2043,9 +2045,14 @@ class MhmQgisDialog(QDialog, Ui_MhmQgisDialog, DialogUtils):
             self.lineEdit_ProjectFolder.setText(self.project_folder)
             self.log_message(f"Project folder set to: {self.project_folder}")
 
-            created = ensure_project_structure(
-                self.project_folder, self.configuration_processor.selected_version()
-            )
+            try:
+                created = ensure_project_structure(
+                    self.project_folder, self.configuration_processor.selected_version()
+                )
+                self.project_settings = project_settings.read(self.project_folder)
+            except (OSError, ValueError) as error:
+                QMessageBox.warning(self, "Project settings", str(error))
+                return
             self.geometry_folder = geometry_folder(self.project_folder)
             if created:
                 self.log_message(

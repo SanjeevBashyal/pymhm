@@ -86,9 +86,24 @@ def test_gauges_are_all_validated_before_any_observation_is_written(tmp_path):
 
     with pytest.raises(ValueError, match="outlet 2"):
         workflow.validate_gauge_assignments(assignments)
-
     assert not list(tmp_path.rglob("*.txt"))
 
+
+def test_show_for_changed_point_source_preserves_committed_domains(tmp_path):
+    from mhm_qgis.core.handlers.state.domain_state import load_state, save_state, save_preview
+
+    workflow = _workflow(tmp_path, ("1",))
+    save_state(tmp_path, {"pour_points_source": "previous.gpkg", "outlet_id_field": "id",
+                         "outlets": {"1": {"is_domain": True, "mask_path": "old.tif"}}})
+    source = workflow.layer_source(workflow.pour_points_layer)
+    save_preview(tmp_path, source, "outlet_id", "1", {"raster_path": "preview.tif"})
+    committed = load_state(tmp_path)
+    assert committed["pour_points_source"] == "previous.gpkg"
+    assert committed["outlets"]["1"]["is_domain"]
+    assert committed["outlets"]["1"]["mask_path"] == "old.tif"
+    draft = workflow.load_synced_state(DOMAIN_MODE_DELINEATOR)
+    assert not draft["outlets"]["1"].get("is_domain")
+    assert draft["outlets"]["1"]["delineation"]["raster_path"] == "preview.tif"
 
 def test_assignment_state_separates_filename_text_from_numeric_gauge_id(tmp_path):
     workflow = _workflow(tmp_path)

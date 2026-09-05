@@ -23,16 +23,16 @@ except ImportError:
     from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox
 
 from ..dialogs.input_selection import scan_project_inputs
-from ..dialogs.discharge_assignment import OutletAssignment
-from ...core.morphology.hydrology.outlets import StationIdError
+
 
 def _load_outlet(dialog, outlet_id):
+    dialog._stage_current_outlet()
+    dialog._stop_picking()
     dialog.current_outlet_id = str(outlet_id or "")
     if not dialog.current_outlet_id:
         dialog._outlet_marker.hide()
         return
 
-    dialog._preview_result = None
     record = dialog._draft_state["outlets"].get(dialog.current_outlet_id, {})
     dialog._channel_layer = QgsVectorLayer(
         dialog.workflow.channel_network_path,
@@ -52,9 +52,9 @@ def _load_outlet(dialog, outlet_id):
         dialog.checkBox_isGaugedOutlet.isChecked())
     dialog.widget_domainControls.setEnabled(True)
     try:
-        threshold = max(1, int(record.get("threshold_cells", 1) or 1))
+        threshold = max(10, int(record.get("threshold_cells", 1000) or 1000))
     except (TypeError, ValueError):
-        threshold = 1
+        threshold = 1000
     dialog.spinBox_channelThreshold.setValue(threshold)
 
     discharge = dialog._resolved_input(record.get("discharge_file"))
@@ -64,10 +64,24 @@ def _load_outlet(dialog, outlet_id):
     dialog._show_picked_coordinates(record.get("picked"))
     dialog._show_saved_watershed(record)
     dialog._zoom_to_outlet()
-    if dialog._watershed_layer is None:
-        # Nothing saved yet: delineate the snapped location up front so the
-        # snap can be judged against its mask and catchment area.
-        dialog._preview_saved_point(record)
+
+
+def colour_outlets(dialog):
+    """Confidence is a static background and tooltip, not an animation."""
+    from qgis.PyQt.QtGui import QBrush, QColor
+
+    colours = {0: "#f5a3a3", 1: "#ffe794", 2: "#a8e6a3"}
+    for index in range(dialog.listWidget_outlets.count()):
+        item = dialog.listWidget_outlets.item(index)
+        record = dialog._draft_state["outlets"].get(item.text(), {})
+        confidence = record.get("confidence")
+        item.setBackground(QBrush(QColor(colours[confidence])) if confidence in colours else QBrush())
+        source = record.get("picked", {}).get("source", "default")
+        count, distance = record.get("snap_count"), record.get("snap_distance_m")
+        detail = f"{count} channel feature(s) within buffer" if count is not None else "Not automatically snapped"
+        if distance is not None:
+            detail += f"; snap distance {distance:.1f} m"
+        item.setToolTip(f"{source}: {detail}")
 
 
 def _set_discharge_enabled(dialog, enabled):
@@ -110,7 +124,7 @@ def _path_label(dialog, path):
         return str(Path(path).resolve())
 
 
-def _browse_discharge(dialog):
+def _browse_discharge(dialog, _checked=False):
     path, _ = QFileDialog.getOpenFileName(
         dialog,
         "Select discharge data",
@@ -145,32 +159,8 @@ def _select_discharge_path(dialog, path):
         dialog.comboBox_dischargeFile.count() - 1)
 
 
-def _current_assignment(dialog):
-    outlet_id = dialog.current_outlet_id
-    is_gauged = dialog.checkBox_isGaugedOutlet.isChecked()
-    discharge_path = str(dialog.comboBox_dischargeFile.currentData() or "")
-    if is_gauged and not discharge_path:
-        raise ValueError(
-            f"Select a discharge CSV or TXT file for gauge {outlet_id}."
-        )
-    return OutletAssignment(
-        outlet_id=outlet_id,
-        is_gauge=is_gauged,
-        is_domain=dialog.checkBox_isDomainOutlet.isChecked(),
-        discharge_layer=(
-            QgsVectorLayer(discharge_path, Path(discharge_path).name, "ogr")
-            if is_gauged and discharge_path
-            else None
-        ),
-    )
-
-
-def _next_outlet(dialog):
-    try:
-        dialog._stage_current_outlet()
-    except (StationIdError, ValueError, RuntimeError) as error:
-        dialog._show_error("Next Outlet", error)
-        return
+def _next_outlet(dialog, _checked=False):
+    dialog._stage_current_outlet()
     row = dialog.listWidget_outlets.currentRow()
     if row + 1 < dialog.listWidget_outlets.count():
         dialog.listWidget_outlets.setCurrentRow(row + 1)
@@ -196,7 +186,7 @@ def _show_area(dialog, value):
         dialog.label_catchmentAreaValue.setText("-")
         return
     dialog.label_catchmentAreaValue.setText(
-        f"{area / 1_000_000.0:.3f} km²")
+        f"{area / 1_000_000.0:.3f}")
 
 
 def _show_picked_coordinates(dialog, picked):

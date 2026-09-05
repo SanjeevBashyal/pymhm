@@ -16,6 +16,7 @@ def bind(dialog) -> None:
         dialog._generate_channel_network
     )
     dialog.pushButton_pickLocation.clicked.connect(dialog._start_picking)
+    dialog.pushButton_showDelineation.clicked.connect(dialog._show_delineation)
     dialog.pushButton_nextPourPoint.clicked.connect(dialog._next_outlet)
     dialog.pushButton_save.clicked.connect(dialog._save_outlet)
     dialog.pushButton_close.clicked.connect(dialog.reject)

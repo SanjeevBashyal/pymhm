@@ -18,6 +18,7 @@ from ...core.handlers.store.paths import (
     morph_staging_folder,
 )
 from ...core.handlers.state import processing
+from ...core.handlers.state import settings as project_settings
 from ...core.handlers.store import registry
 from ...core.morphology.hydrology.outlets import configured_gauged_outlet_ids
 from ...core.morphology.layers import categorical, lai
@@ -342,6 +343,8 @@ class MorphologyTaskBridge(QtCore.QObject):
                 pour_points,
                 channel,
                 self.snapped_points_path,
+                project_crs=self.dialog.get_crs(),
+                max_snap_buffer_distance=project_settings.read(self.dialog.project_folder)["max_snap_buffer_distance"],
                 log=self.dialog.log_message,
             )
             self._register(result, name="2_pour_points_snapped", loaded=False)

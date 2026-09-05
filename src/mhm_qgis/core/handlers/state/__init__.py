@@ -7,6 +7,7 @@ dialog: the modules take a project folder, not a dialog.
 
 - `processing`       mhm_qgis_processing_state.json (the sole writer)
 - `domain_state`     mhm_qgis_domain_delineation_state.json
+- `settings`         editable settings.yaml in the outer project folder
 - `nml_settings`     nml-settings.json, the handoff to nml-tools
 - `cache`            fingerprinted stage reuse, inside the processing state
 - `meteo_outputs`    temporary compatibility facade over `processing`

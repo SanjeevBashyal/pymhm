@@ -24,6 +24,11 @@ def plugin_root() -> str:
     return os.path.dirname(os.path.dirname(os.path.dirname(here)))
 
 
+def settings_path(project_folder) -> str:
+    """Return editable settings in the outer project folder."""
+    return os.path.join(str(project_folder), "settings.yaml")
+
+
 def workspace_folder(project_folder) -> str:
     """Return the plugin-owned workspace inside the selected project folder."""
     return os.path.join(str(project_folder), WORKSPACE_FOLDER_NAME)

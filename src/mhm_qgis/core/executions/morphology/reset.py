@@ -17,6 +17,11 @@ _DOMAIN_OUTPUT_KEYS = (
     "catchment_area",
     "catchment_area_m2",
     "mask_path",
+    "mask_value",
+    "delineation",
+    "confidence",
+    "snap_count",
+    "snap_distance_m",
     "vector_path",
 )
 
@@ -64,6 +69,10 @@ def _invalidate_domains(project_folder) -> None:
         return
     state = load_state(project_folder)
     changed = False
+    for key in ("dem_mask_path", "merged_mask_path"):
+        if state.get(key):
+            state[key] = ""
+            changed = True
     for record in state.get("outlets", {}).values():
         for key in _DOMAIN_OUTPUT_KEYS:
             if key in record:

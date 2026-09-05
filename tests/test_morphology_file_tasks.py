@@ -286,6 +286,56 @@ def test_file_jobs_create_hydrology_and_watershed_outputs(tmp_path):
     assert not os.path.exists(domains["dem_domain_path"])
 
 
+def test_show_cache_and_save_all_outlets_without_redelineating(tmp_path, monkeypatch):
+    from mhm_qgis.core.executions.morphology import delineation
+    from mhm_qgis.core.handlers.state import domain_state
+
+    source = tmp_path / "dem.tif"
+    _dem(source)
+    folder = tmp_path / "mhm-plugin"
+    first = {"outlet_id": "1", "x": 850, "y": 150, "basin_id": 7,
+             "picked": {"x": 850, "y": 150, "crs": "EPSG:32632", "source": "manual"},
+             "raster_path": str(folder / "first.tif"), "domain_id": 1}
+    second = dict(first, outlet_id="2", x=950, y=50, basin_id=8,
+                  picked={"x": 950, "y": 50, "crs": "EPSG:32632", "source": "snapped"},
+                  raster_path=str(folder / "second.tif"), domain_id=None)
+    preview = delineation.show(None, project_folder=tmp_path, filled_dem=source, outlet=first)
+    domain_state.save_preview(tmp_path, "points.shp", "id", "1", preview)
+    state = domain_state.load_state(tmp_path)
+    assert not domain_state.active_domain_records(state)  # Show does not commit choices.
+    entry = state["outlets"]["1"]["delineation"]
+    assert not Path(entry["raster_path"]).is_absolute()
+    assert domain_state.cached_delineation(tmp_path, source, 850, 150, entry)
+    assert domain_state.cached_delineation(tmp_path, source, 851, 150, entry) is None
+    first["cached"] = entry
+    result = delineation.save(None, project_folder=tmp_path, filled_dem=source,
+                              outlets=[first, second], merged_path=folder / "merged.tif")
+    assert set(result["outlets"]) == {"1", "2"}
+    assert result["outlets"]["1"]["raster_path"] == preview["raster_path"]
+    np.testing.assert_array_equal(_band(result["merged_path"]) != 0, _band(preview["raster_path"]) != 0)
+    assert np.any((_band(result["outlets"]["2"]["raster_path"]) != 0) & (_band(result["merged_path"]) == 0))
+
+    # All cached: neither Show nor Save needs a flow context. Domain renumbering
+    # changes only merge labels, not the saved mask value used for display.
+    first["domain_id"] = None
+    second["domain_id"] = 1
+    second["cached"] = result["outlets"]["2"]
+    monkeypatch.setattr(delineation.raster, "_flow_context", lambda *args: pytest.fail("Unexpected delineation"))
+    assert delineation.show(None, project_folder=tmp_path, filled_dem=source, outlet=first)["mask_value"] == 7
+    result = delineation.save(None, project_folder=tmp_path, filled_dem=source,
+                              outlets=[first, second], merged_path=folder / "merged.tif",
+                              dem_domain=(2, str(folder / "dem-mask.tif"), str(folder / "dem.asc")))
+    assert result["outlets"]["2"]["mask_value"] == 8
+    assert result["dem_mask_path"] and not Path(result["dem_domain_path"]).exists()
+    assert set(np.unique(_band(result["merged_path"]))) <= {1, 2}
+    status = source.stat()
+    os.utime(source, ns=(status.st_atime_ns, status.st_mtime_ns + 1000000000))
+    assert domain_state.cached_delineation(tmp_path, source, 850, 150, entry) is None
+    # A missing output is also a miss, even if its input fingerprint matches.
+    assert domain_state.cached_delineation(tmp_path, source, 850, 150,
+        dict(entry, fingerprint=domain_state.delineation_fingerprint(source, 850, 150), raster_path="missing.tif")) is None
+
+
 def _degree_dem(path, cellsize, cols=24, rows=12):
     """Write a lat/lon DEM whose cell size is a repeating decimal."""
     dataset = gdal.GetDriverByName("GTiff").Create(

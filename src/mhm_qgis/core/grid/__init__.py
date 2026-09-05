@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Public QGIS-free grid API."""
 
+from .distance import local_distance_crs
 from .arrays import (
     axis_resolution,
     assert_header_file_matches,

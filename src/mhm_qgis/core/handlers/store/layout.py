@@ -172,11 +172,14 @@ def ensure_project_structure(project_folder, version_text=None) -> list[str]:
     """
     Create the plugin workspace structure from project-template.
 
-    Only directories are created. Placeholder files are intentionally skipped so
+    Settings are copied once. Placeholder files are intentionally skipped so
     processing code does not mistake empty template files for prepared outputs.
     """
     created = []
     os.makedirs(str(project_folder), exist_ok=True)
+    from ..state.settings import ensure
+
+    ensure(project_folder)
     workspace = workspace_folder(project_folder)
     if not os.path.isdir(workspace):
         os.makedirs(workspace, exist_ok=True)

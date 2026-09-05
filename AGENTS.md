@@ -42,7 +42,7 @@ decision.
   - `handlers/file/json/`: atomic JSON read/write (`read`, `write`, `merge_sections`).
   - `handlers/file/netcdf/`: grid variables, time axes, slices.
   - `handlers/state/`: state persistence -- `cache` (fingerprints), `nml_settings`,
-    `domain_state`, `meteo_outputs`; `processing` is the single update boundary for
+    `domain_state`, `settings`, `meteo_outputs`; `processing` is the single update boundary for
     `mhm_qgis_processing_state.json`.
   - `handlers/store/`: where a file is and whether it exists yet -- `paths` (pure
     joins), `layout` (version branching, project structure), `registry` (what exists).
@@ -217,6 +217,30 @@ Four JSON files are used by the plugin.
   domain-DEM steps. There is no separate `pushButton_writeAll` path.
 - Check raster dimensions across levels: L0 must be an integer multiple of L1, and
   L1/L11 must be compatible with L2 as mHM requires.
+
+## Domain Delineator And Project Settings
+
+- `core/handlers/state/settings.py` copies packaged defaults to the outer project's
+  `settings.yaml` once, without overwriting it. Browse Project Folder reloads and
+  validates it; snapping and grid preparation read the current project values.
+- `max_snap_buffer_distance` is the single snapping radius, in metres (default 1000).
+  `core/grid/distance.py` supplies local distance CRS/units, including latitude-aware
+  geographic conversion and projected feet. QGIS geometry/index work stays in
+  `qgis_bridge/layers/domain.py`.
+- Count every channel feature within the radius, then prefer highest stream order,
+  breaking ties by distance. No candidates means nearest actual geometry with no
+  distance cutoff. Confidence is 0/red for no candidates, 1/yellow for multiple, and
+  2/green for one. Manual picks have no automatic confidence. Shapefile fields use
+  `confidence`, `snap_count`, `snap_dist` (metres), `snap_state`, and `snap_order`.
+- Next, list selection and map picks never start delineation. Show Delineation runs
+  `core/executions/morphology/delineation.show` through the task coordinator. A valid
+  saved mask displays immediately on selection; changed DEM/coordinates or a missing
+  file invalidate reuse. `domain_state` persists nested `delineation` cache metadata
+  without committing draft domain/gauge choices.
+- Save uses `delineation.save` to prepare **every listed outlet**, reusing valid masks,
+  and merges **only active domains**, plus the optional DEM extent. Cache `mask_value`
+  is independent of reassigned `domain_id`. Save commits mask paths, choices, gauges,
+  and the namelist handoff; domain DEMs are still written during Morphology Setup.
 
 ## Common L0/L2 Extent
 
@@ -633,7 +657,7 @@ Four JSON files are used by the plugin.
 ## Verifying A Change
 
 - `python3 -m pytest tests/ -q` runs the whole suite in plain Python; the standalone shim
-  is installed per test module. The current suite collects **304 tests** -- know
+  is installed per test module. Run collection to check the current test count -- know
   it before you start, so a regression is unmistakable.
 - `python3 -m compileall -q src/mhm_qgis` catches misplaced imports, broken indentation
   and `__future__` placement. `ast.parse` does **not** enforce `__future__` placement;

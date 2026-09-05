@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
@@ -20,6 +21,8 @@ from ...core.handlers.raster.tasks import (
     merge_domain_masks,
 )
 from ...core.handlers.state import processing
+from ...core.handlers.state import settings
+from ...core.grid import local_distance_crs
 from ...core.handlers.state.domain_state import (
     DOMAIN_MODE_DEM_EXTENT,
     active_domain_records,
@@ -68,18 +71,24 @@ def snap_points_to_network(
     output_path,
     *,
     order_field_name="Order",
-    high_order_distance=1000.0,
-    max_snap_distance=5000.0,
+    max_snap_buffer_distance=1000.0,
+    project_crs=None,
     log: Callable[[str], None] = _noop,
 ) -> str:
     """Snap points to the nearest preferred stream segment and write a layer."""
     from qgis.core import (
         QgsFeature,
+        QgsCoordinateReferenceSystem,
         QgsFields,
         QgsGeometry,
+        QgsRectangle,
         QgsSpatialIndex,
         QgsWkbTypes,
     )
+
+    radius_m = float(max_snap_buffer_distance)
+    if not math.isfinite(radius_m) or radius_m < 0:
+        raise ValueError("max_snap_buffer_distance must be finite and non-negative metres.")
 
     if order_field_name not in channel_network_layer.fields().names():
         raise ValueError(
@@ -89,17 +98,32 @@ def snap_points_to_network(
     output_fields = QgsFields()
     for field in pour_points_layer.fields():
         output_fields.append(field)
-    output_fields.append(qgs_field("snap_status", "String"))
-    output_fields.append(qgs_field("snap_dist", "Double"))
-    output_fields.append(qgs_field("snapped_order", "Int"))
-    status_index = output_fields.indexOf("snap_status")
+    for name, kind in (("snap_state", "String"), ("snap_dist", "Double"),
+                       ("snap_order", "Int"), ("confidence", "Int"), ("snap_count", "Int")):
+        if name not in output_fields.names():
+            output_fields.append(qgs_field(name, kind))
+    status_index = output_fields.indexOf("snap_state")
     distance_index = output_fields.indexOf("snap_dist")
-    order_index = output_fields.indexOf("snapped_order")
+    order_index = output_fields.indexOf("snap_order")
 
-    output_crs = channel_network_layer.crs()
+    output_crs = project_crs if project_crs is not None else channel_network_layer.crs()
     if not output_crs.isValid():
-        output_crs = pour_points_layer.crs()
+        raise ValueError("Select a valid project CRS before snapping outlets.")
+    if not pour_points_layer.crs().isValid() or not channel_network_layer.crs().isValid():
+        raise ValueError("Pour points and channel network must have a valid CRS.")
     point_transform = transform_between(pour_points_layer.crs(), output_crs)
+    channel_transform = transform_between(channel_network_layer.crs(), output_crs)
+    network_index = QgsSpatialIndex(flags=QgsSpatialIndex.FlagStoreFeatureGeometries)
+    network = {}
+    for feature in channel_network_layer.getFeatures():
+        geometry = QgsGeometry(feature.geometry())
+        if geometry.isEmpty():
+            continue
+        if channel_transform is not None:
+            geometry.transform(channel_transform)
+        feature.setGeometry(geometry)
+        network[feature.id()] = feature
+        network_index.addFeature(feature)
 
     _remove_vector_dataset(output_path, log)
     writer = create_vector_file_writer(
@@ -108,7 +132,6 @@ def snap_points_to_network(
     if writer.hasError():
         raise RuntimeError(f"Could not create snapped points: {writer.errorMessage()}")
 
-    network_index = QgsSpatialIndex(channel_network_layer.getFeatures())
     for point_feature in pour_points_layer.getFeatures():
         original = QgsGeometry(point_feature.geometry())
         if original is None or original.isEmpty():
@@ -121,42 +144,69 @@ def snap_points_to_network(
         snapped_geometry = None
         snapped_order = -1
         snap_status = "failed"
-        snap_distance = 0.0
+        snap_distance = None
+        metric_text, metres_per_unit = local_distance_crs(output_crs.toWkt(), point.x(), point.y())
+        metric_crs = QgsCoordinateReferenceSystem.fromWkt(metric_text)
+        if not metric_crs.isValid():
+            raise ValueError("Could not construct the local distance CRS.")
+        to_metric = transform_between(output_crs, metric_crs)
+        from_metric = transform_between(metric_crs, output_crs)
+        metric_point = QgsGeometry(original)
+        if to_metric is not None:
+            metric_point.transform(to_metric)
+        center = metric_point.asPoint()
 
-        candidate_ids = network_index.intersects(
-            original.buffer(float(high_order_distance), 5).boundingBox()
-        )
-        candidates = {
-            feature.id(): feature
-            for feature in channel_network_layer.getFeatures(candidate_ids)
-        }
+        def nearby(distance_m):
+            radius = distance_m / metres_per_unit
+            bounds = QgsRectangle(center.x() - radius, center.y() - radius,
+                                  center.x() + radius, center.y() + radius)
+            if from_metric is not None:
+                bounds = from_metric.transformBoundingBox(bounds)
+            return network_index.intersects(bounds)
+
+        def measured(feature_id):
+            feature = network[feature_id]
+            geometry = QgsGeometry(feature.geometry())
+            if to_metric is not None:
+                geometry.transform(to_metric)
+            return geometry.distance(metric_point) * metres_per_unit, geometry, feature
+
+        count = 0
         preferred = None
-        for feature in candidates.values():
-            distance = feature.geometry().distance(original)
-            if distance > float(high_order_distance):
+        for feature_id in nearby(radius_m):
+            distance, geometry, feature = measured(feature_id)
+            if distance < 0 or distance > radius_m:
                 continue
+            count += 1
             order = int(feature.attribute(order_field_name))
             rank = (order, -float(distance))
             if preferred is None or rank > preferred[0]:
-                preferred = (rank, feature, distance, order)
+                preferred = (rank, geometry, distance, order)
 
         if preferred is not None:
-            _rank, feature, distance, snapped_order = preferred
-            closest = feature.geometry().closestSegmentWithContext(point)
+            _rank, geometry, distance, snapped_order = preferred
+            closest = geometry.closestSegmentWithContext(center)
             snapped_geometry = QgsGeometry.fromPointXY(closest[1])
             snap_status = "high_order"
             snap_distance = float(distance)
         else:
             nearest_ids = network_index.nearestNeighbor(point, 1)
             if nearest_ids:
-                feature = channel_network_layer.getFeature(nearest_ids[0])
-                distance = feature.geometry().distance(original)
-                if distance <= float(max_snap_distance):
-                    closest = feature.geometry().closestSegmentWithContext(point)
-                    snapped_geometry = QgsGeometry.fromPointXY(closest[1])
-                    snapped_order = int(feature.attribute(order_field_name))
-                    snap_status = "closest"
-                    snap_distance = float(distance)
+                nearest = measured(nearest_ids[0])
+                # The planar nearest supplies an upper bound; geographic ranking
+                # still uses metres, including alternatives nearer at this latitude.
+                distance, geometry, feature = min(
+                    (measured(fid) for fid in set(nearby(nearest[0])) | set(nearest_ids)),
+                    key=lambda item: item[0],
+                )
+                closest = geometry.closestSegmentWithContext(center)
+                snapped_geometry = QgsGeometry.fromPointXY(closest[1])
+                snapped_order = int(feature.attribute(order_field_name))
+                snap_status = "closest"
+                snap_distance = float(distance)
+
+        if snapped_geometry is not None and from_metric is not None:
+            snapped_geometry.transform(from_metric)
 
         feature = QgsFeature(output_fields)
         attributes = list(point_feature.attributes())
@@ -166,7 +216,10 @@ def snap_points_to_network(
         feature.setAttribute(status_index, snap_status)
         feature.setAttribute(distance_index, snap_distance)
         feature.setAttribute(order_index, snapped_order)
-        writer.addFeature(feature)
+        feature.setAttribute("confidence", 2 if count == 1 else int(count > 1))
+        feature.setAttribute("snap_count", count)
+        if not writer.addFeature(feature):
+            raise RuntimeError(f"Could not write snapped outlet: {writer.lastError()}")
 
     del writer
     if not Path(output_path).is_file():
@@ -218,6 +271,7 @@ class DomainWorkflow:
         *,
         prepare: Callable[[], object] | None = None,
         log: Callable[[str], None] | None = None,
+        project_crs=None,
     ) -> None:
         self.project_folder = str(project_folder)
         self.pour_points_layer = pour_points_layer
@@ -225,6 +279,7 @@ class DomainWorkflow:
         self.outlet_ids = [str(value) for value in outlet_ids]
         self.prepare = prepare or (lambda: None)
         self.log = log or _noop
+        self.project_crs = project_crs
 
     @property
     def filled_dem_path(self) -> str:
@@ -263,20 +318,27 @@ class DomainWorkflow:
         """Load state and align it with the current pour-point selection."""
         source = self.layer_source(self.pour_points_layer)
         state = load_state(self.project_folder)
-        if (
+        selection_changed = (
             state.get("pour_points_source")
             and state["pour_points_source"] != source
         ) or (
             state.get("outlet_id_field")
             and state["outlet_id_field"] != self.outlet_id_field
-        ):
-            state["outlets"] = {}
+        )
 
         records = state.setdefault("outlets", {})
-        state["outlets"] = {
-            outlet_id: dict(records.get(outlet_id, {}))
-            for outlet_id in self.outlet_ids
-        }
+        state["outlets"] = {}
+        for outlet_id in self.outlet_ids:
+            old = records.get(outlet_id, {})
+            record = {} if selection_changed else dict(old)
+            preview = old.get("delineation") or {}
+            if (preview.get("pour_points_source", state["pour_points_source"]) == source
+                    and preview.get("outlet_id_field", state["outlet_id_field"]) == self.outlet_id_field):
+                if preview:
+                    record["delineation"] = preview
+            else:
+                record.pop("delineation", None)
+            state["outlets"][outlet_id] = record
         state["outlet_order"] = list(self.outlet_ids)
         state["pour_points_source"] = source
         state["outlet_id_field"] = self.outlet_id_field
@@ -457,6 +519,8 @@ class DomainWorkflow:
             self.pour_points_layer,
             channel,
             self.snapped_points_path,
+            project_crs=self.project_crs,
+            max_snap_buffer_distance=settings.read(self.project_folder)["max_snap_buffer_distance"],
             log=self.log,
         )
         registry.register(
@@ -520,8 +584,7 @@ class DomainWorkflow:
         path.mkdir(parents=True, exist_ok=True)
         return str(path)
 
-    def outlet_mask_path(self, outlet_id, state: dict, *, preview=False) -> str:
-        prefix = "_preview_" if preview else "4_watershed_"
+    def outlet_mask_path(self, outlet_id, state: dict) -> str:
         ordered = list(state.get("outlet_order", self.outlet_ids))
         try:
             index = ordered.index(str(outlet_id)) + 1
@@ -530,7 +593,7 @@ class DomainWorkflow:
         safe = re.sub(r"[^A-Za-z0-9_-]+", "_", str(outlet_id)).strip("_")
         return str(
             Path(self.domain_output_folder())
-            / f"{prefix}{index}_{safe or 'outlet'}.tif"
+            / f"4_watershed_{index}_{safe or 'outlet'}.tif"
         )
 
     def dem_mask_path(self) -> str:

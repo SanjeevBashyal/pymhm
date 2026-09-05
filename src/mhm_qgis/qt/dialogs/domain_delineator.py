@@ -12,7 +12,6 @@ from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
     QApplication,
     QDialog,
-    QFileDialog,
     QMessageBox,
     QVBoxLayout,
 )
@@ -26,7 +25,6 @@ from qgis.core import (
 )
 from qgis.gui import QgsMapCanvas, QgsMapToolEmitPoint, QgsVertexMarker
 
-from .input_selection import scan_project_inputs
 from ...core.morphology.hydrology.outlets import (
     OutletAssignment,
     StationIdError,
@@ -35,17 +33,14 @@ from ...core.morphology.hydrology.outlets import (
 )
 from ...core.handlers.state.domain_state import (
     DOMAIN_MODE_DELINEATOR,
-    active_domain_records,
     assign_domain_ids,
+    cached_delineation,
     resolve_input_path,
-    resolve_output_path,
     save_state,
+    save_preview,
 )
 from ...qgis_bridge.layers.domain import DomainWorkflow
-from ...core.handlers.raster.tasks import (
-    delineate_domains_file,
-    delineate_outlet_file,
-)
+from ...core.executions.morphology import delineation
 from ...core.handlers.store import registry
 from ...core.handlers.store.paths import domain_data_folder
 from ...core.handlers.store.layout import domain_dem_path
@@ -57,14 +52,6 @@ from ..objects.viewport_raster_range import ViewportRasterRangeController
 
 MASK_COLOR = QColor(255, 105, 180)
 MASK_OPACITY = 0.5
-
-
-def _run_outlet_task(task, options):
-    return delineate_outlet_file(task=task, **options)
-
-
-def _run_domains_task(task, options):
-    return delineate_domains_file(task=task, **options)
 
 
 class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
@@ -91,9 +78,9 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             outlet_id_field,
             self.outlet_ids,
             log=main_dialog.log_message,
+            project_crs=main_dialog.get_crs(),
         )
         self.current_outlet_id = ""
-        self._preview_result = None
         self._preview_channel_path = ""
         self._map_tool = None
         self._picking = False
@@ -114,12 +101,18 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
 
         self._load_state()
         self._draft_state = copy.deepcopy(self.state)
+        for record in self._draft_state["outlets"].values():
+            picked = (record.get("delineation") or {}).get("picked")
+            if isinstance(picked, dict) and picked.get("source") != "snapped":
+                record["picked"] = dict(picked)
+                record["confidence"] = None
         self._features = self._outlet_features()
         self._prepare_map_layers(prepared_context)
         self._seed_snapped_outlets()
         self._connect_signals()
         self.finished.connect(self._cleanup)
         self.listWidget_outlets.addItems(self.outlet_ids)
+        domain_delineator_controller.colour_outlets(self)
         if self.outlet_ids:
             self.listWidget_outlets.setCurrentRow(0)
 
@@ -147,8 +140,8 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
     def _seed_snapped_outlets(self):
         """Snap the pour points once so every outlet opens on a channel cell.
 
-        Only outlets without a location are seeded, so reopening the dialog
-        never discards a location the user picked. Snapping is a convenience,
+        Automatic locations refresh; a manually picked location is retained.
+        Snapping is a convenience,
         not a prerequisite: when it fails the outlets simply start unpicked.
         """
         try:
@@ -179,7 +172,13 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         for feature in layer.getFeatures():
             outlet_id = station_id_text(feature.attribute(field))
             record = self._draft_state["outlets"].get(outlet_id)
-            if record is None or isinstance(record.get("picked"), dict):
+            if record is None:
+                continue
+            cached_point = (record.get("delineation") or {}).get("picked")
+            saved_point = cached_point or record.get("picked")
+            if isinstance(saved_point, dict) and saved_point.get("source") != "snapped":
+                record["picked"] = dict(saved_point)
+                record["confidence"] = None
                 continue
             geometry = QgsGeometry(feature.geometry())
             if geometry.isEmpty():
@@ -187,18 +186,21 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             if transform is not None:
                 geometry.transform(transform)
             point = geometry.asPoint()
+            record["confidence"] = int(feature["confidence"])
+            record["snap_count"] = int(feature["snap_count"])
+            distance = feature["snap_dist"]
+            record["snap_distance_m"] = float(distance) if feature["snap_state"] != "failed" else None
             record["picked"] = {
                 "x": float(point.x()),
                 "y": float(point.y()),
-                "crs": target.authid() if target.isValid() else "",
+                "crs": target.authid() or target.toWkt(),
                 "source": "snapped",
             }
 
     def _mask_layer(self, path, name, basin_id):
         """Render a delineation mask as a translucent pink raster.
 
-        Drawing the pyflwdir mask itself keeps the review loop free of a
-        polygonize pass; polygons are only written when the outlets are saved.
+        Drawing the pyflwdir mask itself avoids a polygonize pass.
         """
         layer = QgsRasterLayer(str(path), name)
         if not layer.isValid():
@@ -235,7 +237,6 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             raise RuntimeError("The prepared flow accumulation is invalid.")
         if not self._channel_layer.isValid():
             raise RuntimeError("The prepared channel network is invalid.")
-        self._flow_context = None
         self.canvas.setDestinationCrs(self._filled_dem_layer.crs())
         self._viewport_range = ViewportRasterRangeController(
             self.canvas,
@@ -378,46 +379,53 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             self.canvas.unsetMapTool(self._map_tool)
         self._map_tool = None
         self.canvas.unsetCursor()
-        self.pushButton_pickLocation.setText("Pick location")
+        self.pushButton_pickLocation.setText("Update location")
 
     def _point_picked(self, point, button):
         if button != Qt.LeftButton:
             return
         self._stop_picking()
-        self._preview_outlet(point.x(), point.y())
+        record = self._draft_state["outlets"][self.current_outlet_id]
+        record["picked"] = {"x": point.x(), "y": point.y(),
+                            "crs": self._filled_dem_layer.crs().authid() or self._filled_dem_layer.crs().toWkt(),
+                            "source": "manual"}
+        record["confidence"] = None
+        record.pop("snap_count", None)
+        record.pop("snap_distance_m", None)
+        self._show_picked_coordinates(record["picked"])
+        self._show_saved_watershed(record)
+        self._zoom_to_outlet()
+        domain_delineator_controller.colour_outlets(self)
 
-    def _preview_saved_point(self, record):
-        """Preview the stored location so a snap can be judged before editing."""
-        picked = record.get("picked")
-        if not isinstance(picked, dict):
-            return
-        try:
-            x, y = self._picked_in_dem_crs(picked)
-        except (KeyError, TypeError, ValueError):
-            return
-        self._preview_outlet(x, y)
+    def _outlet_options(self, outlet_id, state=None):
+        record = (state or self._draft_state)["outlets"][outlet_id]
+        picked = record.get("picked") or self._default_gauge_point(outlet_id)
+        x, y = self._picked_in_dem_crs(picked)
+        return {"outlet_id": outlet_id, "x": x, "y": y, "picked": dict(picked),
+                "confidence": record.get("confidence"), "snap_count": record.get("snap_count"),
+                "snap_distance_m": record.get("snap_distance_m"),
+                "basin_id": self._basin_id(outlet_id), "domain_id": record.get("domain_id"),
+                "raster_path": self._outlet_mask_path(outlet_id), "cached": record.get("delineation")}
 
-    def _preview_outlet(self, x, y):
-        """Delineate one candidate outlet, writing only the mask raster."""
+    def _show_delineation(self):
+        """Only this action (or Save) requests an uncached watershed."""
         outlet_id = self.current_outlet_id
         if not outlet_id:
             return
-        self._watershed_layer = None
-        self._refresh_canvas()
-
-        options = {
-            "filled_dem": self.workflow.filled_dem_path,
-            "x": float(x),
-            "y": float(y),
-            "raster_path": self._outlet_mask_path(outlet_id, preview=True),
-            "basin_id": self._basin_id(outlet_id),
-        }
+        try:
+            options = self._outlet_options(outlet_id)
+        except (ValueError, RuntimeError) as error:
+            self._show_error("Watershed Delineation", error)
+            return
         self.main_dialog.task_coordinator.submit(
             "domain-watershed-preview",
             f"Preview watershed {outlet_id}",
-            partial(_run_outlet_task, options=options),
+            partial(delineation.show, project_folder=self.project_folder,
+                    filled_dem=self.workflow.filled_dem_path, outlet=options),
             controls=(
+                self.pushButton_showDelineation,
                 self.pushButton_pickLocation,
+                self.pushButton_generateChannelNetwork,
                 self.pushButton_nextPourPoint,
                 self.pushButton_save,
                 self.listWidget_outlets,
@@ -437,69 +445,28 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         if outlet_id != self.current_outlet_id:
             return
         try:
-            center_x, center_y = result["cell_center"]
-            result["picked"] = {
-                "x": float(center_x),
-                "y": float(center_y),
-                "crs": self._filled_dem_layer.crs().authid(),
-            }
-            self._preview_result = result
-            self._show_area(result["catchment_area_m2"])
-            self._show_picked_coordinates(result["picked"])
-            self._watershed_layer = self._mask_layer(
-                result["raster_path"],
-                f"Watershed {outlet_id}",
-                self._basin_id(outlet_id),
-            )
-            self._refresh_canvas()
+            save_preview(self.project_folder, self.state["pour_points_source"],
+                         self.outlet_id_field, outlet_id, result)
+            record = self._draft_state["outlets"][outlet_id]
+            record["delineation"] = result
+            record["picked"] = dict(result["picked"])
+            self._show_saved_watershed(record)
         except Exception as error:
             self._show_error("Watershed Delineation", error)
 
-    def _current_assignment(self, *args, **kwargs):
-        return domain_delineator_controller._current_assignment(self, *args, **kwargs)
-
     def _stage_current_outlet(self):
-        """Validate and retain one outlet without publishing final outputs."""
+        """Retain widget values only; file validation belongs to Save."""
         if not self.current_outlet_id:
             return
-        assignment = self._current_assignment()
-        if assignment.is_gauge:
-            path = self._normal_path(
-                self.comboBox_dischargeFile.currentData() or ""
-            )
-            if path in self._used_discharge_paths(self.current_outlet_id):
-                raise ValueError("The selected discharge file is already used elsewhere.")
-        prepared = self.workflow.validate_gauge_assignments([assignment])
-        self.workflow.apply_assignment_records(
-            self._draft_state, [assignment], prepared
-        )
         record = self._draft_state["outlets"][self.current_outlet_id]
+        record["is_gauged"] = self.checkBox_isGaugedOutlet.isChecked()
+        record["is_domain"] = self.checkBox_isDomainOutlet.isChecked()
+        record["discharge_file"] = str(self.comboBox_dischargeFile.currentData() or "")
         record["threshold_cells"] = self.spinBox_channelThreshold.value()
-        picked = (
-            self._preview_result.get("picked")
-            if self._preview_result
-            else record.get("picked")
-        )
-        if (assignment.is_domain or assignment.is_gauge) and not isinstance(
-            picked, dict
-        ):
-            picked = self._default_gauge_point(self.current_outlet_id)
-        if isinstance(picked, dict):
-            record["picked"] = dict(picked)
-            if assignment.is_gauge:
-                record["gauge_point"] = dict(picked)
-                record["gauge_point"]["source"] = "picked"
-        elif assignment.is_gauge:
-            record["gauge_point"] = self._default_gauge_point(
-                self.current_outlet_id
-            )
-        else:
-            record.pop("gauge_point", None)
         self._draft_state["dem_domain"] = bool(
             self.main_dialog.checkBox_DEMdomain.isChecked()
         )
         assign_domain_ids(self._draft_state)
-        self._preview_result = None
 
     def _default_gauge_point(self, outlet_id):
         feature = self._features.get(str(outlet_id))
@@ -520,7 +487,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         return {
             "x": float(point.x()),
             "y": float(point.y()),
-            "crs": target.authid() if target.isValid() else "",
+            "crs": target.authid() or target.toWkt(),
             "source": "default",
         }
 
@@ -567,29 +534,7 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             assign_domain_ids(proposed_state)
             self.workflow.require_active_domain(proposed_state)
             self.workflow.validate_unique_state_gauge_ids(proposed_state)
-            delineations = []
-            for domain in active_domain_records(proposed_state):
-                if domain.get("is_dem_domain"):
-                    continue
-                outlet_id = domain["outlet_id"]
-                record = proposed_state["outlets"][outlet_id]
-                picked = record.get("picked")
-                if not isinstance(picked, dict):
-                    raise ValueError(
-                        f"Pick a map location for domain outlet {outlet_id}."
-                    )
-                x, y = self._picked_in_dem_crs(picked)
-                delineations.append(
-                    (
-                        outlet_id,
-                        x,
-                        y,
-                        self._outlet_mask_path(outlet_id, state=proposed_state),
-                        int(record["domain_id"]),
-                        domain_dem_path(self.project_folder, outlet_id),
-                    )
-                )
-            dem_crs_authid = self._filled_dem_layer.crs().authid()
+            outlets = [self._outlet_options(outlet_id, proposed_state) for outlet_id in self.outlet_ids]
             dem_domain = None
             if proposed_state.get("dem_domain"):
                 dem_domain = (
@@ -601,17 +546,19 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
             self._watershed_layer = None
             self._refresh_canvas()
             options = {
+                "project_folder": self.project_folder,
                 "filled_dem": self.workflow.filled_dem_path,
-                "delineations": tuple(delineations),
+                "outlets": outlets,
                 "dem_domain": dem_domain,
                 "merged_path": merged_path,
             }
             started = self.main_dialog.task_coordinator.submit(
                 "domain-final-save",
                 "Save all domain and gauge inputs",
-                partial(_run_domains_task, options=options),
+                partial(delineation.save, **options),
                 task_aware=True,
                 controls=(
+                    self.pushButton_showDelineation,
                     self.pushButton_nextPourPoint,
                     self.pushButton_save,
                     self.pushButton_pickLocation,
@@ -624,7 +571,6 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
                         proposed_state,
                         prepared,
                         previously_gauged,
-                        dem_crs_authid,
                 ),
                 on_error=lambda message: self._show_error(
                     "Save Domain Inputs", str(message).split("\n", 1)[0]
@@ -644,26 +590,28 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         proposed_state,
         prepared,
         previously_gauged,
-        dem_crs_authid,
     ):
         for outlet_id, delineation in result["outlets"].items():
             record = proposed_state["outlets"][outlet_id]
-            center_x, center_y = delineation["cell_center"]
             record.update(
                 {
-                    "picked": {
-                        "x": float(center_x),
-                        "y": float(center_y),
-                        "crs": dem_crs_authid,
-                    },
+                    "picked": dict(delineation["picked"]),
+                    "delineation": dict(delineation),
+                    "mask_value": delineation["mask_value"],
                     "catchment_area_m2": delineation["catchment_area_m2"],
                     "mask_path": delineation["raster_path"],
                     "domain_directory": domain_data_folder(
                         self.project_folder, outlet_id
                     ),
-                    "dem_path": delineation.get("dem_path", ""),
+                    "dem_path": domain_dem_path(self.project_folder, outlet_id),
                 }
             )
+            if record.get("is_gauged"):
+                record["gauge_point"] = dict(record["picked"])
+            else:
+                record.pop("gauge_point", None)
+        proposed_state["merged_mask_path"] = result["merged_path"]
+        proposed_state["dem_mask_path"] = result.get("dem_mask_path") or ""
         if result.get("dem_domain_path"):
             proposed_state["dem_domain_directory"] = domain_data_folder(
                 self.project_folder, "dem_extent"
@@ -694,7 +642,6 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         proposed_state,
         prepared,
         previously_gauged,
-        dem_crs_authid,
     ):
         try:
             self._commit_domain_state(
@@ -702,7 +649,6 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
                 proposed_state,
                 prepared,
                 previously_gauged,
-                dem_crs_authid,
             )
         except Exception as error:
             self._show_error("Save Domain Inputs", error)
@@ -737,26 +683,25 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
     def _domain_output_folder(self):
         return self.workflow.domain_output_folder()
 
-    def _outlet_mask_path(self, outlet_id, preview=False, state=None):
-        return self.workflow.outlet_mask_path(
-            outlet_id,
-            state or self.state,
-            preview=preview,
-        )
+    def _outlet_mask_path(self, outlet_id):
+        return self.workflow.outlet_mask_path(outlet_id, self._draft_state)
 
     def _show_saved_watershed(self, record):
         self._watershed_layer = None
-        value = record.get("mask_path")
-        if value:
-            try:
+        result = None
+        try:
+            options = self._outlet_options(self.current_outlet_id)
+            result = cached_delineation(self.project_folder, self.workflow.filled_dem_path,
+                                        options["x"], options["y"], record.get("delineation"))
+            if result:
                 self._watershed_layer = self._mask_layer(
-                    str(resolve_output_path(self.project_folder, value)),
+                    result["raster_path"],
                     f"Watershed {self.current_outlet_id}",
-                    record.get("domain_id") or self._basin_id(
-                        self.current_outlet_id),
+                    result["mask_value"],
                 )
-            except ValueError:
-                pass
+        except (KeyError, TypeError, ValueError):
+            pass
+        self._show_area(result["catchment_area_m2"] if result else None)
         self._refresh_canvas()
 
     def _show_area(self, *args, **kwargs):
@@ -766,21 +711,16 @@ class DomainDelineatorDialog(QDialog, Ui_DomainDelineatorDialog):
         return domain_delineator_controller._show_picked_coordinates(self, *args, **kwargs)
 
     def _zoom_to_outlet(self):
-        feature = self._features.get(self.current_outlet_id)
-        if feature is None or feature.geometry().isEmpty():
+        from qgis.core import QgsPointXY
+
+        record = self._draft_state["outlets"].get(self.current_outlet_id, {})
+        try:
+            picked = record.get("picked") or self._default_gauge_point(self.current_outlet_id)
+            marker_point = QgsPointXY(*self._picked_in_dem_crs(picked))
+        except (ValueError, KeyError, TypeError):
             self._outlet_marker.hide()
             return
-        geometry = QgsGeometry(feature.geometry())
-        source = self.pour_points_layer.crs()
-        target = self._filled_dem_layer.crs()
-        if source.isValid() and target.isValid() and source != target:
-            transform = QgsCoordinateTransform(
-                source, target, QgsProject.instance())
-            geometry.transform(transform)
-
-        marker_point = geometry.asPoint()
-        if marker_point.isEmpty():
-            marker_point = geometry.centroid().asPoint()
+        geometry = QgsGeometry.fromPointXY(marker_point)
         self._outlet_marker.setCenter(marker_point)
         self._outlet_marker.show()
 

@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from decimal import Decimal, ROUND_FLOOR
 import math
 from pathlib import Path
-import re
 from typing import Iterable, Mapping, Sequence
 
 
@@ -352,24 +351,10 @@ class Grid(Resolution):
 
 
 def alignment_gap_limit_fraction(path: Path | str | None = None) -> float:
-    """Read the dimensionless alignment limit from package settings."""
-    settings_path = Path(path) if path is not None else SETTINGS_PATH
-    try:
-        text = settings_path.read_text(encoding="utf-8")
-    except OSError:
-        return DEFAULT_ALIGNMENT_GAP_LIMIT
-    match = re.search(
-        r"(?m)^\s*grid_alignment_gap_limit\s*:\s*([^#\s]+)", text
-    )
-    if not match:
-        return DEFAULT_ALIGNMENT_GAP_LIMIT
-    try:
-        value = float(match.group(1))
-    except ValueError as error:
-        raise ValueError("grid_alignment_gap_limit in settings.yaml must be numeric.") from error
-    if not math.isfinite(value) or value < 0:
-        raise ValueError("grid_alignment_gap_limit in settings.yaml must be non-negative.")
-    return value
+    """Read the dimensionless limit from an explicit or packaged settings file."""
+    from ..handlers.state.settings import read
+
+    return read(path=path if path is not None else SETTINGS_PATH)["grid_alignment_gap_limit"]
 
 
 def crs_equal(left: str | None, right: str | None) -> bool:

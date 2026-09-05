@@ -864,7 +864,7 @@ def _merge_masks(masks, reference, output_path):
         if merged is None:
             merged = np.where(mask, int(domain_id), 0).astype(np.int32)
             continue
-        merged = np.where((merged == 0) & mask, int(domain_id), merged)
+        merged[(merged == 0) & mask] = int(domain_id)
     if merged is None:
         raise ValueError("Select at least one domain outlet.")
     return _write_raster(output_path, merged, reference, 0, gdal.GDT_Int32)
@@ -901,16 +901,23 @@ def domain_mask_bounds(mask_path):
 
 
 def merge_domain_masks(masks, output_path):
-    """Merge already-written domain mask rasters into one union raster."""
-    entries = []
-    reference = None
-    for domain_id, path in masks:
-        raster = _read_raster(path)
-        reference = reference or raster
-        entries.append((int(domain_id), raster["array"] != 0))
-    if reference is None:
+    """Merge saved masks one at a time, without retaining all outlet grids."""
+    masks = iter(masks)
+    first = next(masks, None)
+    if first is None:
         raise ValueError("Select at least one domain outlet.")
-    return _merge_masks(entries, reference, output_path)
+    reference = _read_raster(first[1])
+    first_mask = reference.pop("array") != 0
+
+    def entries():
+        yield int(first[0]), first_mask
+        for domain_id, path in masks:
+            raster = _read_raster(path)
+            if any(raster[key] != reference[key] for key in ("rows", "cols", "geotransform", "projection")):
+                raise ValueError(f"Domain mask does not match the common DEM grid: {path}")
+            yield int(domain_id), raster["array"] != 0
+
+    return _merge_masks(entries(), reference, output_path)
 
 
 def delineate_domains_file(
