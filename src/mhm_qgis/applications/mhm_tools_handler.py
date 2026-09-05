@@ -214,7 +214,7 @@ def prepare_categorical_file(
 
 
 def prepare_land_cover_periods(
-    input_path: str | Path,
+    input_file: str | Path,
     dem_file: str | Path,
     output_path: str | Path,
     lookup_table: str | Path,
@@ -227,14 +227,18 @@ def prepare_land_cover_periods(
     resampling: str = "auto",
     log: LogCallback | None = None,
 ) -> tuple[Path, ...]:
-    """Format a land-cover period manifest through the public mHM-tools API."""
+    """Format a land-cover period manifest through the public mHM-tools API.
+
+    `input_file` is the `format-data` manifest itself, not its folder:
+    mHM-tools reads the CSV and resolves relative scene paths against it.
+    """
     from mhm_tools import pre
 
     output = Path(output_path)
     output.mkdir(parents=True, exist_ok=True)
     lookup_path = Path(lookup_table)
     kwargs = {
-        "input_path": Path(input_path),
+        "input_file": Path(input_file),
         "dem_file": Path(dem_file),
         "output_path": output,
         "lookup_table": lookup_path,
@@ -257,7 +261,7 @@ def prepare_land_cover_periods(
 
 
 def prepare_soil_horizons(
-    input_path: str | Path,
+    input_file: str | Path,
     dem_file: str | Path,
     output_path: str | Path,
     *,
@@ -269,13 +273,17 @@ def prepare_soil_horizons(
     bulk_density_step: float = 0.1,
     log: LogCallback | None = None,
 ) -> tuple[Path, Path]:
-    """Format a soil-horizon manifest through the public mHM-tools API."""
+    """Format a soil-horizon manifest through the public mHM-tools API.
+
+    `input_file` is the `format-data` manifest itself, not its folder:
+    mHM-tools reads the CSV and resolves relative layer paths against it.
+    """
     from mhm_tools import pre
 
     output = Path(output_path)
     output.mkdir(parents=True, exist_ok=True)
     kwargs = {
-        "input_path": Path(input_path),
+        "input_file": Path(input_file),
         "dem_file": Path(dem_file),
         "output_path": output,
         "output_type": output_type,

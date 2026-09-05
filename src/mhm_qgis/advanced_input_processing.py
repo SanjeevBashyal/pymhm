@@ -34,7 +34,7 @@ def process_land_cover_input(
         prefix="mhm_qgis_land_cover_", dir=geometry_folder(project_folder)
     ) as temporary:
         outputs = prepare_land_cover_periods(
-            manifest.parent,
+            manifest,
             dem_file,
             temporary,
             value.lookup_table,
@@ -101,7 +101,7 @@ def process_soil_input(
         prefix="mhm_qgis_soil_", dir=geometry_folder(project_folder)
     ) as temporary:
         data, definition = prepare_soil_horizons(
-            manifest.parent,
+            manifest,
             dem_file,
             temporary,
             output_type=output_type,

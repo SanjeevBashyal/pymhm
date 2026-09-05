@@ -49,8 +49,10 @@ def test_land_cover_processing_writes_period_state(tmp_path, monkeypatch):
         "source",
         "class",
     )
+    manifests = []
 
-    def fake_formatter(input_path, dem_file, output_path, *args, **kwargs):
+    def fake_formatter(input_file, dem_file, output_path, *args, **kwargs):
+        manifests.append(Path(input_file))
         output = Path(output_path)
         return (
             _touch(output / "lc_1990_1999.asc"),
@@ -66,6 +68,9 @@ def test_land_cover_processing_writes_period_state(tmp_path, monkeypatch):
         "lc_1990_1999.asc",
         "lc_2000_2010.asc",
     ]
+    # mHM-tools reads the manifest itself, so it must receive the CSV.
+    assert manifests[0].is_file() and manifests[0].suffix == ".csv"
+
     state = load_settings(tmp_path)["land_cover"]
     assert state["variable"] == "land_cover"
     assert [scene["output_path"] for scene in state["scenes"]] == [
@@ -86,7 +91,10 @@ def test_soil_processing_saves_v6_schema_values_and_units(tmp_path, monkeypatch)
     dem = _touch(tmp_path / "dem.tif")
     value = SoilInput((SoilHorizon(1, 0, 300, *sources),), "kg/m3")
 
-    def fake_formatter(input_path, dem_file, output_path, **kwargs):
+    manifests = []
+
+    def fake_formatter(input_file, dem_file, output_path, **kwargs):
+        manifests.append(Path(input_file))
         output = Path(output_path)
         return (
             _touch(output / "soil_horizon_class.nc"),
@@ -100,6 +108,8 @@ def test_soil_processing_saves_v6_schema_values_and_units(tmp_path, monkeypatch)
     data, definition = processing.process_soil_input(
         tmp_path, "6.0", value, dem
     )
+
+    assert manifests[0].is_file() and manifests[0].suffix == ".csv"
 
     state = load_settings(tmp_path)["soil"]
     assert data.name == "soil_horizon_class.nc"

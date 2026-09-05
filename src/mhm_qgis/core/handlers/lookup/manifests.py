@@ -18,6 +18,7 @@ SOIL_HEADER = (
     "Sand Layer",
     "Silt Layer",
     "Bulk Density Layer",
+    "Bulk Density Unit",
 )
 BULK_DENSITY_UNITS = ("g/cm3", "kg/m3", "cg/cm3")
 MAX_LAND_USE_PERIODS = 50
@@ -155,7 +156,12 @@ def write_land_use_manifest(value: LandUseInput, output_file) -> Path:
 
 
 def write_soil_manifest(value: SoilInput, output_file) -> Path:
-    """Write soil ``format-data.csv`` including its required unit preamble."""
+    """Write soil ``format-data.csv`` for multi-horizon processing.
+
+    mHM-tools reads the manifest with a plain ``read_csv``, so the bulk-density
+    unit is repeated as a column on every row rather than carried in a preamble
+    line: a preamble would be consumed as the header.
+    """
     validate_soil_input(value)
     output = Path(output_file)
     rows = (
@@ -167,15 +173,11 @@ def write_soil_manifest(value: SoilInput, output_file) -> Path:
             _manifest_path(horizon.sand_layer, output),
             _manifest_path(horizon.silt_layer, output),
             _manifest_path(horizon.bulk_density_layer, output),
+            value.bulk_density_unit,
         )
         for horizon in value.horizons
     )
-    return _write_csv(
-        output,
-        SOIL_HEADER,
-        rows,
-        preamble=f"Bulk Density Unit = {value.bulk_density_unit}",
-    )
+    return _write_csv(output, SOIL_HEADER, rows)
 
 
 def _require_file(path: Path, label: str) -> None:
@@ -199,8 +201,6 @@ def _write_csv(
     output: Path,
     header: Iterable[str],
     rows: Iterable[Iterable],
-    *,
-    preamble: str | None = None,
 ) -> Path:
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
@@ -215,8 +215,6 @@ def _write_csv(
             delete=False,
         ) as handle:
             temporary = Path(handle.name)
-            if preamble:
-                handle.write(f"{preamble}\n")
             writer = csv.writer(handle, lineterminator="\n")
             writer.writerow(header)
             writer.writerows(rows)

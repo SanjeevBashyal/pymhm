@@ -25,15 +25,26 @@ def _install_fake(monkeypatch, **functions):
 def test_land_cover_period_adapter_uses_public_api(tmp_path, monkeypatch):
     calls = []
 
-    def format_lc_periods(**kwargs):
-        calls.append(kwargs)
-        output = kwargs["output_path"] / "lc_periods.nc"
+    # Signature copied from mhm_tools.pre.format_lc_periods, so a keyword the
+    # adapter renames is a test failure rather than a runtime TypeError.
+    def format_lc_periods(
+        input_file,
+        dem_file,
+        output_path,
+        lookup_table,
+        mapping_field,
+        class_field,
+        output_type="nc",
+        **kwargs,
+    ):
+        calls.append(dict(kwargs, input_file=input_file, output_path=output_path))
+        output = output_path / "lc_periods.nc"
         output.write_bytes(b"nc")
         return (output,)
 
     _install_fake(monkeypatch, format_lc_periods=format_lc_periods)
     output = prepare_land_cover_periods(
-        tmp_path / "manifest",
+        tmp_path / "format-data.csv",
         tmp_path / "dem.tif",
         tmp_path / "output",
         tmp_path / "lookup.csv",
@@ -43,24 +54,27 @@ def test_land_cover_period_adapter_uses_public_api(tmp_path, monkeypatch):
     )
 
     assert [path.name for path in output] == ["lc_periods.nc"]
-    assert calls[0]["input_path"] == tmp_path / "manifest"
+    assert calls[0]["input_file"] == tmp_path / "format-data.csv"
     assert calls[0]["resampling"] == "auto"
 
 
 def test_soil_horizon_adapter_returns_data_and_definition(tmp_path, monkeypatch):
     calls = []
 
-    def format_soil_horizons(**kwargs):
-        calls.append(kwargs)
-        data = kwargs["output_path"] / "soil_class.asc"
-        definition = kwargs["output_path"] / "soil_classdefinition.txt"
+    # Signature copied from mhm_tools.pre.format_soil_horizons.
+    def format_soil_horizons(
+        input_file, dem_file, output_path, output_type="nc", **kwargs
+    ):
+        calls.append(dict(kwargs, input_file=input_file, output_path=output_path))
+        data = output_path / "soil_class.asc"
+        definition = output_path / "soil_classdefinition.txt"
         data.write_bytes(b"asc")
         definition.write_text("definition", encoding="utf-8")
         return data, definition
 
     _install_fake(monkeypatch, format_soil_horizons=format_soil_horizons)
     data, definition = prepare_soil_horizons(
-        tmp_path / "manifest",
+        tmp_path / "format-data.csv",
         tmp_path / "dem.tif",
         tmp_path / "output",
         output_type="asc",
@@ -68,6 +82,7 @@ def test_soil_horizon_adapter_returns_data_and_definition(tmp_path, monkeypatch)
 
     assert data.name == "soil_class.asc"
     assert definition.name == "soil_classdefinition.txt"
+    assert calls[0]["input_file"] == tmp_path / "format-data.csv"
     assert calls[0]["composition_step"] == 5.0
     assert calls[0]["bulk_density_step"] == 0.1
 

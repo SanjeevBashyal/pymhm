@@ -60,7 +60,7 @@ def test_land_use_periods_must_be_continuous(tmp_path):
         write_land_use_manifest(value, tmp_path / "format-data.csv")
 
 
-def test_writes_soil_unit_preamble_and_horizons(tmp_path):
+def test_writes_soil_unit_column_and_horizons(tmp_path):
     files = [_touch(tmp_path / f"layer_{index}.tif") for index in range(8)]
     value = SoilInput(
         (
@@ -73,13 +73,19 @@ def test_writes_soil_unit_preamble_and_horizons(tmp_path):
     output = write_soil_manifest(value, tmp_path / "format-data.csv")
     lines = output.read_text(encoding="utf-8").splitlines()
 
-    assert lines[0] == "Bulk Density Unit = kg/m3"
-    assert lines[1] == (
+    # No preamble: mHM-tools reads the manifest with a plain read_csv, so the
+    # header must be line 0 and the unit repeats on every row.
+    assert lines[0] == (
         "Horizon,Upper Depth,Lower Depth,Clay Layer,Sand Layer,"
-        "Silt Layer,Bulk Density Layer"
+        "Silt Layer,Bulk Density Layer,Bulk Density Unit"
     )
-    assert lines[2] == "1,0,50,layer_0.tif,layer_1.tif,layer_2.tif,layer_3.tif"
-    assert lines[3] == "2,50,200,layer_4.tif,layer_5.tif,layer_6.tif,layer_7.tif"
+    assert lines[1] == (
+        "1,0,50,layer_0.tif,layer_1.tif,layer_2.tif,layer_3.tif,kg/m3"
+    )
+    assert lines[2] == (
+        "2,50,200,layer_4.tif,layer_5.tif,layer_6.tif,layer_7.tif,kg/m3"
+    )
+    assert len(lines) == 3
 
 
 def test_soil_horizons_must_start_at_zero_and_be_contiguous(tmp_path):
